@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environment
+.venv/
+venv/
+env/
+
+# Database
+stocks_cache.duckdb
+*.duckdb
+*.db
+*.sqlite3
+*.csv
+
+# Output results
+emin_screening_result*.csv
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+*.log

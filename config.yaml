@@ -1,0 +1,46 @@
+# ==========================================
+# Emin Yurumazu Investment Theory Screener
+# ==========================================
+
+# 1. Gatekeeper (Fast Screening)
+# These filters calculate simple metrics from 'fast_info' or 'raw_data'
+# to quickly exclude unqualified stocks.
+gatekeeper:
+  equity_ratio_min: 0.45       # Minimum Equity Ratio (e.g., 0.40 = 40%) - Relaxed to 45% based on feedback
+  operating_margin_min: 0.10   # Minimum Operating Margin (e.g., 0.08 = 8%) - Stricter 10%
+  psr_cap: 2.5                 # Exclude stocks with PSR > 2.5 (Allowed higher for growth)
+  operating_cash_flow_min: 0   # Operating Cash Flow > 0 (Positive)
+
+# 2. Scoring Logic (Detailed Analysis)
+# Points are awarded based on these criteria.
+scoring:
+  # Growth
+  sales_growth_threshold: 1.0  # +100% growth (2x) over 4 years
+  sales_growth_points: 3
+  
+  # Value
+  psr_super_cheap: 0.5         # PSR <= 0.5
+  psr_cheap_points: 3
+  psr_fair_points: 1
+  net_net_bonus: 5             # Bonus if Net Cash > Market Cap
+
+  # Valuation (New)
+  dividend_yield_target: 0.03  # Dividend Yield >= 3%
+  dividend_points: 1
+  per_growth_points: 2         # Forward PE < Trailing PE
+
+  # Technicals (New)
+  ma_short: 12                 # 12-Month Moving Average
+  ma_long: 24                  # 24-Month Moving Average
+  technical_points: 2          # Bonus for Strong Bull Trend
+  
+  # Safety
+  safety_buffer_pct: 20        # Within 20% of Corona Low (or historical low)
+  safety_points: 2
+
+# 3. System Configuration
+system:
+  input_csv: "japan_tickers.csv" # List of tickers to screen
+  sleep_time: 0.5                # Delay between API calls (seconds)
+  cache_days: 3                  # Valid period for cached data (days)
+  db_file: "stocks_cache.duckdb" # Database file
