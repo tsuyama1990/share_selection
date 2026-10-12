@@ -98,7 +98,7 @@ def run_analyze(tickers: List[str], dm: StockDataManager):
         'Ticker', 'Name', 'Total_Score', 'Recommendation_Type', 
         'Current_Price', 'PSR', 'PBR', 
         'Cash_to_MarketCap_Ratio', 'Dividend_Yield(%)',
-        'Sales_Growth_4Y(%)',
+        'Sales_CAGR(%)', 'Sales_Growth_Years', 'Avg_Turnover_60D(M JPY)',
         'Operating_Cash_Flow', 'Investing_Cash_Flow', 'Financing_Cash_Flow',
         'Chart_Trend', 'MA12', 'MA24',
         'Equity_Ratio', 'Operating_Margin(%)'

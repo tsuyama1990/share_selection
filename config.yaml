@@ -10,12 +10,14 @@ gatekeeper:
   operating_margin_min: 0.10   # Minimum Operating Margin (e.g., 0.08 = 8%) - Stricter 10%
   psr_cap: 2.5                 # Exclude stocks with PSR > 2.5 (Allowed higher for growth)
   operating_cash_flow_min: 0   # Operating Cash Flow > 0 (Positive)
+  market_cap_min: 100000000    # Minimum Market Cap (JPY)
+  turnover_min: 10000000       # Minimum 60-day avg daily trading value (JPY). Start low (10M) and narrow via the output column
 
 # 2. Scoring Logic (Detailed Analysis)
 # Points are awarded based on these criteria.
 scoring:
   # Growth
-  sales_growth_threshold: 1.0  # +100% growth (2x) over 4 years
+  sales_cagr_threshold: 0.189  # Sales CAGR >= 18.9% (= 2x over 4 years). Span is 3-4 years depending on data
   sales_growth_points: 3
   
   # Value

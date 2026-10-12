@@ -65,62 +65,160 @@ def _ensure_history_index(df: pd.DataFrame) -> pd.DataFrame:
          
     return df
 
-def get_fiscal_year_growth(financials: pd.DataFrame, years_back: int = 4) -> Tuple[Optional[float], Optional[float]]:
+def _num(value: Any) -> Optional[float]:
     """
-    Calculate sales growth over N years (or fewer if data unavailable).
-    Minimum 3 years of data required for meaningful growth calculation.
+    Convert a value to float, treating None/NaN/non-numeric as missing.
+
+    Parameters
+    ----------
+    value : Any
+        Raw value from yfinance (may be None, NaN, or a number).
+
+    Returns
+    -------
+    Optional[float]
+        The value as float, or None if missing.
+    """
+    try:
+        value = float(value)
+    except (TypeError, ValueError):
+        return None
+    return None if np.isnan(value) else value
+
+def _first_valid(row: pd.Series, keys: Tuple[str, ...]) -> Optional[float]:
+    """
+    Return the first non-missing value among keys.
+
+    Unlike ``a or b``, a NaN in an earlier key does not shadow later keys.
+
+    Parameters
+    ----------
+    row : pd.Series
+        A single period of a financial statement.
+    keys : Tuple[str, ...]
+        Line item names in priority order.
+
+    Returns
+    -------
+    Optional[float]
+        The first valid value, or None if all are missing.
+    """
+    for key in keys:
+        value = _num(row.get(key))
+        if value is not None:
+            return value
+    return None
+
+# Japanese equity ratio (自己資本比率) excludes non-controlling interests,
+# so the parent's equity comes first.
+EQUITY_KEYS = ('Stockholders Equity', 'Total Stockholder Equity', 'Total Equity Gross Minority Interest')
+OCF_KEYS = ('Operating Cash Flow', 'Total Cash From Operating Activities')
+ICF_KEYS = ('Investing Cash Flow', 'Total Cashflows From Investing Activities')
+FCF_KEYS = ('Financing Cash Flow', 'Total Cash From Financing Activities')
+
+def _latest_valid_period(df: pd.DataFrame, keys: Tuple[str, ...]) -> Optional[int]:
+    """
+    Position of the most recent period where all keys have values.
+
+    yfinance sometimes adds a column for a fiscal year that has not been
+    reported yet (all NaN); that column is skipped.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Financial statement (latest period first).
+    keys : Tuple[str, ...]
+        Line items that must all be present.
+
+    Returns
+    -------
+    Optional[int]
+        Column position, or None if no period has all keys.
+    """
+    if not set(keys) <= set(df.index):
+        return None
+    for i in range(df.shape[1]):
+        if all(_num(df[df.columns[i]].get(key)) is not None for key in keys):
+            return i
+    return None
+
+def get_sales_cagr(
+    financials: pd.DataFrame,
+    years_back: int = 4,
+    min_years: int = 3
+) -> Tuple[Optional[float], Optional[int]]:
+    """
+    Calculate annualized sales growth (CAGR) over up to N years.
+
+    yfinance usually returns 4-5 annual periods and the oldest is often NaN,
+    so the span is the oldest valid period within ``years_back``. Annualizing
+    makes 3-year and 4-year spans comparable.
 
     Parameters
     ----------
     financials : pd.DataFrame
-        Financials DataFrame containing 'Total Revenue'.
+        Financials DataFrame containing 'Total Revenue' (latest period first).
     years_back : int, optional
-        Number of years to look back, by default 4.
+        Maximum number of years to look back, by default 4.
+    min_years : int, optional
+        Minimum span required, by default 3.
 
     Returns
     -------
-    Tuple[Optional[float], Optional[float]]
-        (growth_rate, current_sales). Returns (None, None) if insufficient data.
+    Tuple[Optional[float], Optional[int]]
+        (cagr, years). Returns (None, None) if insufficient data.
     """
-    try:
-        sales = financials.loc['Total Revenue']
-        if len(sales) == 0: 
-            return None, None
-        
-        # Get current sales (latest period)
-        current_sales = sales.iloc[0]
-        if pd.isna(current_sales) or current_sales == 0:
-            return None, None
-        
-        # Find the oldest valid (non-NaN, non-zero) sales data
-        past_sales = None
-        actual_years = 0
-        
-        for i in range(min(years_back, len(sales) - 1), 0, -1):
-            candidate = sales.iloc[i]
-            if not pd.isna(candidate) and candidate > 0:
-                past_sales = candidate
-                actual_years = i
-                break
-        
-        # Require at least 3 years of data
-        if past_sales is None or actual_years < 3:
-            return None, None
-        
-        growth_rate = (current_sales / past_sales) - 1
-        return growth_rate, current_sales
-        
-    except Exception:
+    latest = _latest_valid_period(financials, ('Total Revenue',))
+    if latest is None:
+        return None, None
+    sales = financials.loc['Total Revenue'].iloc[latest:]
+
+    current_sales = _num(sales.iloc[0])
+    if current_sales is None or current_sales <= 0:
         return None, None
 
+    for years in range(min(years_back, len(sales) - 1), min_years - 1, -1):
+        past_sales = _num(sales.iloc[years])
+        if past_sales is not None and past_sales > 0:
+            cagr = (current_sales / past_sales) ** (1 / years) - 1
+            return cagr, years
+
+    return None, None
+
+def _avg_turnover(hist_daily: Optional[pd.DataFrame], days: int = 60) -> Optional[float]:
+    """
+    Average daily trading value (Close x Volume) over the last N sessions.
+
+    Parameters
+    ----------
+    hist_daily : Optional[pd.DataFrame]
+        Daily history with 'Close' and 'Volume' columns.
+    days : int, optional
+        Number of recent sessions to average, by default 60.
+
+    Returns
+    -------
+    Optional[float]
+        Average daily turnover in JPY, or None if unavailable.
+    """
+    if hist_daily is None or hist_daily.empty or not {'Close', 'Volume'} <= set(hist_daily.columns):
+        return None
+    turnover = (hist_daily['Close'] * hist_daily['Volume']).dropna().tail(days)
+    return _num(turnover.mean()) if len(turnover) else None
+
 def _check_gatekeeper(
-    fast_info: Dict[str, Any], 
-    bs: pd.DataFrame, 
-    fin: pd.DataFrame, 
-    cf: pd.DataFrame
+    fast_info: Dict[str, Any],
+    bs: pd.DataFrame,
+    fin: pd.DataFrame,
+    cf: pd.DataFrame,
+    hist_daily: Optional[pd.DataFrame] = None
 ) -> Optional[Dict[str, Any]]:
     """
-    Check Gatekeeper rules (Equity Ratio, Operating Margin, PSR Cap, OCF > 0).
+    Check Gatekeeper rules (Market Cap, Liquidity, Equity Ratio,
+    Operating Margin, PSR Cap, OCF > 0).
+
+    A metric that a rule depends on but cannot be computed (missing or NaN)
+    fails the rule, so incomplete data never slips through.
 
     Parameters
     ----------
@@ -132,6 +230,8 @@ def _check_gatekeeper(
         Financials DataFrame.
     cf : pd.DataFrame
         Cashflow DataFrame.
+    hist_daily : Optional[pd.DataFrame], optional
+        Daily history used for the liquidity check, by default None.
 
     Returns
     -------
@@ -139,84 +239,68 @@ def _check_gatekeeper(
         Dictionary with basic metrics if the stock passes criteria, else None.
     """
     res = {}
-    
+
     # 1. Market Cap
-    mcap = fast_info.get('market_cap')
-    price = fast_info.get('last_price')
-    if not mcap or mcap < 1e8:
+    mcap = _num(fast_info.get('market_cap'))
+    if mcap is None or mcap < GK.get('market_cap_min', 1e8):
         return None
-    
-    res['Current_Price'] = price
+
+    res['Current_Price'] = _num(fast_info.get('last_price'))
     res['Market_Cap'] = mcap
     res['Market_Cap(Billion)'] = round(mcap / 1e9, 2)
 
-    # 2. Equity Ratio
-    # Definition: Net Assets / Total Assets
-    try:
-        latest_bs = bs.iloc[:, 0]
-        total_assets = latest_bs.get('Total Assets')
-        
-        # Priority: Consolidated > Parent-only
-        total_equity = (
-            latest_bs.get('Total Equity Gross Minority Interest') or 
-            latest_bs.get('Stockholders Equity') or 
-            latest_bs.get('Total Stockholder Equity')
-        )
-        
-        if total_assets and total_equity:
-            eq_ratio = total_equity / total_assets
-            res['Equity_Ratio'] = round(eq_ratio * 100, 2)
-            if eq_ratio < GK.get('equity_ratio_min', 0.40):
-                return None
-        else:
-            return None
-    except Exception:
+    # 2. Liquidity (average daily trading value)
+    turnover = _avg_turnover(hist_daily)
+    res['Avg_Turnover_60D(M JPY)'] = round(turnover / 1e6, 1) if turnover is not None else None
+    turnover_min = GK.get('turnover_min', 0)
+    if turnover_min > 0 and (turnover is None or turnover < turnover_min):
         return None
 
-    # 3. Operating Margin & PSR
-    try:
-        current_sales = fin.loc['Total Revenue'].iloc[0]
-        op_income = fin.loc['Operating Income'].iloc[0]
-        
-        if current_sales:
-            op_margin = op_income / current_sales
-            res['Operating_Margin(%)'] = round(op_margin * 100, 2)
-            if op_margin < GK.get('operating_margin_min', 0.10):
-                return None
-            
-            # PSR Check
-            psr = mcap / current_sales
-            res['PSR'] = round(psr, 2)
-            if psr > GK.get('psr_cap', 2.5):
-                return None
-        else:
-            return None
-    except Exception:
+    # 3. Equity Ratio
+    # Definition: Stockholders' Equity / Total Assets
+    if bs.empty:
+        return None
+    latest_bs = bs.iloc[:, 0]
+    total_assets = _num(latest_bs.get('Total Assets'))
+    total_equity = _first_valid(latest_bs, EQUITY_KEYS)
+    if total_assets is None or total_assets <= 0 or total_equity is None:
         return None
 
-    # 4. Operating Cash Flow (OCF) Check
-    try:
-        if not cf.empty:
-            latest_cf = cf.iloc[:, 0]
-            
-            # OCF
-            ocf = latest_cf.get('Operating Cash Flow') or latest_cf.get('Total Cash From Operating Activities')
-            if ocf is not None:
-                res['Operating_Cash_Flow'] = ocf
-                if ocf <= GK.get('operating_cash_flow_min', 0):
-                    return None
-            
-            # Investing CF
-            icf = latest_cf.get('Investing Cash Flow') or latest_cf.get('Total Cashflows From Investing Activities')
-            if icf is not None:
-                res['Investing_Cash_Flow'] = icf
+    eq_ratio = total_equity / total_assets
+    res['Equity_Ratio'] = round(eq_ratio * 100, 2)
+    if eq_ratio < GK.get('equity_ratio_min', 0.40):
+        return None
 
-            # Financing CF
-            fcf = latest_cf.get('Financing Cash Flow') or latest_cf.get('Total Cash From Financing Activities')
-            if fcf is not None:
-                res['Financing_Cash_Flow'] = fcf
-    except Exception:
-        pass
+    # 4. Operating Margin & PSR
+    latest = _latest_valid_period(fin, ('Total Revenue', 'Operating Income'))
+    if latest is None:
+        return None
+    current_sales = _num(fin.loc['Total Revenue'].iloc[latest])
+    op_income = _num(fin.loc['Operating Income'].iloc[latest])
+    if current_sales <= 0:
+        return None
+
+    op_margin = op_income / current_sales
+    res['Operating_Margin(%)'] = round(op_margin * 100, 2)
+    if op_margin < GK.get('operating_margin_min', 0.10):
+        return None
+
+    psr = mcap / current_sales
+    res['PSR'] = round(psr, 2)
+    if psr > GK.get('psr_cap', 2.5):
+        return None
+
+    # 5. Operating Cash Flow (OCF) Check
+    if cf.empty:
+        return None
+    latest_cf = cf.iloc[:, 0]
+    ocf = _first_valid(latest_cf, OCF_KEYS)
+    if ocf is None or ocf <= GK.get('operating_cash_flow_min', 0):
+        return None
+
+    res['Operating_Cash_Flow'] = ocf
+    res['Investing_Cash_Flow'] = _first_valid(latest_cf, ICF_KEYS)
+    res['Financing_Cash_Flow'] = _first_valid(latest_cf, FCF_KEYS)
 
     return res
 
@@ -231,10 +315,11 @@ def _score_growth(fin: pd.DataFrame, result: Dict[str, Any]):
     result : Dict[str, Any]
         Result dictionary to update.
     """
-    growth_rate, _ = get_fiscal_year_growth(fin, 4)
-    if growth_rate is not None:
-        result['Sales_Growth_4Y(%)'] = round(growth_rate * 100, 2)
-        if growth_rate >= SC.get('sales_growth_threshold', 1.0):
+    cagr, years = get_sales_cagr(fin, 4)
+    if cagr is not None:
+        result['Sales_CAGR(%)'] = round(cagr * 100, 2)
+        result['Sales_Growth_Years'] = years
+        if cagr >= SC.get('sales_cagr_threshold', 0.189):
             result['Score_Growth'] += SC.get('sales_growth_points', 3)
 
 def _score_value(
@@ -269,46 +354,41 @@ def _score_value(
         result['Score_Value'] += SC.get('psr_fair_points', 1)
 
     # 2. Cash Ratio & Net-Net
-    try:
-        total_cash = latest_bs.get('Cash And Cash Equivalents', 0)
-        if market_cap > 0:
-            cash_ratio = total_cash / market_cap
-            result['Cash_to_MarketCap_Ratio'] = round(cash_ratio, 2)
-            if cash_ratio >= 1.0:
-                result['Score_Value'] += SC.get('net_net_bonus', 5)
-                result['Recommendation_Type'] = 'NET-NET'
-                result['Net_Net_Flag(T/F)'] = True
-    except Exception:
-         result['Cash_to_MarketCap_Ratio'] = None
+    total_cash = _num(latest_bs.get('Cash And Cash Equivalents'))
+    if total_cash is not None and market_cap > 0:
+        cash_ratio = total_cash / market_cap
+        result['Cash_to_MarketCap_Ratio'] = round(cash_ratio, 2)
+        if cash_ratio >= 1.0:
+            result['Score_Value'] += SC.get('net_net_bonus', 5)
+            result['Recommendation_Type'] = 'NET-NET'
+            result['Net_Net_Flag(T/F)'] = True
 
     # 3. PBR
-    pbr = info.get('priceToBook')
-    if not pbr:
-        try:
-            total_equity = (
-                latest_bs.get('Total Equity Gross Minority Interest') or
-                latest_bs.get('Stockholders Equity') or 
-                latest_bs.get('Total Stockholder Equity')
-            )
-            if total_equity and total_equity > 0:
-                pbr = market_cap / total_equity
-        except Exception:
-            pass
-    
-    if pbr:
+    pbr = _num(info.get('priceToBook'))
+    if pbr is None:
+        total_equity = _first_valid(latest_bs, EQUITY_KEYS)
+        if total_equity is not None and total_equity > 0:
+            pbr = market_cap / total_equity
+
+    if pbr is not None:
         result['PBR'] = round(pbr, 2)
 
     # 4. Dividend Score
-    div = info.get('dividendYield')
-    if div:
+    # trailingAnnualDividendYield is a fraction (0.03 = 3%), while yfinance's
+    # dividendYield is already in percent (3.0 = 3%).
+    div = _num(info.get('trailingAnnualDividendYield'))
+    if div is None:
+        div_pct = _num(info.get('dividendYield'))
+        div = div_pct / 100 if div_pct is not None else None
+    if div is not None:
         result['Dividend_Yield(%)'] = round(div * 100, 2)
         if div >= SC.get('dividend_yield_target', 0.03):
             result['Score_Value'] += SC.get('dividend_points', 1)
 
     # 5. PER Growth
-    f_pe = info.get('forwardPE')
-    t_pe = info.get('trailingPE')
-    if f_pe and t_pe:
+    f_pe = _num(info.get('forwardPE'))
+    t_pe = _num(info.get('trailingPE'))
+    if f_pe is not None and t_pe is not None and f_pe > 0 and t_pe > 0:
         result['Forward_PE'] = round(f_pe, 2)
         result['Trailing_PE'] = round(t_pe, 2)
         if f_pe < t_pe:
@@ -385,10 +465,11 @@ def analyze_stock_data(ticker_symbol: str, data: Dict[str, Any]) -> Optional[Dic
     fin = _ensure_datetime_index(data.get('financials', pd.DataFrame()))
     bs = _ensure_datetime_index(data.get('balance_sheet', pd.DataFrame()))
     cf = _ensure_datetime_index(data.get('cashflow', pd.DataFrame()))
+    hist_daily = _ensure_history_index(data.get('history', pd.DataFrame()))
     hist_monthly = _ensure_history_index(data.get('history_monthly', pd.DataFrame()))
 
     # 1. Gatekeeper Check
-    gk_res = _check_gatekeeper(fast_info, bs, fin, cf)
+    gk_res = _check_gatekeeper(fast_info, bs, fin, cf, hist_daily)
     if not gk_res:
         return None
     

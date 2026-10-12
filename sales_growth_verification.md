@@ -65,3 +65,7 @@ def get_fiscal_year_growth(financials: pd.DataFrame, years_back: int = 4, min_ye
 
 ## Recommendation
 Use **Option 1** for consistency. All stocks should be evaluated on the same 4-year timeframe.
+
+## Resolution
+
+The adopted approach is CAGR over the oldest valid period within 4 years (minimum 3), rather than Option 1. yfinance usually returns the oldest period as NaN, so a strict 4-year rule would exclude most stocks.

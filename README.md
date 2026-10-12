@@ -10,12 +10,16 @@ The system uses a **Hybrid Architecture** with **DuckDB** to separate data accum
     *   **Fetch Mode**: Downloads raw data (Financials, Balance Sheet, Monthly History) from Yahoo Finance and stores it in `stocks_cache.duckdb`.
     *   **Analyze Mode**: Runs screening logic against the local database instantly (zero API latency).
 *   **Gatekeeper (Fast Screening)**:
-    *   Equity Ratio >= 45% (Configurable)
+    *   Market Cap >= `market_cap_min` (default 100M JPY)
+    *   Liquidity: 60-day average daily trading value >= `turnover_min` (default 10M JPY, intentionally low; use the `Avg_Turnover_60D(M JPY)` output column to narrow later)
+    *   Equity Ratio >= 45% (Configurable). Uses Stockholders' Equity first (Japanese 自己資本比率 definition, excludes non-controlling interests)
     *   Operating Margin >= 10% (Configurable)
     *   PSR Cap <= 2.5
+    *   Operating CF > 0 (missing OCF fails)
+    *   Missing/NaN metrics FAIL these rules (they no longer slip through). If the latest fiscal year column is unreported (all NaN), the most recent period with values is used.
 *   **Scoring System**:
-    *   **Growth**: Sales growth over 4 years.
-    *   **Value**: PSR, **PBR**, **Dividend Yield** (>=3%), **PER Growth** (Forward < Trailing), **Cash Ratio** (Net-Net).
+    *   **Growth**: Sales CAGR over the available 3-4 years; threshold `sales_cagr_threshold` 0.189 (= 2x over 4 years).
+    *   **Value**: PSR, **PBR**, **Dividend Yield** (>=3%, from `trailingAnnualDividendYield` as a fraction; yfinance `dividendYield` is in percent and only a fallback, divided by 100), **PER Growth** (Forward < Trailing), **Cash Ratio** (Net-Net).
     *   **Technicals**: **Monthly Chart Trend** (Price > 12M MA > 24M MA).
     *   **Safety**: Historical low buffer (Corona Low check).
 
@@ -73,7 +77,15 @@ Results are saved to `emin_screening_result_YYYY-MM-DD.csv` and displayed in the
 *   **Recommendation_Type**: `Quality Growth`, `Quality Value`, `NET-NET`, or `Watch`.
 *   **Cash_to_MarketCap_Ratio**: > 1.0 means the company has more cash than its market value (Net-Net).
 *   **Chart_Trend**: `Strong Bull` (Perfect Order), `Bull`, or `Bear`.
+*   **Sales_CAGR(%)**, **Sales_Growth_Years**: Sales CAGR and the span used (replace `Sales_Growth_4Y(%)`).
+*   **Avg_Turnover_60D(M JPY)**: 60-day average daily trading value.
 *   **PBR**, **PSR**, **Dividend_Yield**: Standard valuation metrics.
+
+## Testing
+
+```bash
+uv run pytest
+```
 
 ## Architecture
 
