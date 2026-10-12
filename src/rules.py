@@ -63,14 +63,15 @@ class MarketCapRule:
 
 @dataclass
 class LiquidityRule:
-    """60-day average daily turnover >= ``min_turnover`` JPY (0 disables)."""
+    """Average daily turnover over ``days`` sessions >= ``min_turnover`` JPY (0 disables)."""
 
     min_turnover: float
+    days: int
 
     def evaluate(self, data: StockData, metrics: Dict[str, Any]) -> RuleResult:
         """Check liquidity; always emits the turnover when computable."""
-        turnover = avg_turnover(data.history)
-        out = {'Avg_Turnover_60D(M JPY)': round(turnover / 1e6, 1) if turnover is not None else None}
+        turnover = avg_turnover(data.history, self.days)
+        out = {'Avg_Turnover(M JPY)': round(turnover / 1e6, 1) if turnover is not None else None}
         if self.min_turnover > 0 and (turnover is None or turnover < self.min_turnover):
             return _fail()
         return RuleResult(True, out)
@@ -163,7 +164,7 @@ def build_rules(cfg: Dict[str, Any]) -> List[Rule]:
     gk = cfg['gatekeeper']
     return [
         MarketCapRule(gk['market_cap_min']),
-        LiquidityRule(gk['turnover_min']),
+        LiquidityRule(gk['turnover_min'], gk['turnover_days']),
         EquityRatioRule(gk['equity_ratio_min']),
         OperatingMarginRule(gk['operating_margin_min']),
         PsrRule(gk['psr_cap']),

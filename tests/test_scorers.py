@@ -22,6 +22,9 @@ def total(scorers, data, metrics):
     return pts, out, recs
 
 
+WINDOWS = {'Lehman': ('2008-09-01', '2009-03-31'), 'Corona': ('2020-02-01', '2020-04-30')}
+
+
 class TestScorers(unittest.TestCase):
 
     def test_score_growth(self):
@@ -34,7 +37,7 @@ class TestScorers(unittest.TestCase):
             '2019': {'Total Revenue': 80}
         })
         fin.columns = pd.to_datetime(fin.columns, format='%Y')
-        res = SalesGrowthScorer(0.189, 3).score(StockData.from_dict('T', {'financials': fin}), {})
+        res = SalesGrowthScorer(0.189, 3, 4, 3).score(StockData.from_dict('T', {'financials': fin}), {})
         # CAGR: (200 / 80) ** (1/4) - 1 = 25.74% >= 18.9% threshold
         self.assertEqual(res.category, 'Growth')
         self.assertEqual(res.points, 3)
@@ -48,14 +51,14 @@ class TestScorers(unittest.TestCase):
             '2021': {'Total Revenue': 120}
         })
         fin.columns = pd.to_datetime(fin.columns, format='%Y')
-        res = SalesGrowthScorer(0.189, 3).score(StockData.from_dict('T', {'financials': fin}), {})
+        res = SalesGrowthScorer(0.189, 3, 4, 3).score(StockData.from_dict('T', {'financials': fin}), {})
         self.assertEqual(res.points, 0)
         self.assertNotIn('Sales_CAGR(%)', res.metrics)
 
     def test_score_value_net_net(self):
         bs = pd.DataFrame({'2023': {'Cash And Cash Equivalents': 200}})
         data = StockData.from_dict('T', {'balance_sheet': bs})
-        pts, out, recs = total([PsrScorer(0.5, 3, 1.0, 2, 1), CashRatioScorer(5)], data,
+        pts, out, recs = total([PsrScorer(0.5, 3, 1.0, 2, 1), CashRatioScorer(5, 1.0)], data,
                                {'Market_Cap': 150, 'PSR': 0.4})
         # Super cheap PSR (3) + NetNet (5) = 8
         self.assertEqual(pts['Value'], 8)
@@ -65,13 +68,13 @@ class TestScorers(unittest.TestCase):
 
     def test_cash_ratio_below_one_and_fallback_key(self):
         bs = pd.DataFrame({'2023': {'Cash Cash Equivalents And Short Term Investments': 75}})
-        res = CashRatioScorer(5).score(StockData.from_dict('T', {'balance_sheet': bs}), {'Market_Cap': 150})
+        res = CashRatioScorer(5, 1.0).score(StockData.from_dict('T', {'balance_sheet': bs}), {'Market_Cap': 150})
         self.assertEqual(res.points, 0)
         self.assertIsNone(res.recommendation)
         self.assertEqual(res.metrics['Cash_to_MarketCap_Ratio'], 0.5)
         # no cash and no balance sheet -> nothing
         for d in ({'balance_sheet': pd.DataFrame({'2023': {'Total Assets': 1}})}, {}):
-            res = CashRatioScorer(5).score(StockData.from_dict('T', d), {'Market_Cap': 150})
+            res = CashRatioScorer(5, 1.0).score(StockData.from_dict('T', d), {'Market_Cap': 150})
             self.assertEqual((res.points, res.metrics), (0, {}))
 
     def _net_cash(self, bs_items, mcap=100e9):
@@ -167,21 +170,42 @@ class TestScorers(unittest.TestCase):
         idx = pd.to_datetime(['2008-10-31', '2008-11-30', '2019-12-31', '2020-03-31'])
         hist = pd.DataFrame({'Low': [60.0, 50.0, 120.0, 80.0], 'Close': 1.0}, index=idx)
         data = StockData.from_dict('T', {'history_monthly': hist})
-        res = ShockLowMetric().score(data, {'Current_Price': 100})
+        res = ShockLowMetric(WINDOWS).score(data, {'Current_Price': 100})
         self.assertEqual(res.points, 0)
         self.assertEqual(res.metrics, {'Downside_to_Lehman_Low(%)': -50.0, 'Downside_to_Corona_Low(%)': -20.0})
 
     def test_shock_low_missing_window_or_price(self):
         idx = pd.to_datetime(['2020-03-31'])
         data = StockData.from_dict('T', {'history_monthly': pd.DataFrame({'Low': [80.0]}, index=idx)})
-        res = ShockLowMetric().score(data, {'Current_Price': 100})
+        res = ShockLowMetric(WINDOWS).score(data, {'Current_Price': 100})
         self.assertEqual(res.metrics, {'Downside_to_Corona_Low(%)': -20.0})
-        self.assertEqual(ShockLowMetric().score(data, {}).metrics, {})
-        self.assertEqual(ShockLowMetric().score(StockData.from_dict('T', {}), {'Current_Price': 100}).metrics, {})
+        self.assertEqual(ShockLowMetric(WINDOWS).score(data, {}).metrics, {})
+        self.assertEqual(ShockLowMetric(WINDOWS).score(StockData.from_dict('T', {}), {'Current_Price': 100}).metrics, {})
+
+    def test_build_scorers_shock_low_name_from_config(self):
+        cfg = {'scoring': {
+            'sales_cagr_threshold': 0.189, 'sales_growth_points': 3,
+            'sales_cagr_years_back': 4, 'sales_cagr_min_years': 3, 'net_net_ratio': 1.0,
+            'shock_lows': {'lehman': ['2008-09-01', '2009-03-31']},
+            'psr_super_cheap': 0.5, 'psr_super_cheap_points': 3, 'psr_cheap': 1.0,
+            'psr_cheap_points': 2, 'psr_fair_points': 1, 'net_net_bonus': 5, 'net_cash_points': 1,
+            'pbr_cheap': 1.0, 'pbr_points': 1, 'dividend_yield_target': 0.03, 'dividend_points': 1,
+            'per_growth_points': 2, 'equity_ratio_ideal': 0.7, 'equity_ideal_points': 1,
+            'ma_short': 12, 'ma_long': 24, 'technical_points': 2}}
+        shock = build_scorers(cfg)[-1]
+        self.assertEqual(shock.windows, {'Lehman': ('2008-09-01', '2009-03-31')})
+
+    def test_cash_ratio_threshold_from_field(self):
+        bs = pd.DataFrame({'2023': {'Cash And Cash Equivalents': 100.0}})
+        data = StockData.from_dict('T', {'balance_sheet': bs})
+        self.assertEqual(CashRatioScorer(5, 0.5).score(data, {'Market_Cap': 150}).recommendation, 'NET-NET')
+        self.assertIsNone(CashRatioScorer(5, 1.0).score(data, {'Market_Cap': 150}).recommendation)
 
     def test_build_scorers(self):
         cfg = {'scoring': {
             'sales_cagr_threshold': 0.189, 'sales_growth_points': 3,
+            'sales_cagr_years_back': 4, 'sales_cagr_min_years': 3, 'net_net_ratio': 1.0,
+            'shock_lows': {'lehman': ['2008-09-01', '2009-03-31']},
             'psr_super_cheap': 0.5, 'psr_super_cheap_points': 3, 'psr_cheap': 1.0,
             'psr_cheap_points': 2, 'psr_fair_points': 1, 'net_net_bonus': 5, 'net_cash_points': 1,
             'pbr_cheap': 1.0, 'pbr_points': 1, 'dividend_yield_target': 0.03, 'dividend_points': 1,

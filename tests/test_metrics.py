@@ -17,7 +17,7 @@ class TestMetrics(unittest.TestCase):
             '2019': {'Total Revenue': 80}
         })
         fin.columns = pd.to_datetime(fin.columns, format='%Y')
-        cagr, years = sales_cagr(fin, 4)
+        cagr, years = sales_cagr(fin, 4, 3)
         # (200 / 80) ** (1/4) - 1 = 25.74%
         self.assertEqual(round(cagr * 100, 2), 25.74)
         self.assertEqual(years, 4)
@@ -29,7 +29,7 @@ class TestMetrics(unittest.TestCase):
             '2021': {'Total Revenue': 120}
         })
         fin.columns = pd.to_datetime(fin.columns, format='%Y')
-        self.assertEqual(sales_cagr(fin, 4), (None, None))
+        self.assertEqual(sales_cagr(fin, 4, 3), (None, None))
 
     def test_sales_cagr_uses_oldest_valid_period(self):
         # yfinance often leaves the oldest period NaN -> fall back to 3 years
@@ -40,7 +40,7 @@ class TestMetrics(unittest.TestCase):
             '2023': {'Total Revenue': 100},
             '2022': {'Total Revenue': np.nan}
         })
-        cagr, years = sales_cagr(fin)
+        cagr, years = sales_cagr(fin, 4, 3)
         self.assertEqual(years, 3)
         self.assertAlmostEqual(cagr, 0.10)
 
@@ -63,9 +63,9 @@ class TestMetrics(unittest.TestCase):
     def test_avg_turnover(self):
         dates = pd.date_range(start='2023-01-02', periods=60, freq='B')
         hist = pd.DataFrame({'Close': 1000.0, 'Volume': 20000.0}, index=dates)
-        self.assertEqual(avg_turnover(hist), 2e7)
-        self.assertIsNone(avg_turnover(None))
-        self.assertIsNone(avg_turnover(pd.DataFrame()))
+        self.assertEqual(avg_turnover(hist, 60), 2e7)
+        self.assertIsNone(avg_turnover(None, 60))
+        self.assertIsNone(avg_turnover(pd.DataFrame(), 60))
 
 
 if __name__ == '__main__':

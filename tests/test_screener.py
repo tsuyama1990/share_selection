@@ -31,17 +31,30 @@ DATA = StockData.from_dict('1234.T', {'info': {'longName': 'Foo'}})
 
 class TestScreener(unittest.TestCase):
 
+    CFG = {
+            'gatekeeper': {'equity_ratio_min': 0.4, 'operating_margin_min': 0.1, 'psr_cap': 2.5,
+                           'operating_cash_flow_min': 0, 'market_cap_min': 1e8, 'turnover_min': 0, 'turnover_days': 60},
+            'scoring': {'sales_cagr_threshold': 0.189, 'sales_growth_points': 3,
+                        'psr_super_cheap': 0.5, 'psr_super_cheap_points': 3, 'psr_cheap': 1.0,
+                        'psr_cheap_points': 2, 'psr_fair_points': 1, 'net_net_bonus': 5, 'net_cash_points': 1,
+                        'pbr_cheap': 1.0, 'pbr_points': 1, 'dividend_yield_target': 0.03,
+                        'dividend_points': 1, 'per_growth_points': 2, 'equity_ratio_ideal': 0.7,
+                        'equity_ideal_points': 1, 'ma_short': 12, 'ma_long': 24, 'technical_points': 2,
+                        'sales_cagr_years_back': 4, 'sales_cagr_min_years': 3, 'net_net_ratio': 1.0,
+                        'shock_lows': {'lehman': ['2008-09-01', '2009-03-31']}},
+           'recommendation': {'quality_growth_min_growth_score': 3, 'quality_value_min_value_score': 4}}
+
     def test_failing_rule_short_circuits(self):
         after = FakeRule(True)
         scorer = FakeScorer('Value', 1)
-        screener = Screener([FakeRule(True), FakeRule(False), after], [scorer])
+        screener = Screener([FakeRule(True), FakeRule(False), after], [scorer], 3, 4)
         self.assertIsNone(screener.evaluate(DATA))
         self.assertEqual(after.calls, 0)
 
     def test_scores_and_recommendation(self):
         rules = [FakeRule(True, {'PSR': 1.0})]
         res = Screener(rules, [FakeScorer('Growth', 3), FakeScorer('Value', 1),
-                               FakeScorer('Safety', 2, {'Chart_Trend': 'Bull'})]).evaluate(DATA)
+                               FakeScorer('Safety', 2, {'Chart_Trend': 'Bull'})], 3, 4).evaluate(DATA)
         self.assertEqual(res['Ticker'], '1234.T')
         self.assertEqual(res['Name'], 'Foo')
         self.assertEqual((res['Score_Growth'], res['Score_Value'], res['Score_Safety']), (3, 1, 2))
@@ -52,21 +65,28 @@ class TestScreener(unittest.TestCase):
 
     def test_recommendation_precedence(self):
         def rec(*scorers):
-            return Screener([], list(scorers)).evaluate(DATA)['Recommendation_Type']
+            return Screener([], list(scorers), 3, 4).evaluate(DATA)['Recommendation_Type']
         self.assertEqual(rec(FakeScorer('Value', 4)), 'Quality Value')
         self.assertEqual(rec(FakeScorer('Value', 3)), 'Watch')
         self.assertEqual(rec(FakeScorer('Growth', 3), FakeScorer('Value', 5, recommendation='NET-NET')), 'NET-NET')
 
+    def test_recommendation_thresholds_are_injected(self):
+        def rec(growth_min, value_min, *scorers):
+            return Screener([], list(scorers), growth_min, value_min).evaluate(DATA)['Recommendation_Type']
+        self.assertEqual(rec(5, 4, FakeScorer('Growth', 3)), 'Watch')
+        self.assertEqual(rec(2, 4, FakeScorer('Growth', 2)), 'Quality Growth')
+        self.assertEqual(rec(3, 6, FakeScorer('Value', 4)), 'Watch')
+        self.assertEqual(rec(3, 2, FakeScorer('Value', 2)), 'Quality Value')
+
+    def test_from_config_reads_recommendation_section(self):
+        cfg = dict(self.CFG, recommendation={'quality_growth_min_growth_score': 7,
+                                             'quality_value_min_value_score': 9})
+        screener = Screener.from_config(cfg)
+        self.assertEqual(screener.quality_growth_min_growth_score, 7)
+        self.assertEqual(screener.quality_value_min_value_score, 9)
+
     def test_from_config_end_to_end(self):
-        cfg = {
-            'gatekeeper': {'equity_ratio_min': 0.4, 'operating_margin_min': 0.1, 'psr_cap': 2.5,
-                           'operating_cash_flow_min': 0, 'market_cap_min': 1e8, 'turnover_min': 0},
-            'scoring': {'sales_cagr_threshold': 0.189, 'sales_growth_points': 3,
-                        'psr_super_cheap': 0.5, 'psr_super_cheap_points': 3, 'psr_cheap': 1.0,
-                        'psr_cheap_points': 2, 'psr_fair_points': 1, 'net_net_bonus': 5, 'net_cash_points': 1,
-                        'pbr_cheap': 1.0, 'pbr_points': 1, 'dividend_yield_target': 0.03,
-                        'dividend_points': 1, 'per_growth_points': 2, 'equity_ratio_ideal': 0.7,
-                        'equity_ideal_points': 1, 'ma_short': 12, 'ma_long': 24, 'technical_points': 2}}
+        cfg = self.CFG
         data = StockData.from_dict('1234.T', {
             'fast_info': {'market_cap': 2e9, 'last_price': 1000},
             'balance_sheet': pd.DataFrame({'2023': {'Total Assets': 100, 'Stockholders Equity': 50}}),

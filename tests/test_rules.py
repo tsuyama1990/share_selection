@@ -12,7 +12,7 @@ from src.stock_data import StockData
 
 def gatekeeper(turnover_min=0):
     return [
-        MarketCapRule(1e8), LiquidityRule(turnover_min), EquityRatioRule(0.40),
+        MarketCapRule(1e8), LiquidityRule(turnover_min, 60), EquityRatioRule(0.40),
         OperatingMarginRule(0.10), PsrRule(2.5), OperatingCashFlowRule(0),
     ]
 
@@ -113,7 +113,7 @@ class TestRules(unittest.TestCase):
 
         res = check(make(history=liquid), rules)
         self.assertIsNotNone(res)
-        self.assertEqual(res['Avg_Turnover_60D(M JPY)'], 20.0)
+        self.assertEqual(res['Avg_Turnover(M JPY)'], 20.0)
         self.assertIsNone(check(make(history=illiquid), rules))
         self.assertIsNone(check(make(), rules))
 
@@ -134,7 +134,7 @@ class TestRules(unittest.TestCase):
     def test_build_rules_order(self):
         cfg = {'gatekeeper': {
             'equity_ratio_min': 0.4, 'operating_margin_min': 0.1, 'psr_cap': 2.5,
-            'operating_cash_flow_min': 0, 'market_cap_min': 1e8, 'turnover_min': 0}}
+            'operating_cash_flow_min': 0, 'market_cap_min': 1e8, 'turnover_min': 0, 'turnover_days': 60}}
         self.assertEqual([type(r).__name__ for r in build_rules(cfg)], [
             'MarketCapRule', 'LiquidityRule', 'EquityRatioRule',
             'OperatingMarginRule', 'PsrRule', 'OperatingCashFlowRule'])

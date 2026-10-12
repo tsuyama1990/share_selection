@@ -3,7 +3,7 @@ import os
 import sys
 import argparse
 from tqdm import tqdm
-from typing import List
+from typing import Any, Dict, List
 from src.cache import StockCache, refresh
 from src.config import CFG, ROOT
 from src.report import write_report
@@ -61,7 +61,7 @@ def run_fetch(tickers: List[str], cache: StockCache, client: YahooClient):
     fetched = sum(refresh(cache, client, t, days) for t in tqdm(tickers))
     print(f"fetched {fetched} / {len(tickers)}")
 
-def run_analyze(tickers: List[str], cache: StockCache, screener: Screener):
+def run_analyze(tickers: List[str], cache: StockCache, screener: Screener, output_cfg: Dict[str, Any]):
     """
     Screen cached data and write the report.
 
@@ -73,6 +73,8 @@ def run_analyze(tickers: List[str], cache: StockCache, screener: Screener):
         Source cache.
     screener : Screener
         Configured screener.
+    output_cfg : Dict[str, Any]
+        The 'output' config section (dir, filename, top_n, columns).
     """
     print(f"Starting Analysis for {len(tickers)} stocks (using cache)...")
     results = []
@@ -92,7 +94,8 @@ def run_analyze(tickers: List[str], cache: StockCache, screener: Screener):
     if not results:
         print("No stocks passed the Gatekeeper.")
         return
-    write_report(results)
+    write_report(results, ROOT / output_cfg['dir'], output_cfg['filename'],
+                 output_cfg['columns'], output_cfg['top_n'])
 
 def main():
     """CLI entry point."""
@@ -112,15 +115,16 @@ def main():
 
     if args.command == 'tickers':
         out_csv = ROOT / CFG['system']['input_csv']
-        print(f"Saved {update_ticker_csv(out_csv)} tickers to {out_csv}")
+        print(f"Saved {update_ticker_csv(out_csv, CFG['tickers']['jpx_url'], CFG['tickers']['markets'])} tickers to {out_csv}")
         return
     
     tickers = get_japan_tickers()
     with StockCache(str(ROOT / CFG['system']['db_file'])) as cache:
         if args.command == 'fetch':
-            run_fetch(tickers, cache, YahooClient(CFG['system']['sleep_time']))
+            run_fetch(tickers, cache, YahooClient(CFG['system']['sleep_time'], CFG['system']['daily_history_period'],
+                                            CFG['system']['monthly_history_period']))
         elif args.command == 'analyze':
-            run_analyze(tickers, cache, Screener.from_config(CFG))
+            run_analyze(tickers, cache, Screener.from_config(CFG), CFG['output'])
         else:
             parser.print_help()
 

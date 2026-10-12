@@ -21,6 +21,6 @@ class TestTickers(unittest.TestCase):
         buf = io.BytesIO()
         src.to_excel(buf, index=False)
 
-        df = build_ticker_list(buf.getvalue())
+        df = build_ticker_list(buf.getvalue(), ['プライム（内国株式）', 'グロース（内国株式）'])
         self.assertEqual(df['code'].tolist(), ['1301', '130A'])
         self.assertEqual(df.columns.tolist(), ['code', 'name', 'market', 'sector33', 'size'])

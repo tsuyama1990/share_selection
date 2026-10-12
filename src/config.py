@@ -13,7 +13,8 @@ def _load() -> Dict[str, Any]:
     Returns
     -------
     Dict[str, Any]
-        Configuration with 'gatekeeper', 'scoring' and 'system' sections.
+        Configuration with 'gatekeeper', 'scoring', 'recommendation', 'output',
+        'tickers' and 'system' sections.
 
     Raises
     ------

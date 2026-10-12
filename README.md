@@ -11,7 +11,7 @@ The system uses a **Hybrid Architecture** with **DuckDB** to separate data accum
     *   **Analyze Mode**: Runs screening logic against the local database instantly (zero API latency).
 *   **Gatekeeper (Fast Screening)**:
     *   Market Cap >= `market_cap_min` (default 100M JPY)
-    *   Liquidity: 60-day average daily trading value >= `turnover_min` (default 10M JPY, intentionally low; use the `Avg_Turnover_60D(M JPY)` output column to narrow later)
+    *   Liquidity: average daily trading value over `turnover_days` (60) sessions >= `turnover_min` (default 30M JPY/day, i.e. order sizes of a few hundred thousand to a few million JPY; see the `Avg_Turnover(M JPY)` output column)
     *   Equity Ratio >= 50% (Configurable). Uses Stockholders' Equity first (Japanese 自己資本比率 definition, excludes non-controlling interests)
     *   Operating Margin >= 7% (Configurable)
     *   PSR Cap <= 2.0
@@ -38,7 +38,14 @@ pip install yfinance pandas tqdm pyyaml duckdb
 ## Usage
 
 ### 1. Configuration
-Edit `config.yaml` to adjust criteria.
+Edit `config.yaml` to adjust criteria. Every tunable parameter, path and file name lives there, grouped in sections:
+
+*   `gatekeeper`: pass/fail filters (equity ratio, margin, PSR cap, cash flow, market cap, `turnover_min` / `turnover_days`).
+*   `scoring`: points and thresholds (Sales CAGR span, PSR tiers, `net_net_ratio`, moving averages, `shock_lows` crash windows).
+*   `recommendation`: `quality_growth_min_growth_score` and `quality_value_min_value_score` for `Recommendation_Type`.
+*   `output`: report `dir`, `filename` (`{date}` = YYYY-MM-DD), `top_n` and the CSV `columns`.
+*   `tickers`: `jpx_url` and the `markets` kept by the `tickers` command.
+*   `system`: `input_csv`, `db_file`, `sleep_time`, `cache_days`, `daily_history_period`, `monthly_history_period`.
 
 ```yaml
 gatekeeper:
@@ -46,6 +53,10 @@ gatekeeper:
 scoring:
   sales_growth_points: 3
   technical_points: 2
+recommendation:
+  quality_value_min_value_score: 4
+output:
+  dir: "results"
 system:
   input_csv: "japan_tickers.csv"
 ```
@@ -76,7 +87,7 @@ python3 main.py analyze
 ```
 
 ### 5. Output
-Results are saved to `emin_screening_result_YYYY-MM-DD.csv` and displayed in the console.
+Results are saved to `results/emin_screening_result_YYYY-MM-DD.csv` (directory and file name set by `output` in `config.yaml`; `results/` is git-ignored) and the top `top_n` rows are displayed in the console.
 
 **Key Output Columns:**
 *   **Recommendation_Type**: `Quality Growth`, `Quality Value`, `NET-NET`, or `Watch`.
@@ -85,7 +96,7 @@ Results are saved to `emin_screening_result_YYYY-MM-DD.csv` and displayed in the
 *   **Downside_to_Lehman_Low(%)**, **Downside_to_Corona_Low(%)**: Change from the current price to the lowest monthly low in each crash window.
 *   **Chart_Trend**: `Strong Bull` (Perfect Order), `Bull`, or `Bear`.
 *   **Sales_CAGR(%)**, **Sales_Growth_Years**: Sales CAGR and the span used (replace `Sales_Growth_4Y(%)`).
-*   **Avg_Turnover_60D(M JPY)**: 60-day average daily trading value.
+*   **Avg_Turnover(M JPY)**: Average daily trading value over `turnover_days` sessions.
 *   **PBR**, **PSR**, **Dividend_Yield**: Standard valuation metrics.
 
 ## Testing
@@ -104,5 +115,5 @@ uv run pytest
 *   `src/screener.py`: `Screener` runs rules then scorers and builds the result row.
 *   `src/cache.py`: `StockCache` (DuckDB) and `refresh` (download if stale).
 *   `src/yahoo.py`: `YahooClient` downloads raw data from Yahoo Finance.
-*   `src/report.py`: `write_report` writes the dated CSV and prints the top 10.
-*   `src/config.py`: Loads `config.yaml` once into `CFG`.
+*   `src/report.py`: `write_report` writes the dated CSV (location, columns and `top_n` passed in from `output`) and prints the top candidates.
+*   `src/config.py`: Loads `config.yaml` once into `CFG`. Only `config.py` and `main.py` (plus the `build_*` / `from_config` factories) touch it; everything else receives values by injection.

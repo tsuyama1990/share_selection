@@ -8,14 +8,20 @@ import yfinance as yf
 class YahooClient:
     """Downloads raw stock data from Yahoo Finance."""
 
-    def __init__(self, sleep_time: float = 0.5):
+    def __init__(self, sleep_time: float, daily_history_period: str, monthly_history_period: str):
         """
         Parameters
         ----------
-        sleep_time : float, optional
-            Delay in seconds before each download (rate limiting), by default 0.5.
+        sleep_time : float
+            Delay in seconds before each download (rate limiting).
+        daily_history_period : str
+            yfinance period of the daily history (e.g., '1y').
+        monthly_history_period : str
+            yfinance period of the monthly history (e.g., 'max').
         """
         self.sleep_time = sleep_time
+        self.daily_history_period = daily_history_period
+        self.monthly_history_period = monthly_history_period
 
     def download(self, ticker: str) -> Dict[str, Any]:
         """
@@ -53,7 +59,7 @@ class YahooClient:
             'fast_info': fast_info,
             'financials': t.financials,
             'balance_sheet': t.balance_sheet,
-            'history': t.history(period="1y"),
-            'history_monthly': t.history(period="max", interval="1mo"),
+            'history': t.history(period=self.daily_history_period),
+            'history_monthly': t.history(period=self.monthly_history_period, interval="1mo"),
             'cashflow': t.cashflow,
         }

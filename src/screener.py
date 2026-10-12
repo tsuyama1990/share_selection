@@ -9,7 +9,8 @@ from .stock_data import StockData
 class Screener:
     """Evaluate stocks with injected rules and scorers."""
 
-    def __init__(self, rules: List[Rule], scorers: List[Scorer]):
+    def __init__(self, rules: List[Rule], scorers: List[Scorer],
+                 quality_growth_min_growth_score: int, quality_value_min_value_score: int):
         """
         Parameters
         ----------
@@ -17,14 +18,22 @@ class Screener:
             Gatekeeper rules, run in order; the first failure rejects the stock.
         scorers : List[Scorer]
             Scoring criteria, run for stocks that pass every rule.
+        quality_growth_min_growth_score : int
+            Growth score needed for 'Quality Growth'.
+        quality_value_min_value_score : int
+            Value score needed for 'Quality Value'.
         """
         self.rules = rules
         self.scorers = scorers
+        self.quality_growth_min_growth_score = quality_growth_min_growth_score
+        self.quality_value_min_value_score = quality_value_min_value_score
 
     @classmethod
     def from_config(cls, cfg: Dict[str, Any]) -> 'Screener':
         """Build a Screener from the loaded configuration."""
-        return cls(build_rules(cfg), build_scorers(cfg))
+        rec = cfg['recommendation']
+        return cls(build_rules(cfg), build_scorers(cfg),
+                   rec['quality_growth_min_growth_score'], rec['quality_value_min_value_score'])
 
     def evaluate(self, data: StockData) -> Optional[Dict[str, Any]]:
         """
@@ -58,9 +67,9 @@ class Screener:
         growth, value, safety = scores['Growth'], scores['Value'], scores['Safety']
         if net_net:
             rec = 'NET-NET'
-        elif growth >= 3:
+        elif growth >= self.quality_growth_min_growth_score:
             rec = 'Quality Growth'
-        elif value >= 4:
+        elif value >= self.quality_value_min_value_score:
             rec = 'Quality Value'
         else:
             rec = 'Watch'

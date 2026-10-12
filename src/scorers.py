@@ -3,7 +3,7 @@
 Thresholds and points are injected via dataclass fields; use
 :func:`build_scorers` to create scorers from config.
 """
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, List, NamedTuple, Optional, Protocol, Tuple
 
 import pandas as pd
@@ -34,15 +34,16 @@ class Scorer(Protocol):
 
 @dataclass
 class SalesGrowthScorer:
-    """Growth points if sales CAGR >= ``threshold``."""
+    """Growth points if sales CAGR >= ``threshold`` (span: ``min_years``..``years_back``)."""
 
     threshold: float
     points: int
-    years_back: int = 4
+    years_back: int
+    min_years: int
 
     def score(self, data: StockData, metrics: Dict[str, Any]) -> ScoreResult:
         """Score sales CAGR."""
-        cagr, years = sales_cagr(data.financials, self.years_back)
+        cagr, years = sales_cagr(data.financials, self.years_back, self.min_years)
         if cagr is None:
             return ScoreResult('Growth', 0, {})
         out = {'Sales_CAGR(%)': round(cagr * 100, 2), 'Sales_Growth_Years': years}
@@ -86,10 +87,11 @@ class PsrScorer:
 class CashRatioScorer:
     """
     Net-Net (book definition): bonus and NET-NET recommendation if cash and
-    equivalents >= market cap.
+    equivalents >= ``net_net_ratio`` x market cap.
     """
 
     bonus: int
+    net_net_ratio: float
 
     def score(self, data: StockData, metrics: Dict[str, Any]) -> ScoreResult:
         """Score cash to market cap ratio."""
@@ -100,7 +102,7 @@ class CashRatioScorer:
             return ScoreResult('Value', 0, {})
         ratio = cash / mcap
         out = {'Cash_to_MarketCap_Ratio': round(ratio, 2)}
-        if ratio >= 1.0:
+        if ratio >= self.net_net_ratio:
             out['Net_Net_Flag(T/F)'] = True
             return ScoreResult('Value', self.bonus, out, 'NET-NET')
         return ScoreResult('Value', 0, out)
@@ -242,10 +244,7 @@ class EquityScorer:
 class ShockLowMetric:
     """Reports the downside from the current price to the lowest monthly low of past crashes; no points."""
 
-    windows: Dict[str, Tuple[str, str]] = field(default_factory=lambda: {
-        'Lehman': ('2008-09-01', '2009-03-31'),
-        'Corona': ('2020-02-01', '2020-04-30'),
-    })
+    windows: Dict[str, Tuple[str, str]]  # name -> (start, end) dates
 
     def score(self, data: StockData, metrics: Dict[str, Any]) -> ScoreResult:
         """Report (low / price - 1) in percent for each window that has data."""
@@ -277,8 +276,9 @@ def build_scorers(cfg: Dict[str, Any]) -> List[Scorer]:
     """
     sc = cfg['scoring']
     return [
-        SalesGrowthScorer(sc['sales_cagr_threshold'], sc['sales_growth_points']),
-        CashRatioScorer(sc['net_net_bonus']),
+        SalesGrowthScorer(sc['sales_cagr_threshold'], sc['sales_growth_points'],
+                          sc['sales_cagr_years_back'], sc['sales_cagr_min_years']),
+        CashRatioScorer(sc['net_net_bonus'], sc['net_net_ratio']),
         NetCashScorer(sc['net_cash_points']),  # before PsrScorer: provides Real_PSR
         PsrScorer(sc['psr_super_cheap'], sc['psr_super_cheap_points'],
                   sc['psr_cheap'], sc['psr_cheap_points'], sc['psr_fair_points']),
@@ -287,5 +287,6 @@ def build_scorers(cfg: Dict[str, Any]) -> List[Scorer]:
         PerGrowthScorer(sc['per_growth_points']),
         EquityScorer(sc['equity_ratio_ideal'], sc['equity_ideal_points']),
         TrendScorer(sc['ma_short'], sc['ma_long'], sc['technical_points']),
-        ShockLowMetric(),
+        ShockLowMetric({name.capitalize(): (start, end)
+                       for name, (start, end) in sc['shock_lows'].items()}),
     ]

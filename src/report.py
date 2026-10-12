@@ -1,32 +1,27 @@
 """CSV report and console summary of screening results."""
 import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Sequence
 
 import pandas as pd
 
-DISPLAY_COLUMNS = [
-    'Ticker', 'Name', 'Total_Score', 'Recommendation_Type',
-    'Current_Price', 'PSR', 'Real_PSR', 'PBR',
-    'Cash_to_MarketCap_Ratio', 'Net_Cash(Billion)', 'Dividend_Yield(%)',
-    'Sales_CAGR(%)', 'Sales_Growth_Years', 'Avg_Turnover_60D(M JPY)',
-    'Operating_Cash_Flow', 'Investing_Cash_Flow', 'Financing_Cash_Flow',
-    'Chart_Trend', 'MA12', 'MA24',
-    'Downside_to_Lehman_Low(%)', 'Downside_to_Corona_Low(%)',
-    'Equity_Ratio', 'Operating_Margin(%)'
-]
-
-
-def write_report(results: List[Dict[str, Any]], out_dir: str = '.') -> Path:
+def write_report(results: List[Dict[str, Any]], out_dir: Path, filename: str,
+                 columns: Sequence[str], top_n: int) -> Path:
     """
-    Save results to a dated CSV (sorted by Total_Score) and print the top 10.
+    Save results to a dated CSV (sorted by Total_Score) and print the top N.
 
     Parameters
     ----------
     results : List[Dict[str, Any]]
         Result rows from ``Screener.evaluate`` (must not be empty).
-    out_dir : str, optional
-        Output directory, by default the current directory.
+    out_dir : Path
+        Output directory (created if missing).
+    filename : str
+        File name template; ``{date}`` is replaced by YYYY-MM-DD.
+    columns : Sequence[str]
+        Columns to write, in order (those absent from the results are skipped).
+    top_n : int
+        Number of top candidates printed to the console.
 
     Returns
     -------
@@ -34,15 +29,17 @@ def write_report(results: List[Dict[str, Any]], out_dir: str = '.') -> Path:
         Path of the written CSV.
     """
     df = pd.DataFrame(results).sort_values('Total_Score', ascending=False)
-    df = df[[c for c in DISPLAY_COLUMNS if c in df.columns]]
+    df = df[[c for c in columns if c in df.columns]]
 
     today = datetime.datetime.now().strftime('%Y-%m-%d')
-    path = Path(out_dir) / f"emin_screening_result_{today}.csv"
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / filename.format(date=today)
     df.to_csv(path, index=False, encoding='utf-8-sig')  # sig for Excel
 
     print("\nAnalysis Complete!")
     print(f"Passed: {len(df)} stocks")
     print(f"Saved to: {path}")
-    print("\nTop 10 Candidates:")
-    print(df.head(10).to_string(index=False))
+    print(f"\nTop {top_n} Candidates:")
+    print(df.head(top_n).to_string(index=False))
     return path

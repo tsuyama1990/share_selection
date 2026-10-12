@@ -89,8 +89,8 @@ def latest_valid_period(df: pd.DataFrame, keys: Tuple[str, ...]) -> Optional[int
 
 def sales_cagr(
     financials: pd.DataFrame,
-    years_back: int = 4,
-    min_years: int = 3
+    years_back: int,
+    min_years: int
 ) -> Tuple[Optional[float], Optional[int]]:
     """
     Calculate annualized sales growth (CAGR) over up to N years.
@@ -103,10 +103,10 @@ def sales_cagr(
     ----------
     financials : pd.DataFrame
         Financials DataFrame containing 'Total Revenue' (latest period first).
-    years_back : int, optional
-        Maximum number of years to look back, by default 4.
-    min_years : int, optional
-        Minimum span required, by default 3.
+    years_back : int
+        Maximum number of years to look back.
+    min_years : int
+        Minimum span required.
 
     Returns
     -------
@@ -131,7 +131,7 @@ def sales_cagr(
     return None, None
 
 
-def avg_turnover(hist_daily: Optional[pd.DataFrame], days: int = 60) -> Optional[float]:
+def avg_turnover(hist_daily: Optional[pd.DataFrame], days: int) -> Optional[float]:
     """
     Average daily trading value (Close x Volume) over the last N sessions.
 
@@ -139,8 +139,8 @@ def avg_turnover(hist_daily: Optional[pd.DataFrame], days: int = 60) -> Optional
     ----------
     hist_daily : Optional[pd.DataFrame]
         Daily history with 'Close' and 'Volume' columns.
-    days : int, optional
-        Number of recent sessions to average, by default 60.
+    days : int
+        Number of recent sessions to average.
 
     Returns
     -------

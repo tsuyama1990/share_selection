@@ -17,9 +17,11 @@ stocks_cache.duckdb
 
 # Output results
 emin_screening_result*.csv
+results/
 
 # IDE & OS
 .vscode/
 .idea/
 .DS_Store
 *.log
+*.wal

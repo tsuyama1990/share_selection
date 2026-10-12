@@ -2,7 +2,9 @@
 # Emin Yurumazu Investment Theory Screener
 # ==========================================
 
-# 1. Gatekeeper (Fast Screening)
+# ------------------------------------------
+# 1. gatekeeper: Fast Screening
+# ------------------------------------------
 # These filters calculate simple metrics from 'fast_info' or 'raw_data'
 # to quickly exclude unqualified stocks.
 gatekeeper:
@@ -11,13 +13,18 @@ gatekeeper:
   psr_cap: 2.0                 # Exclude stocks with PSR > 2.0
   operating_cash_flow_min: 0   # Operating Cash Flow > 0 (Positive)
   market_cap_min: 100000000    # Minimum Market Cap (JPY)
-  turnover_min: 10000000       # Minimum 60-day avg daily trading value (JPY). Start low (10M) and narrow via the output column
+  turnover_min: 30000000       # Minimum avg daily trading value (JPY): 30M JPY/day; order size of a few hundred thousand to a few million JPY
+  turnover_days: 60            # Window (trading sessions) for the average daily trading value
 
-# 2. Scoring Logic (Detailed Analysis)
+# ------------------------------------------
+# 2. scoring: Detailed Analysis
+# ------------------------------------------
 # Points are awarded based on these criteria.
 scoring:
   # Growth
   sales_cagr_threshold: 0.189  # Sales CAGR >= 18.9% (= 2x over 4 years). Span is 3-4 years depending on data
+  sales_cagr_years_back: 4     # Max look-back span (years) for the Sales CAGR
+  sales_cagr_min_years: 3      # Min span (years) required; shorter history = no CAGR
   sales_growth_points: 3
   
   # Value
@@ -26,7 +33,8 @@ scoring:
   psr_cheap: 1.0               # Real_PSR <= 1.0
   psr_cheap_points: 2
   psr_fair_points: 1           # Otherwise (already passed the gatekeeper PSR cap)
-  net_net_bonus: 5             # Bonus if Cash >= Market Cap
+  net_net_ratio: 1.0           # NET-NET if Cash / Market Cap >= this ratio
+  net_net_bonus: 5             # Bonus if Cash >= Market Cap (x net_net_ratio)
   net_cash_points: 1           # Net cash (cash - debt) > 0
   pbr_cheap: 1.0               # PBR < 1.0
   pbr_points: 1
@@ -45,9 +53,70 @@ scoring:
   ma_long: 24                  # 24-Month Moving Average
   technical_points: 2          # Bonus for Strong Bull Trend
 
-# 3. System Configuration
+  # Crash lows (reported only, no points): name -> [start, end]
+  # Output column: Downside_to_{Name}_Low(%)
+  shock_lows:
+    lehman: ['2008-09-01', '2009-03-31']
+    corona: ['2020-02-01', '2020-04-30']
+
+# ------------------------------------------
+# 3. recommendation: Recommendation_Type thresholds
+# (NET-NET always takes precedence)
+# ------------------------------------------
+recommendation:
+  quality_growth_min_growth_score: 3  # Growth score >= 3 -> Quality Growth
+  quality_value_min_value_score: 4    # Value score >= 4 -> Quality Value (otherwise Watch)
+
+# ------------------------------------------
+# 4. output: CSV report
+# ------------------------------------------
+output:
+  dir: "results"                                   # Relative to the repo root (created if missing)
+  filename: "emin_screening_result_{date}.csv"     # {date} = YYYY-MM-DD
+  top_n: 10                                        # Rows printed to the console
+  columns:                                         # CSV columns, in order
+    - Ticker
+    - Name
+    - Total_Score
+    - Recommendation_Type
+    - Current_Price
+    - PSR
+    - Real_PSR
+    - PBR
+    - Cash_to_MarketCap_Ratio
+    - Net_Cash(Billion)
+    - Dividend_Yield(%)
+    - Sales_CAGR(%)
+    - Sales_Growth_Years
+    - Avg_Turnover(M JPY)
+    - Operating_Cash_Flow
+    - Investing_Cash_Flow
+    - Financing_Cash_Flow
+    - Chart_Trend
+    - MA12
+    - MA24
+    - Downside_to_Lehman_Low(%)
+    - Downside_to_Corona_Low(%)
+    - Equity_Ratio
+    - Operating_Margin(%)
+
+# ------------------------------------------
+# 5. tickers: JPX listed company list (`main.py tickers`)
+# ------------------------------------------
+tickers:
+  jpx_url: "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xlsx"  # Updated monthly
+  markets:                     # Domestic common stocks only (excludes ETF/REIT/PRO Market/foreign stocks)
+    - "プライム（内国株式）"
+    - "スタンダード（内国株式）"
+    - "グロース（内国株式）"
+
+# ------------------------------------------
+# 6. system: Files and data download
+# ------------------------------------------
 system:
   input_csv: "japan_tickers.csv" # List of tickers to screen
   sleep_time: 0.5                # Delay between API calls (seconds)
   cache_days: 3                  # Valid period for cached data (days)
   db_file: "stocks_cache.duckdb" # Database file
+  daily_history_period: "1y"     # yfinance period of the daily history (turnover)
+  monthly_history_period: "max"  # yfinance period of the monthly history (trend, crash lows)
