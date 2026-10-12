@@ -1,6 +1,7 @@
 """Yahoo Finance downloader."""
+
 import time
-from typing import Any, Dict
+from typing import Any
 
 import yfinance as yf
 
@@ -23,7 +24,7 @@ class YahooClient:
         self.daily_history_period = daily_history_period
         self.monthly_history_period = monthly_history_period
 
-    def download(self, ticker: str) -> Dict[str, Any]:
+    def download(self, ticker: str) -> dict[str, Any]:
         """
         Download info, fast_info and the financial/history frames.
 
@@ -46,7 +47,7 @@ class YahooClient:
         t = yf.Ticker(ticker)
 
         try:
-            fast_info = {'market_cap': t.fast_info.market_cap, 'last_price': t.fast_info.last_price}
+            fast_info = {"market_cap": t.fast_info.market_cap, "last_price": t.fast_info.last_price}
         except Exception:
             fast_info = {}
         try:
@@ -55,11 +56,11 @@ class YahooClient:
             info = {}
 
         return {
-            'info': info,
-            'fast_info': fast_info,
-            'financials': t.financials,
-            'balance_sheet': t.balance_sheet,
-            'history': t.history(period=self.daily_history_period),
-            'history_monthly': t.history(period=self.monthly_history_period, interval="1mo"),
-            'cashflow': t.cashflow,
+            "info": info,
+            "fast_info": fast_info,
+            "financials": t.financials,
+            "balance_sheet": t.balance_sheet,
+            "history": t.history(period=self.daily_history_period),
+            "history_monthly": t.history(period=self.monthly_history_period, interval="1mo"),
+            "cashflow": t.cashflow,
         }

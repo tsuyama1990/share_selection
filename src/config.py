@@ -1,12 +1,13 @@
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
-CONFIG_FILE = ROOT / 'config.yaml'
+CONFIG_FILE = ROOT / "config.yaml"
 
-def _load() -> Dict[str, Any]:
+
+def _load() -> dict[str, Any]:
     """
     Load config.yaml from the repository root.
 
@@ -23,7 +24,8 @@ def _load() -> Dict[str, Any]:
     """
     if not CONFIG_FILE.exists():
         raise FileNotFoundError(f"Config file not found: {CONFIG_FILE}")
-    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+    with open(CONFIG_FILE, encoding="utf-8") as f:
         return yaml.safe_load(f)
+
 
 CFG = _load()

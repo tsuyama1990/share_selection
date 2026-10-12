@@ -1,8 +1,9 @@
 """DuckDB cache of raw stock data."""
+
 import datetime
 import io
 import json
-from typing import Any, Dict, Optional
+from typing import Any
 
 import duckdb
 import pandas as pd
@@ -10,9 +11,9 @@ import pandas as pd
 from .stock_data import StockData
 
 # DataFrame fields stored as JSON in the cache (order matches the table)
-FRAME_KEYS = ('financials', 'balance_sheet', 'history', 'history_monthly', 'cashflow')
+FRAME_KEYS = ("financials", "balance_sheet", "history", "history_monthly", "cashflow")
 # Frames indexed by timestamps (stored as UTC instants in the JSON)
-HISTORY_KEYS = ('history', 'history_monthly')
+HISTORY_KEYS = ("history", "history_monthly")
 
 
 class StockCache:
@@ -44,13 +45,13 @@ class StockCache:
             )
         """)
 
-    def __enter__(self) -> 'StockCache':
+    def __enter__(self) -> "StockCache":
         return self
 
     def __exit__(self, *exc) -> None:
         self.close()
 
-    def get(self, ticker: str) -> Optional[StockData]:
+    def get(self, ticker: str) -> StockData | None:
         """
         Read a ticker from the cache regardless of its age.
 
@@ -59,15 +60,18 @@ class StockCache:
         Optional[StockData]
             The data, or None if not cached or corrupt.
         """
-        res = self.con.execute(f"""
-            SELECT info, fast_info, {', '.join(FRAME_KEYS)}
+        res = self.con.execute(
+            f"""
+            SELECT info, fast_info, {", ".join(FRAME_KEYS)}
             FROM stock_cache WHERE ticker = ?
-        """, [ticker]).fetchone()
+        """,
+            [ticker],
+        ).fetchone()
         if not res:
             return None
         try:
-            d: Dict[str, Any] = {'info': json.loads(res[0]), 'fast_info': json.loads(res[1])}
-            for key, raw in zip(FRAME_KEYS, res[2:]):
+            d: dict[str, Any] = {"info": json.loads(res[0]), "fast_info": json.loads(res[1])}
+            for key, raw in zip(FRAME_KEYS, res[2:], strict=True):
                 df = pd.read_json(io.StringIO(raw)) if raw else pd.DataFrame()
                 if key in HISTORY_KEYS and not df.empty:
                     # JSON holds UTC instants (to_json converts tz-aware indexes to UTC)
@@ -78,27 +82,33 @@ class StockCache:
             print(f"Cache Corrupt for {ticker}: {e}")
             return None
 
-    def put(self, ticker: str, raw: Dict[str, Any]) -> None:
+    def put(self, ticker: str, raw: dict[str, Any]) -> None:
         """Upsert a raw data dict (as returned by ``YahooClient.download``)."""
-        frames = [raw.get(k) if raw.get(k) is not None else pd.DataFrame() for k in FRAME_KEYS]
-        self.con.execute(f"""
+        frames: list[pd.DataFrame] = [raw[k] if raw.get(k) is not None else pd.DataFrame() for k in FRAME_KEYS]
+        self.con.execute(
+            f"""
             INSERT OR REPLACE INTO stock_cache
-            (ticker, updated_at, info, fast_info, {', '.join(FRAME_KEYS)})
-            VALUES (?, ?, ?, ?, {', '.join('?' for _ in FRAME_KEYS)})
-        """, [
-            ticker,
-            datetime.datetime.now(),
-            json.dumps(raw.get('info') or {}),
-            json.dumps(raw.get('fast_info') or {}),
-            *(f.to_json(date_format='iso') for f in frames),
-        ])
+            (ticker, updated_at, info, fast_info, {", ".join(FRAME_KEYS)})
+            VALUES (?, ?, ?, ?, {", ".join("?" for _ in FRAME_KEYS)})
+        """,
+            [
+                ticker,
+                datetime.datetime.now(),
+                json.dumps(raw.get("info") or {}),
+                json.dumps(raw.get("fast_info") or {}),
+                *(f.to_json(date_format="iso") for f in frames),
+            ],
+        )
 
     def is_fresh(self, ticker: str, max_age_days: float) -> bool:
         """True if the entry exists and is younger than ``max_age_days``."""
         limit = datetime.datetime.now() - datetime.timedelta(days=max_age_days)
-        return self.con.execute(
-            "SELECT 1 FROM stock_cache WHERE ticker = ? AND updated_at > ?", [ticker, limit]
-        ).fetchone() is not None
+        return (
+            self.con.execute(
+                "SELECT 1 FROM stock_cache WHERE ticker = ? AND updated_at > ?", [ticker, limit]
+            ).fetchone()
+            is not None
+        )
 
     def close(self) -> None:
         """Close the database connection."""

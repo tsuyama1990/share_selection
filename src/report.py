@@ -1,12 +1,16 @@
 """CSV report and console summary of screening results."""
+
 import datetime
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any, Dict, List, Sequence
+from typing import Any
 
 import pandas as pd
 
-def write_report(results: List[Dict[str, Any]], out_dir: Path, filename: str,
-                 columns: Sequence[str], top_n: int) -> Path:
+
+def write_report(
+    results: list[dict[str, Any]], out_dir: Path, filename: str, columns: Sequence[str], top_n: int
+) -> Path:
     """
     Save results to a dated CSV (sorted by Total_Score) and print the top N.
 
@@ -28,14 +32,14 @@ def write_report(results: List[Dict[str, Any]], out_dir: Path, filename: str,
     Path
         Path of the written CSV.
     """
-    df = pd.DataFrame(results).sort_values('Total_Score', ascending=False)
+    df = pd.DataFrame(results).sort_values("Total_Score", ascending=False)
     df = df[[c for c in columns if c in df.columns]]
 
-    today = datetime.datetime.now().strftime('%Y-%m-%d')
+    today = datetime.datetime.now().strftime("%Y-%m-%d")
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / filename.format(date=today)
-    df.to_csv(path, index=False, encoding='utf-8-sig')  # sig for Excel
+    df.to_csv(path, index=False, encoding="utf-8-sig")  # sig for Excel
 
     print("\nAnalysis Complete!")
     print(f"Passed: {len(df)} stocks")

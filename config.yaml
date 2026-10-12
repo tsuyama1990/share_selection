@@ -26,7 +26,7 @@ scoring:
   sales_cagr_years_back: 4     # Max look-back span (years) for the Sales CAGR
   sales_cagr_min_years: 3      # Min span (years) required; shorter history = no CAGR
   sales_growth_points: 3
-  
+
   # Value
   psr_super_cheap: 0.5         # Real_PSR (PSR if unavailable) <= 0.5
   psr_super_cheap_points: 3

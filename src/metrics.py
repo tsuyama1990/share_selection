@@ -1,20 +1,21 @@
 """Pure, config-free helpers for reading yfinance data."""
-from typing import Any, Optional, Tuple
+
+from typing import Any
 
 import numpy as np
 import pandas as pd
 
 # Japanese equity ratio (自己資本比率) excludes non-controlling interests,
 # so the parent's equity comes first.
-EQUITY_KEYS = ('Stockholders Equity', 'Total Stockholder Equity', 'Total Equity Gross Minority Interest')
-CASH_KEYS = ('Cash And Cash Equivalents', 'Cash Cash Equivalents And Short Term Investments')
-DEBT_KEYS = ('Total Debt',)
-OCF_KEYS = ('Operating Cash Flow', 'Total Cash From Operating Activities')
-ICF_KEYS = ('Investing Cash Flow', 'Total Cashflows From Investing Activities')
-FCF_KEYS = ('Financing Cash Flow', 'Total Cash From Financing Activities')
+EQUITY_KEYS = ("Stockholders Equity", "Total Stockholder Equity", "Total Equity Gross Minority Interest")
+CASH_KEYS = ("Cash And Cash Equivalents", "Cash Cash Equivalents And Short Term Investments")
+DEBT_KEYS = ("Total Debt",)
+OCF_KEYS = ("Operating Cash Flow", "Total Cash From Operating Activities")
+ICF_KEYS = ("Investing Cash Flow", "Total Cashflows From Investing Activities")
+FCF_KEYS = ("Financing Cash Flow", "Total Cash From Financing Activities")
 
 
-def to_num(value: Any) -> Optional[float]:
+def to_num(value: Any) -> float | None:
     """
     Convert a value to float, treating None/NaN/non-numeric as missing.
 
@@ -35,7 +36,7 @@ def to_num(value: Any) -> Optional[float]:
     return None if np.isnan(value) else value
 
 
-def first_valid(row: pd.Series, keys: Tuple[str, ...]) -> Optional[float]:
+def first_valid(row: pd.Series, keys: tuple[str, ...]) -> float | None:
     """
     Return the first non-missing value among keys.
 
@@ -60,7 +61,7 @@ def first_valid(row: pd.Series, keys: Tuple[str, ...]) -> Optional[float]:
     return None
 
 
-def latest_valid_period(df: pd.DataFrame, keys: Tuple[str, ...]) -> Optional[int]:
+def latest_valid_period(df: pd.DataFrame, keys: tuple[str, ...]) -> int | None:
     """
     Position of the most recent period where all keys have values.
 
@@ -87,11 +88,7 @@ def latest_valid_period(df: pd.DataFrame, keys: Tuple[str, ...]) -> Optional[int
     return None
 
 
-def sales_cagr(
-    financials: pd.DataFrame,
-    years_back: int,
-    min_years: int
-) -> Tuple[Optional[float], Optional[int]]:
+def sales_cagr(financials: pd.DataFrame, years_back: int, min_years: int) -> tuple[float | None, int | None]:
     """
     Calculate annualized sales growth (CAGR) over up to N years.
 
@@ -113,10 +110,10 @@ def sales_cagr(
     Tuple[Optional[float], Optional[int]]
         (cagr, years). Returns (None, None) if insufficient data.
     """
-    latest = latest_valid_period(financials, ('Total Revenue',))
+    latest = latest_valid_period(financials, ("Total Revenue",))
     if latest is None:
         return None, None
-    sales = financials.loc['Total Revenue'].iloc[latest:]
+    sales = financials.loc["Total Revenue"].iloc[latest:]
 
     current_sales = to_num(sales.iloc[0])
     if current_sales is None or current_sales <= 0:
@@ -131,7 +128,7 @@ def sales_cagr(
     return None, None
 
 
-def avg_turnover(hist_daily: Optional[pd.DataFrame], days: int) -> Optional[float]:
+def avg_turnover(hist_daily: pd.DataFrame | None, days: int) -> float | None:
     """
     Average daily trading value (Close x Volume) over the last N sessions.
 
@@ -147,7 +144,7 @@ def avg_turnover(hist_daily: Optional[pd.DataFrame], days: int) -> Optional[floa
     Optional[float]
         Average daily turnover in JPY, or None if unavailable.
     """
-    if hist_daily is None or hist_daily.empty or not {'Close', 'Volume'} <= set(hist_daily.columns):
+    if hist_daily is None or hist_daily.empty or not {"Close", "Volume"} <= set(hist_daily.columns):
         return None
-    turnover = (hist_daily['Close'] * hist_daily['Volume']).dropna().tail(days)
+    turnover = (hist_daily["Close"] * hist_daily["Volume"]).dropna().tail(days)
     return to_num(turnover.mean()) if len(turnover) else None
