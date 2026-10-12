@@ -62,9 +62,11 @@ class TestScreener(unittest.TestCase):
             'gatekeeper': {'equity_ratio_min': 0.4, 'operating_margin_min': 0.1, 'psr_cap': 2.5,
                            'operating_cash_flow_min': 0, 'market_cap_min': 1e8, 'turnover_min': 0},
             'scoring': {'sales_cagr_threshold': 0.189, 'sales_growth_points': 3,
-                        'psr_super_cheap': 0.5, 'psr_cheap_points': 3, 'psr_fair_points': 1,
-                        'net_net_bonus': 5, 'dividend_yield_target': 0.03, 'dividend_points': 1,
-                        'per_growth_points': 2, 'ma_short': 12, 'ma_long': 24, 'technical_points': 2}}
+                        'psr_super_cheap': 0.5, 'psr_super_cheap_points': 3, 'psr_cheap': 1.0,
+                        'psr_cheap_points': 2, 'psr_fair_points': 1, 'net_net_bonus': 5, 'net_cash_points': 1,
+                        'pbr_cheap': 1.0, 'pbr_points': 1, 'dividend_yield_target': 0.03,
+                        'dividend_points': 1, 'per_growth_points': 2, 'equity_ratio_ideal': 0.7,
+                        'equity_ideal_points': 1, 'ma_short': 12, 'ma_long': 24, 'technical_points': 2}}
         data = StockData.from_dict('1234.T', {
             'fast_info': {'market_cap': 2e9, 'last_price': 1000},
             'balance_sheet': pd.DataFrame({'2023': {'Total Assets': 100, 'Stockholders Equity': 50}}),

@@ -12,15 +12,15 @@ The system uses a **Hybrid Architecture** with **DuckDB** to separate data accum
 *   **Gatekeeper (Fast Screening)**:
     *   Market Cap >= `market_cap_min` (default 100M JPY)
     *   Liquidity: 60-day average daily trading value >= `turnover_min` (default 10M JPY, intentionally low; use the `Avg_Turnover_60D(M JPY)` output column to narrow later)
-    *   Equity Ratio >= 45% (Configurable). Uses Stockholders' Equity first (Japanese 自己資本比率 definition, excludes non-controlling interests)
-    *   Operating Margin >= 10% (Configurable)
-    *   PSR Cap <= 2.5
+    *   Equity Ratio >= 50% (Configurable). Uses Stockholders' Equity first (Japanese 自己資本比率 definition, excludes non-controlling interests)
+    *   Operating Margin >= 7% (Configurable)
+    *   PSR Cap <= 2.0
     *   Operating CF > 0 (missing OCF fails)
     *   Missing/NaN metrics FAIL these rules (they no longer slip through). If the latest fiscal year column is unreported (all NaN), the most recent period with values is used.
 *   **Scoring System**:
     *   **Growth**: Sales CAGR over the available 3-4 years; threshold `sales_cagr_threshold` 0.189 (= 2x over 4 years).
-    *   **Value**: PSR, **PBR**, **Dividend Yield** (>=3%, from `trailingAnnualDividendYield` as a fraction; yfinance `dividendYield` is in percent and only a fallback, divided by 100), **PER Growth** (Forward < Trailing), **Cash Ratio** (Net-Net).
-    *   **Technicals**: **Monthly Chart Trend** (Price > 12M MA > 24M MA), scored under Score_Safety.
+    *   **Value**: **Real_PSR** tiers (net-cash adjusted PSR, falls back to PSR): <= 0.5 gives 3, <= 1.0 gives 2, else 1; **Net Cash** (cash - total debt > 0, missing debt counts as 0) +1; **PBR** < 1.0 +1; **Dividend Yield** >= 3% (forward `dividendYield`, a percent divided by 100; falls back to `trailingAnnualDividendYield`, a fraction); **PER Growth** (Forward < Trailing); **Net-Net** (cash >= market cap) +5 and `NET-NET` recommendation.
+    *   **Safety**: Equity Ratio >= 70% +1; **Monthly Chart Trend** (Price > 12M MA > 24M MA). Also reports the downside to the Lehman (2008-09 to 2009-03) and Corona (2020-02 to 2020-04) monthly lows (no points).
 
 ## Installation
 
@@ -80,7 +80,9 @@ Results are saved to `emin_screening_result_YYYY-MM-DD.csv` and displayed in the
 
 **Key Output Columns:**
 *   **Recommendation_Type**: `Quality Growth`, `Quality Value`, `NET-NET`, or `Watch`.
-*   **NCAV_to_MarketCap_Ratio**: (Current Assets - Total Liabilities) / Market Cap. >= 1.0 means Net-Net.
+*   **Cash_to_MarketCap_Ratio**: Cash and equivalents / Market Cap. >= 1.0 means Net-Net.
+*   **Net_Cash(Billion)**, **Real_PSR**: Cash - total debt, and (Market Cap - net cash) / sales.
+*   **Downside_to_Lehman_Low(%)**, **Downside_to_Corona_Low(%)**: Change from the current price to the lowest monthly low in each crash window.
 *   **Chart_Trend**: `Strong Bull` (Perfect Order), `Bull`, or `Bear`.
 *   **Sales_CAGR(%)**, **Sales_Growth_Years**: Sales CAGR and the span used (replace `Sales_Growth_4Y(%)`).
 *   **Avg_Turnover_60D(M JPY)**: 60-day average daily trading value.

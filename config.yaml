@@ -6,9 +6,9 @@
 # These filters calculate simple metrics from 'fast_info' or 'raw_data'
 # to quickly exclude unqualified stocks.
 gatekeeper:
-  equity_ratio_min: 0.45       # Minimum Equity Ratio (e.g., 0.40 = 40%) - Relaxed to 45% based on feedback
-  operating_margin_min: 0.10   # Minimum Operating Margin (e.g., 0.08 = 8%) - Stricter 10%
-  psr_cap: 2.5                 # Exclude stocks with PSR > 2.5 (Allowed higher for growth)
+  equity_ratio_min: 0.50       # Minimum Equity Ratio (0.50 = 50%)
+  operating_margin_min: 0.07   # Minimum Operating Margin (0.07 = 7%)
+  psr_cap: 2.0                 # Exclude stocks with PSR > 2.0
   operating_cash_flow_min: 0   # Operating Cash Flow > 0 (Positive)
   market_cap_min: 100000000    # Minimum Market Cap (JPY)
   turnover_min: 10000000       # Minimum 60-day avg daily trading value (JPY). Start low (10M) and narrow via the output column
@@ -21,15 +21,24 @@ scoring:
   sales_growth_points: 3
   
   # Value
-  psr_super_cheap: 0.5         # PSR <= 0.5
-  psr_cheap_points: 3
-  psr_fair_points: 1
-  net_net_bonus: 5             # Bonus if Net Cash > Market Cap
+  psr_super_cheap: 0.5         # Real_PSR (PSR if unavailable) <= 0.5
+  psr_super_cheap_points: 3
+  psr_cheap: 1.0               # Real_PSR <= 1.0
+  psr_cheap_points: 2
+  psr_fair_points: 1           # Otherwise (already passed the gatekeeper PSR cap)
+  net_net_bonus: 5             # Bonus if Cash >= Market Cap
+  net_cash_points: 1           # Net cash (cash - debt) > 0
+  pbr_cheap: 1.0               # PBR < 1.0
+  pbr_points: 1
 
   # Valuation (New)
-  dividend_yield_target: 0.03  # Dividend Yield >= 3%
+  dividend_yield_target: 0.03  # Forward dividend yield (fallback: trailing) >= 3%
   dividend_points: 1
   per_growth_points: 2         # Forward PE < Trailing PE
+
+  # Safety
+  equity_ratio_ideal: 0.70     # Equity Ratio >= 70%
+  equity_ideal_points: 1
 
   # Technicals (New)
   ma_short: 12                 # 12-Month Moving Average

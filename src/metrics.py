@@ -7,7 +7,8 @@ import pandas as pd
 # Japanese equity ratio (自己資本比率) excludes non-controlling interests,
 # so the parent's equity comes first.
 EQUITY_KEYS = ('Stockholders Equity', 'Total Stockholder Equity', 'Total Equity Gross Minority Interest')
-LIABILITY_KEYS = ('Total Liabilities Net Minority Interest', 'Total Liab')
+CASH_KEYS = ('Cash And Cash Equivalents', 'Cash Cash Equivalents And Short Term Investments')
+DEBT_KEYS = ('Total Debt',)
 OCF_KEYS = ('Operating Cash Flow', 'Total Cash From Operating Activities')
 ICF_KEYS = ('Investing Cash Flow', 'Total Cashflows From Investing Activities')
 FCF_KEYS = ('Financing Cash Flow', 'Total Cash From Financing Activities')
