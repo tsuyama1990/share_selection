@@ -1,0 +1,125 @@
+"""DuckDB cache of raw stock data."""
+import datetime
+import io
+import json
+from typing import Any, Dict, Optional
+
+import duckdb
+import pandas as pd
+
+from .stock_data import StockData
+
+# DataFrame fields stored as JSON in the cache (order matches the table)
+FRAME_KEYS = ('financials', 'balance_sheet', 'history', 'history_monthly', 'cashflow')
+
+
+class StockCache:
+    """Persists raw stock data in a DuckDB file. Usable as a context manager."""
+
+    def __init__(self, db_path: str):
+        """
+        Parameters
+        ----------
+        db_path : str
+            Path to the DuckDB file (created if missing).
+        """
+        self.con = duckdb.connect(str(db_path))
+        self.con.execute("""
+            CREATE TABLE IF NOT EXISTS stock_cache (
+                ticker TEXT PRIMARY KEY,
+                updated_at TIMESTAMP,
+                info JSON,
+                fast_info JSON,
+                financials JSON,
+                balance_sheet JSON,
+                history JSON,
+                history_monthly JSON,
+                cashflow JSON
+            )
+        """)
+
+    def __enter__(self) -> 'StockCache':
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
+
+    def get(self, ticker: str) -> Optional[StockData]:
+        """
+        Read a ticker from the cache regardless of its age.
+
+        Returns
+        -------
+        Optional[StockData]
+            The data, or None if not cached or corrupt.
+        """
+        res = self.con.execute(f"""
+            SELECT info, fast_info, {', '.join(FRAME_KEYS)}
+            FROM stock_cache WHERE ticker = ?
+        """, [ticker]).fetchone()
+        if not res:
+            return None
+        try:
+            d: Dict[str, Any] = {'info': json.loads(res[0]), 'fast_info': json.loads(res[1])}
+            for key, raw in zip(FRAME_KEYS, res[2:]):
+                d[key] = pd.read_json(io.StringIO(raw)) if raw else pd.DataFrame()
+            return StockData.from_dict(ticker, d)
+        except Exception as e:
+            print(f"Cache Corrupt for {ticker}: {e}")
+            return None
+
+    def put(self, ticker: str, raw: Dict[str, Any]) -> None:
+        """Upsert a raw data dict (as returned by ``YahooClient.download``)."""
+        frames = [raw.get(k) if raw.get(k) is not None else pd.DataFrame() for k in FRAME_KEYS]
+        self.con.execute(f"""
+            INSERT OR REPLACE INTO stock_cache
+            (ticker, updated_at, info, fast_info, {', '.join(FRAME_KEYS)})
+            VALUES (?, ?, ?, ?, {', '.join('?' for _ in FRAME_KEYS)})
+        """, [
+            ticker,
+            datetime.datetime.now(),
+            json.dumps(raw.get('info') or {}),
+            json.dumps(raw.get('fast_info') or {}),
+            *(f.to_json(date_format='iso') for f in frames),
+        ])
+
+    def is_fresh(self, ticker: str, max_age_days: float) -> bool:
+        """True if the entry exists and is younger than ``max_age_days``."""
+        limit = datetime.datetime.now() - datetime.timedelta(days=max_age_days)
+        return self.con.execute(
+            "SELECT 1 FROM stock_cache WHERE ticker = ? AND updated_at > ?", [ticker, limit]
+        ).fetchone() is not None
+
+    def close(self) -> None:
+        """Close the database connection."""
+        self.con.close()
+
+
+def refresh(cache: StockCache, client, ticker: str, max_age_days: float) -> bool:
+    """
+    Download a ticker into the cache unless a fresh entry exists.
+
+    Parameters
+    ----------
+    cache : StockCache
+        Destination cache.
+    client : YahooClient
+        Anything with ``download(ticker) -> dict``.
+    ticker : str
+        Ticker symbol.
+    max_age_days : float
+        Cache entries younger than this are not re-downloaded.
+
+    Returns
+    -------
+    bool
+        True if the cache is up to date (skipped or downloaded), False on failure.
+    """
+    if cache.is_fresh(ticker, max_age_days):
+        return True
+    try:
+        cache.put(ticker, client.download(ticker))
+        return True
+    except Exception as e:
+        print(f"Fetch failed {ticker}: {e}")
+        return False

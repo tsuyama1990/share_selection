@@ -89,6 +89,12 @@ uv run pytest
 ## Architecture
 
 *   `main.py`: CLI entry point (`fetch` / `analyze`).
-*   `src/data_manager.py`: DuckDB cache (`get_cached`) and Yahoo Finance downloads (`fetch`).
-*   `src/analyzer.py`: Contains the core investment logic (Gatekeeper, Scoring, Technicals).
+*   `src/stock_data.py`: `StockData`, the typed raw data of one ticker (normalizes histories).
+*   `src/metrics.py`: Pure helpers (`to_num`, `sales_cagr`, `avg_turnover`, ...).
+*   `src/rules.py`: Gatekeeper rules (one dataclass each) and `build_rules`.
+*   `src/scorers.py`: Scoring criteria (one dataclass each) and `build_scorers`.
+*   `src/screener.py`: `Screener` runs rules then scorers and builds the result row.
+*   `src/cache.py`: `StockCache` (DuckDB) and `refresh` (download if stale).
+*   `src/yahoo.py`: `YahooClient` downloads raw data from Yahoo Finance.
+*   `src/report.py`: `write_report` writes the dated CSV and prints the top 10.
 *   `src/config.py`: Loads `config.yaml` once into `CFG`.

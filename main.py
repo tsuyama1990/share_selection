@@ -1,13 +1,14 @@
 import pandas as pd
-import datetime
 import os
 import sys
 import argparse
 from tqdm import tqdm
 from typing import List
-from src.data_manager import StockDataManager
-from src.analyzer import analyze_stock_data
-from src.config import CFG
+from src.cache import StockCache, refresh
+from src.config import CFG, ROOT
+from src.report import write_report
+from src.screener import Screener
+from src.yahoo import YahooClient
 
 def get_japan_tickers() -> List[str]:
     """
@@ -41,81 +42,56 @@ def get_japan_tickers() -> List[str]:
         tickers.append(t)
     return tickers
 
-def run_fetch(tickers: List[str], dm: StockDataManager):
+def run_fetch(tickers: List[str], cache: StockCache, client: YahooClient):
     """
-    Execute data fetching process.
+    Download data for all tickers into the cache.
 
     Parameters
     ----------
     tickers : List[str]
         List of tickers to fetch.
-    dm : StockDataManager
-        Data manager instance.
+    cache : StockCache
+        Destination cache.
+    client : YahooClient
+        Yahoo Finance client.
     """
     print(f"Starting Data Fetch for {len(tickers)} stocks...")
-
-    fetched = sum(dm.fetch(ticker) for ticker in tqdm(tickers))
+    days = CFG['system']['cache_days']
+    fetched = sum(refresh(cache, client, t, days) for t in tqdm(tickers))
     print(f"fetched {fetched} / {len(tickers)}")
 
-def run_analyze(tickers: List[str], dm: StockDataManager):
+def run_analyze(tickers: List[str], cache: StockCache, screener: Screener):
     """
-    Execute analysis process using cached data.
+    Screen cached data and write the report.
 
     Parameters
     ----------
     tickers : List[str]
         List of tickers to analyze.
-    dm : StockDataManager
-        Data manager instance.
+    cache : StockCache
+        Source cache.
+    screener : Screener
+        Configured screener.
     """
     print(f"Starting Analysis for {len(tickers)} stocks (using cache)...")
     results = []
     no_cache = 0
-    
+
     for ticker in tqdm(tickers):
-        data = dm.get_cached(ticker)
+        data = cache.get(ticker)
         if data is None:
             no_cache += 1
             continue
-        res = analyze_stock_data(ticker, data)
+        res = screener.evaluate(data)
         if res:
             results.append(res)
 
     if no_cache:
         print(f"{no_cache} tickers had no cache (run `fetch` first).")
-            
     if not results:
         print("No stocks passed the Gatekeeper.")
         return
-
-    # Export
-    df_res = pd.DataFrame(results)
-    
-    # Sort by Total Score
-    df_res = df_res.sort_values('Total_Score', ascending=False)
-    
-    # Select columns to display
-    display_cols = [
-        'Ticker', 'Name', 'Total_Score', 'Recommendation_Type', 
-        'Current_Price', 'PSR', 'PBR', 
-        'Cash_to_MarketCap_Ratio', 'Dividend_Yield(%)',
-        'Sales_CAGR(%)', 'Sales_Growth_Years', 'Avg_Turnover_60D(M JPY)',
-        'Operating_Cash_Flow', 'Investing_Cash_Flow', 'Financing_Cash_Flow',
-        'Chart_Trend', 'MA12', 'MA24',
-        'Equity_Ratio', 'Operating_Margin(%)'
-    ]
-    # Ensure cols exist
-    existing_cols = [c for c in display_cols if c in df_res.columns]
-    
-    today = datetime.datetime.now().strftime('%Y-%m-%d')
-    csv_name = f"emin_screening_result_{today}.csv"
-    df_res[existing_cols].to_csv(csv_name, index=False, encoding='utf-8-sig') # sig for Excel
-    
-    print(f"\nAnalysis Complete!")
-    print(f"Passed: {len(df_res)} stocks")
-    print(f"Saved to: {csv_name}")
-    print("\nTop 10 Candidates:")
-    print(df_res[existing_cols].head(10).to_string(index=False))
+    write_report(results)
 
 def main():
     """CLI entry point."""
@@ -130,18 +106,14 @@ def main():
     
     args = parser.parse_args()
     
-    dm = StockDataManager()
     tickers = get_japan_tickers()
-
-    try:
+    with StockCache(str(ROOT / CFG['system']['db_file'])) as cache:
         if args.command == 'fetch':
-            run_fetch(tickers, dm)
+            run_fetch(tickers, cache, YahooClient(CFG['system']['sleep_time']))
         elif args.command == 'analyze':
-            run_analyze(tickers, dm)
+            run_analyze(tickers, cache, Screener.from_config(CFG))
         else:
             parser.print_help()
-    finally:
-        dm.close()
 
 if __name__ == "__main__":
     main()
