@@ -11,18 +11,24 @@ from .stock_data import StockData
 
 # DataFrame fields stored as JSON in the cache (order matches the table)
 FRAME_KEYS = ('financials', 'balance_sheet', 'history', 'history_monthly', 'cashflow')
+# Frames indexed by timestamps (stored as UTC instants in the JSON)
+HISTORY_KEYS = ('history', 'history_monthly')
 
 
 class StockCache:
     """Persists raw stock data in a DuckDB file. Usable as a context manager."""
 
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, market_timezone: str):
         """
         Parameters
         ----------
         db_path : str
             Path to the DuckDB file (created if missing).
+        market_timezone : str
+            Market timezone (e.g., 'Asia/Tokyo'); history timestamps are
+            exposed as naive dates in it.
         """
+        self.market_timezone = market_timezone
         self.con = duckdb.connect(str(db_path))
         self.con.execute("""
             CREATE TABLE IF NOT EXISTS stock_cache (
@@ -62,8 +68,12 @@ class StockCache:
         try:
             d: Dict[str, Any] = {'info': json.loads(res[0]), 'fast_info': json.loads(res[1])}
             for key, raw in zip(FRAME_KEYS, res[2:]):
-                d[key] = pd.read_json(io.StringIO(raw)) if raw else pd.DataFrame()
-            return StockData.from_dict(ticker, d)
+                df = pd.read_json(io.StringIO(raw)) if raw else pd.DataFrame()
+                if key in HISTORY_KEYS and not df.empty:
+                    # JSON holds UTC instants (to_json converts tz-aware indexes to UTC)
+                    df.index = pd.to_datetime(df.index, utc=True)
+                d[key] = df
+            return StockData.from_dict(ticker, d, self.market_timezone)
         except Exception as e:
             print(f"Cache Corrupt for {ticker}: {e}")
             return None

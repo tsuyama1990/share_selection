@@ -1,20 +1,27 @@
 """Typed container for one ticker's raw data (the only place that knows its shape)."""
 from dataclasses import dataclass, field
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import pandas as pd
 
 _FRAMES = ('financials', 'balance_sheet', 'cashflow', 'history', 'history_monthly')
 
 
-def _to_naive_datetime_index(df: pd.DataFrame) -> pd.DataFrame:
+def _to_naive_datetime_index(df: pd.DataFrame, market_tz: Optional[str] = None) -> pd.DataFrame:
     """
     Ensure the DataFrame index is datetime and tz-naive.
+
+    A tz-aware index is converted to the market timezone first (so a bar
+    stamped 2008-09-30 15:00 UTC becomes 2008-10-01 in Tokyo) and then
+    reduced to dates (bars are daily or monthly).
 
     Parameters
     ----------
     df : pd.DataFrame
         Stock history DataFrame.
+    market_tz : Optional[str]
+        Market timezone name (e.g., 'Asia/Tokyo'). If None, a tz-aware index
+        just loses its tz.
 
     Returns
     -------
@@ -30,6 +37,8 @@ def _to_naive_datetime_index(df: pd.DataFrame) -> pd.DataFrame:
         except Exception:
             pass
     if isinstance(df.index, pd.DatetimeIndex) and df.index.tz is not None:
+        if market_tz is not None:
+            df.index = df.index.tz_convert(market_tz).normalize()
         df.index = df.index.tz_localize(None)
     return df
 
@@ -53,7 +62,7 @@ class StockData:
     history_monthly: pd.DataFrame = field(default_factory=pd.DataFrame)
 
     @classmethod
-    def from_dict(cls, ticker: str, d: Dict[str, Any]) -> 'StockData':
+    def from_dict(cls, ticker: str, d: Dict[str, Any], market_tz: Optional[str] = None) -> 'StockData':
         """
         Build from a raw dict, filling missing parts and normalizing histories.
 
@@ -63,6 +72,9 @@ class StockData:
             Ticker symbol (e.g., '7203.T').
         d : Dict[str, Any]
             Raw data with any of 'info', 'fast_info' and the frame keys.
+        market_tz : Optional[str]
+            Market timezone; tz-aware history indexes are converted to it and
+            exposed as naive dates.
 
         Returns
         -------
@@ -71,5 +83,5 @@ class StockData:
         """
         frames = {k: d.get(k) if d.get(k) is not None else pd.DataFrame() for k in _FRAMES}
         for key in ('history', 'history_monthly'):
-            frames[key] = _to_naive_datetime_index(frames[key])
+            frames[key] = _to_naive_datetime_index(frames[key], market_tz)
         return cls(ticker, d.get('info') or {}, d.get('fast_info') or {}, **frames)

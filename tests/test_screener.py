@@ -114,7 +114,7 @@ class TestStockCache(unittest.TestCase):
 
     def test_put_get_roundtrip(self):
         import tempfile, pathlib
-        with tempfile.TemporaryDirectory() as tmp, StockCache(str(pathlib.Path(tmp) / 'c.duckdb')) as cache:
+        with tempfile.TemporaryDirectory() as tmp, StockCache(str(pathlib.Path(tmp) / 'c.duckdb'), 'Asia/Tokyo') as cache:
             self.assertIsNone(cache.get('1234.T'))
             self.assertFalse(cache.is_fresh('1234.T', 3))
             self.assertTrue(refresh(cache, FakeClient(), '1234.T', 3))
@@ -126,6 +126,20 @@ class TestStockCache(unittest.TestCase):
             self.assertEqual(list(data.history['Close']), [1.0, 2.0])
             self.assertIsNone(data.history.index.tz)
             self.assertTrue(data.balance_sheet.empty)
+
+    def test_history_dates_roundtrip_in_market_timezone(self):
+        import tempfile, pathlib
+        monthly = pd.DataFrame({'Low': [1.0, 2.0, 3.0]}, index=pd.DatetimeIndex(
+            ['2008-09-01', '2008-10-01', '2008-11-01'], tz='Asia/Tokyo'))
+        daily = pd.DataFrame({'Close': [1.0, 2.0]}, index=pd.DatetimeIndex(
+            ['2024-01-04', '2024-01-05'], tz='Asia/Tokyo'))
+        with tempfile.TemporaryDirectory() as tmp, StockCache(str(pathlib.Path(tmp) / 'c.duckdb'), 'Asia/Tokyo') as cache:
+            cache.put('1234.T', {'history': daily, 'history_monthly': monthly})
+            data = cache.get('1234.T')
+        self.assertIsNone(data.history_monthly.index.tz)
+        self.assertEqual(list(data.history_monthly.index), list(monthly.index.tz_localize(None)))
+        self.assertEqual(list(data.history.index), list(daily.index.tz_localize(None)))
+        self.assertEqual(data.history_monthly.loc['2008-10-01', 'Low'], 2.0)
 
 
 if __name__ == '__main__':

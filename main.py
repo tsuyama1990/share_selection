@@ -119,7 +119,7 @@ def main():
         return
     
     tickers = get_japan_tickers()
-    with StockCache(str(ROOT / CFG['system']['db_file'])) as cache:
+    with StockCache(str(ROOT / CFG['system']['db_file']), CFG['system']['market_timezone']) as cache:
         if args.command == 'fetch':
             run_fetch(tickers, cache, YahooClient(CFG['system']['sleep_time'], CFG['system']['daily_history_period'],
                                             CFG['system']['monthly_history_period']))

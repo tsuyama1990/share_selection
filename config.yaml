@@ -119,4 +119,5 @@ system:
   cache_days: 3                  # Valid period for cached data (days)
   db_file: "stocks_cache.duckdb" # Database file
   daily_history_period: "1y"     # yfinance period of the daily history (turnover)
+  market_timezone: "Asia/Tokyo" # Timezone of the history timestamps (bars are exposed as naive local dates)
   monthly_history_period: "max"  # yfinance period of the monthly history (trend, crash lows)
