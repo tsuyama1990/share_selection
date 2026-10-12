@@ -12,13 +12,15 @@ from src.analyzer import (
 from src.config import CFG
 
 # Mock Config
-CFG['gatekeeper'] = {'equity_ratio_min': 0.40, 'operating_margin_min': 0.10, 'psr_cap': 2.5}
+CFG['gatekeeper'] = {
+    'equity_ratio_min': 0.40, 'operating_margin_min': 0.10, 'psr_cap': 2.5,
+    'operating_cash_flow_min': 0, 'market_cap_min': 1e8, 'turnover_min': 0
+}
 CFG['scoring'] = {
     'sales_cagr_threshold': 0.189, 'sales_growth_points': 3,
     'psr_super_cheap': 0.5, 'psr_cheap_points': 3, 'psr_fair_points': 1,
     'net_net_bonus': 5, 'dividend_yield_target': 0.03, 'dividend_points': 1,
-    'per_growth_points': 2, 'ma_short': 3, 'ma_long': 5, 'technical_points': 2,
-    'safety_buffer_pct': 20, 'safety_points': 2
+    'per_growth_points': 2, 'ma_short': 3, 'ma_long': 5, 'technical_points': 2
 }
 
 class TestAnalyzer(unittest.TestCase):

@@ -20,8 +20,7 @@ The system uses a **Hybrid Architecture** with **DuckDB** to separate data accum
 *   **Scoring System**:
     *   **Growth**: Sales CAGR over the available 3-4 years; threshold `sales_cagr_threshold` 0.189 (= 2x over 4 years).
     *   **Value**: PSR, **PBR**, **Dividend Yield** (>=3%, from `trailingAnnualDividendYield` as a fraction; yfinance `dividendYield` is in percent and only a fallback, divided by 100), **PER Growth** (Forward < Trailing), **Cash Ratio** (Net-Net).
-    *   **Technicals**: **Monthly Chart Trend** (Price > 12M MA > 24M MA).
-    *   **Safety**: Historical low buffer (Corona Low check).
+    *   **Technicals**: **Monthly Chart Trend** (Price > 12M MA > 24M MA), scored under Score_Safety.
 
 ## Installation
 
@@ -52,10 +51,10 @@ system:
 ```
 
 ### 2. Prepare Ticker List
-Ensure `japan_tickers.csv` is present in the root directory.
+Ensure the CSV given by `input_csv` (default `japan_tickers.csv`) exists and has a `code`, `Code`, `ticker` or `Ticker` column. There is no demo list; a missing or invalid file is an error.
 
 ### 3. Fetch Data (Accumulation)
-This command fetches missing data from the API and updates the DuckDB cache.
+This command downloads data for tickers whose cache is older than `cache_days` (or missing) and updates the DuckDB cache.
 *Run this periodically (e.g., weekly).*
 
 ```bash
@@ -63,7 +62,7 @@ python3 main.py fetch
 ```
 
 ### 4. Analyze Data (Screening)
-This command runs the screening logic using **only local data**. It is instant.
+This command runs the screening logic using **only the local cache** (it never calls the API, even for stale entries; tickers without a cache are skipped and counted). It is instant.
 *Run this as many times as you like while tweaking `config.yaml`.*
 
 ```bash
@@ -90,6 +89,6 @@ uv run pytest
 ## Architecture
 
 *   `main.py`: CLI entry point (`fetch` / `analyze`).
-*   `src/data_manager.py`: Handles DuckDB operations and Yahoo Finance API calls.
+*   `src/data_manager.py`: DuckDB cache (`get_cached`) and Yahoo Finance downloads (`fetch`).
 *   `src/analyzer.py`: Contains the core investment logic (Gatekeeper, Scoring, Technicals).
-*   `src/config.py`: Configuration loader.
+*   `src/config.py`: Loads `config.yaml` once into `CFG`.

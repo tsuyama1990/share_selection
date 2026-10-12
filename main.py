@@ -1,47 +1,45 @@
 import pandas as pd
 import datetime
 import os
+import sys
 import argparse
 from tqdm import tqdm
 from typing import List
 from src.data_manager import StockDataManager
 from src.analyzer import analyze_stock_data
-from src.config import get_system_config
+from src.config import CFG
 
 def get_japan_tickers() -> List[str]:
     """
-    Retrieve ticker list from CSV or use a default demo list.
+    Retrieve the ticker list from the CSV given by ``system.input_csv``.
+
+    Exits with status 1 if the CSV is missing or has no ticker column.
 
     Returns
     -------
     List[str]
         List of ticker symbols (e.g., ['7203.T', ...]).
     """
-    sys_conf = get_system_config()
-    csv_path = sys_conf.get('input_csv', 'japan_tickers.csv')
+    csv_path = CFG['system']['input_csv']
     
-    if os.path.exists(csv_path):
-        print(f"Reading tickers from {csv_path}...")
-        try:
-            df = pd.read_csv(csv_path)
-            tickers = []
-            # Support various column names
-            col = next((c for c in ['code', 'Code', 'ticker', 'Ticker', 'Symbol'] if c in df.columns), None)
-            
-            if col:
-                for t in df[col].astype(str):
-                    t = t.strip()
-                    if not t.endswith('.T'):
-                        t += '.T'
-                    tickers.append(t)
-                return tickers
-        except Exception as e:
-            print(f"Error reading CSV: {e}")
-            pass
-            
-    # Fallback / Demo
-    print("Using demo ticker list (CSV not found or invalid).")
-    return ['7203.T', '6758.T', '9984.T', '8306.T', '6098.T']
+    if not os.path.exists(csv_path):
+        print(f"Error: ticker CSV not found: {csv_path}")
+        sys.exit(1)
+
+    print(f"Reading tickers from {csv_path}...")
+    df = pd.read_csv(csv_path)
+    col = next((c for c in ['code', 'Code', 'ticker', 'Ticker'] if c in df.columns), None)
+    if col is None:
+        print(f"Error: {csv_path} needs a 'code', 'Code', 'ticker' or 'Ticker' column.")
+        sys.exit(1)
+
+    tickers = []
+    for t in df[col].astype(str):
+        t = t.strip()
+        if not t.endswith('.T'):
+            t += '.T'
+        tickers.append(t)
+    return tickers
 
 def run_fetch(tickers: List[str], dm: StockDataManager):
     """
@@ -55,13 +53,9 @@ def run_fetch(tickers: List[str], dm: StockDataManager):
         Data manager instance.
     """
     print(f"Starting Data Fetch for {len(tickers)} stocks...")
-    
-    # Random shuffle to avoid hitting same server nodes consecutively (superstition, but good practice)
-    # import random
-    # random.shuffle(tickers)
 
-    for ticker in tqdm(tickers):
-        dm.get_data(ticker)
+    fetched = sum(dm.fetch(ticker) for ticker in tqdm(tickers))
+    print(f"fetched {fetched} / {len(tickers)}")
 
 def run_analyze(tickers: List[str], dm: StockDataManager):
     """
@@ -76,12 +70,19 @@ def run_analyze(tickers: List[str], dm: StockDataManager):
     """
     print(f"Starting Analysis for {len(tickers)} stocks (using cache)...")
     results = []
+    no_cache = 0
     
     for ticker in tqdm(tickers):
-        data = dm.get_data(ticker)
+        data = dm.get_cached(ticker)
+        if data is None:
+            no_cache += 1
+            continue
         res = analyze_stock_data(ticker, data)
         if res:
             results.append(res)
+
+    if no_cache:
+        print(f"{no_cache} tickers had no cache (run `fetch` first).")
             
     if not results:
         print("No stocks passed the Gatekeeper.")

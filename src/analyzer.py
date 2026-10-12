@@ -1,43 +1,13 @@
 import pandas as pd
 import numpy as np
 from typing import Optional, Dict, Any, Tuple
-from .config import get_gatekeeper_config, get_scoring_config
+from .config import CFG
 
 # Load Configurations
-GK = get_gatekeeper_config()
-SC = get_scoring_config()
+GK = CFG['gatekeeper']
+SC = CFG['scoring']
 
-def _ensure_datetime_index(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Ensure the DataFrame columns (periods) are datetime objects and tz-naive.
-
-    Parameters
-    ----------
-    df : pd.DataFrame
-        Input DataFrame (financials or balance_sheet).
-
-    Returns
-    -------
-    pd.DataFrame
-        DataFrame with tz-naive datetime columns.
-    """
-    if df.empty:
-        return df
-    
-    # Transpose financials/bs if needed (columns should be dates)
-    if not isinstance(df.columns, pd.DatetimeIndex):
-        try:
-            df.columns = pd.to_datetime(df.columns)
-        except Exception:
-            pass
-    
-    # Convert tz-aware columns to naive
-    if isinstance(df.columns, pd.DatetimeIndex) and df.columns.tz is not None:
-         df.columns = df.columns.tz_localize(None)
-         
-    return df
-
-def _ensure_history_index(df: pd.DataFrame) -> pd.DataFrame:
+def _to_naive_datetime_index(df: pd.DataFrame) -> pd.DataFrame:
     """
     Ensure the history DataFrame index is datetime and tz-naive.
 
@@ -242,7 +212,7 @@ def _check_gatekeeper(
 
     # 1. Market Cap
     mcap = _num(fast_info.get('market_cap'))
-    if mcap is None or mcap < GK.get('market_cap_min', 1e8):
+    if mcap is None or mcap < GK['market_cap_min']:
         return None
 
     res['Current_Price'] = _num(fast_info.get('last_price'))
@@ -252,7 +222,7 @@ def _check_gatekeeper(
     # 2. Liquidity (average daily trading value)
     turnover = _avg_turnover(hist_daily)
     res['Avg_Turnover_60D(M JPY)'] = round(turnover / 1e6, 1) if turnover is not None else None
-    turnover_min = GK.get('turnover_min', 0)
+    turnover_min = GK['turnover_min']
     if turnover_min > 0 and (turnover is None or turnover < turnover_min):
         return None
 
@@ -268,7 +238,7 @@ def _check_gatekeeper(
 
     eq_ratio = total_equity / total_assets
     res['Equity_Ratio'] = round(eq_ratio * 100, 2)
-    if eq_ratio < GK.get('equity_ratio_min', 0.40):
+    if eq_ratio < GK['equity_ratio_min']:
         return None
 
     # 4. Operating Margin & PSR
@@ -282,12 +252,12 @@ def _check_gatekeeper(
 
     op_margin = op_income / current_sales
     res['Operating_Margin(%)'] = round(op_margin * 100, 2)
-    if op_margin < GK.get('operating_margin_min', 0.10):
+    if op_margin < GK['operating_margin_min']:
         return None
 
     psr = mcap / current_sales
     res['PSR'] = round(psr, 2)
-    if psr > GK.get('psr_cap', 2.5):
+    if psr > GK['psr_cap']:
         return None
 
     # 5. Operating Cash Flow (OCF) Check
@@ -295,7 +265,7 @@ def _check_gatekeeper(
         return None
     latest_cf = cf.iloc[:, 0]
     ocf = _first_valid(latest_cf, OCF_KEYS)
-    if ocf is None or ocf <= GK.get('operating_cash_flow_min', 0):
+    if ocf is None or ocf <= GK['operating_cash_flow_min']:
         return None
 
     res['Operating_Cash_Flow'] = ocf
@@ -319,8 +289,8 @@ def _score_growth(fin: pd.DataFrame, result: Dict[str, Any]):
     if cagr is not None:
         result['Sales_CAGR(%)'] = round(cagr * 100, 2)
         result['Sales_Growth_Years'] = years
-        if cagr >= SC.get('sales_cagr_threshold', 0.189):
-            result['Score_Growth'] += SC.get('sales_growth_points', 3)
+        if cagr >= SC['sales_cagr_threshold']:
+            result['Score_Growth'] += SC['sales_growth_points']
 
 def _score_value(
     info: Dict[str, Any], 
@@ -348,10 +318,10 @@ def _score_value(
     latest_bs = bs.iloc[:, 0]
     
     # 1. PSR Score
-    if psr <= SC.get('psr_super_cheap', 0.5):
-        result['Score_Value'] += SC.get('psr_cheap_points', 3)
+    if psr <= SC['psr_super_cheap']:
+        result['Score_Value'] += SC['psr_cheap_points']
     else:
-        result['Score_Value'] += SC.get('psr_fair_points', 1)
+        result['Score_Value'] += SC['psr_fair_points']
 
     # 2. Cash Ratio & Net-Net
     total_cash = _num(latest_bs.get('Cash And Cash Equivalents'))
@@ -359,7 +329,7 @@ def _score_value(
         cash_ratio = total_cash / market_cap
         result['Cash_to_MarketCap_Ratio'] = round(cash_ratio, 2)
         if cash_ratio >= 1.0:
-            result['Score_Value'] += SC.get('net_net_bonus', 5)
+            result['Score_Value'] += SC['net_net_bonus']
             result['Recommendation_Type'] = 'NET-NET'
             result['Net_Net_Flag(T/F)'] = True
 
@@ -382,8 +352,8 @@ def _score_value(
         div = div_pct / 100 if div_pct is not None else None
     if div is not None:
         result['Dividend_Yield(%)'] = round(div * 100, 2)
-        if div >= SC.get('dividend_yield_target', 0.03):
-            result['Score_Value'] += SC.get('dividend_points', 1)
+        if div >= SC['dividend_yield_target']:
+            result['Score_Value'] += SC['dividend_points']
 
     # 5. PER Growth
     f_pe = _num(info.get('forwardPE'))
@@ -393,7 +363,7 @@ def _score_value(
         result['Trailing_PE'] = round(t_pe, 2)
         if f_pe < t_pe:
             result['PE_Growth_Flag(T/F)'] = True
-            result['Score_Value'] += SC.get('per_growth_points', 2)
+            result['Score_Value'] += SC['per_growth_points']
 
 def _score_technical(hist_monthly: pd.DataFrame, current_price: float, result: Dict[str, Any]):
     """
@@ -411,12 +381,10 @@ def _score_technical(hist_monthly: pd.DataFrame, current_price: float, result: D
     if hist_monthly is None or hist_monthly.empty:
         return
     
-    hist_monthly = _ensure_history_index(hist_monthly)
-    
-    if len(hist_monthly) >= SC.get('ma_long', 24):
+    if len(hist_monthly) >= SC['ma_long']:
         close = hist_monthly['Close']
-        ma_s = close.rolling(SC.get('ma_short', 12)).mean().iloc[-1]
-        ma_l = close.rolling(SC.get('ma_long', 24)).mean().iloc[-1]
+        ma_s = close.rolling(SC['ma_short']).mean().iloc[-1]
+        ma_l = close.rolling(SC['ma_long']).mean().iloc[-1]
         
         result['MA12'] = round(ma_s, 1)
         result['MA24'] = round(ma_l, 1)
@@ -424,21 +392,12 @@ def _score_technical(hist_monthly: pd.DataFrame, current_price: float, result: D
         # Trend
         if current_price > ma_s > ma_l:
             result['Chart_Trend'] = 'Strong Bull'
-            result['Score_Safety'] += SC.get('technical_points', 2)
+            result['Score_Safety'] += SC['technical_points']
         elif current_price > ma_s:
             result['Chart_Trend'] = 'Bull'
             result['Score_Safety'] += 1
         else:
             result['Chart_Trend'] = 'Bear'
-    
-    # Safety Buffer (Vs 2020 Low)
-    corona = hist_monthly['2020-01-01':'2020-06-30']
-    if not corona.empty:
-        low = corona['Low'].min()
-        if low > 0:
-            diff = (current_price - low) / current_price * 100
-            if abs(diff) < SC.get('safety_buffer_pct', 20):
-                  result['Score_Safety'] += SC.get('safety_points', 2)
 
 def analyze_stock_data(ticker_symbol: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """
@@ -462,11 +421,11 @@ def analyze_stock_data(ticker_symbol: str, data: Dict[str, Any]) -> Optional[Dic
     # Unpack Data
     info = data.get('info', {})
     fast_info = data.get('fast_info', {})
-    fin = _ensure_datetime_index(data.get('financials', pd.DataFrame()))
-    bs = _ensure_datetime_index(data.get('balance_sheet', pd.DataFrame()))
-    cf = _ensure_datetime_index(data.get('cashflow', pd.DataFrame()))
-    hist_daily = _ensure_history_index(data.get('history', pd.DataFrame()))
-    hist_monthly = _ensure_history_index(data.get('history_monthly', pd.DataFrame()))
+    fin = data.get('financials', pd.DataFrame())
+    bs = data.get('balance_sheet', pd.DataFrame())
+    cf = data.get('cashflow', pd.DataFrame())
+    hist_daily = _to_naive_datetime_index(data.get('history', pd.DataFrame()))
+    hist_monthly = _to_naive_datetime_index(data.get('history_monthly', pd.DataFrame()))
 
     # 1. Gatekeeper Check
     gk_res = _check_gatekeeper(fast_info, bs, fin, cf, hist_daily)
@@ -481,16 +440,7 @@ def analyze_stock_data(ticker_symbol: str, data: Dict[str, Any]) -> Optional[Dic
         'Recommendation_Type': 'Watch',
         'Score_Growth': 0, 
         'Score_Value': 0, 
-        'Score_Safety': 0,
-        # Metrics placeholders
-        'PSR': None, 
-        'PBR': None, 
-        'Cash_to_MarketCap_Ratio': None, 
-        'Dividend_Yield(%)': None, 
-        'PE_Growth_Flag(T/F)': False,
-        'Chart_Trend': '-', 
-        'MA12': None, 
-        'MA24': None
+        'Score_Safety': 0
     }
     result.update(gk_res) # Merge basic metrics
 

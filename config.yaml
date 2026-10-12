@@ -35,10 +35,6 @@ scoring:
   ma_short: 12                 # 12-Month Moving Average
   ma_long: 24                  # 24-Month Moving Average
   technical_points: 2          # Bonus for Strong Bull Trend
-  
-  # Safety
-  safety_buffer_pct: 20        # Within 20% of Corona Low (or historical low)
-  safety_points: 2
 
 # 3. System Configuration
 system:
