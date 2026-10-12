@@ -74,7 +74,7 @@ Results are saved to `emin_screening_result_YYYY-MM-DD.csv` and displayed in the
 
 **Key Output Columns:**
 *   **Recommendation_Type**: `Quality Growth`, `Quality Value`, `NET-NET`, or `Watch`.
-*   **Cash_to_MarketCap_Ratio**: > 1.0 means the company has more cash than its market value (Net-Net).
+*   **NCAV_to_MarketCap_Ratio**: (Current Assets - Total Liabilities) / Market Cap. >= 1.0 means Net-Net.
 *   **Chart_Trend**: `Strong Bull` (Perfect Order), `Bull`, or `Bear`.
 *   **Sales_CAGR(%)**, **Sales_Growth_Years**: Sales CAGR and the span used (replace `Sales_Growth_4Y(%)`).
 *   **Avg_Turnover_60D(M JPY)**: 60-day average daily trading value.

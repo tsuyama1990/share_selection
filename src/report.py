@@ -8,7 +8,7 @@ import pandas as pd
 DISPLAY_COLUMNS = [
     'Ticker', 'Name', 'Total_Score', 'Recommendation_Type',
     'Current_Price', 'PSR', 'PBR',
-    'Cash_to_MarketCap_Ratio', 'Dividend_Yield(%)',
+    'NCAV_to_MarketCap_Ratio', 'Dividend_Yield(%)',
     'Sales_CAGR(%)', 'Sales_Growth_Years', 'Avg_Turnover_60D(M JPY)',
     'Operating_Cash_Flow', 'Investing_Cash_Flow', 'Financing_Cash_Flow',
     'Chart_Trend', 'MA12', 'MA24',

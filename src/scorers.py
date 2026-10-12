@@ -6,7 +6,7 @@ Thresholds and points are injected via dataclass fields; use
 from dataclasses import dataclass
 from typing import Any, Dict, List, NamedTuple, Optional, Protocol
 
-from .metrics import EQUITY_KEYS, first_valid, sales_cagr, to_num
+from .metrics import EQUITY_KEYS, LIABILITY_KEYS, first_valid, sales_cagr, to_num
 from .stock_data import StockData
 
 
@@ -59,19 +59,24 @@ class PsrScorer:
 
 
 @dataclass
-class CashRatioScorer:
-    """Net-Net: bonus (and NET-NET recommendation) if cash >= market cap."""
+class NetNetScorer:
+    """
+    Net-Net (Graham): bonus and NET-NET recommendation if net current asset
+    value (current assets - total liabilities) >= market cap.
+    """
 
     bonus: int
 
     def score(self, data: StockData, metrics: Dict[str, Any]) -> ScoreResult:
-        """Score cash to market cap ratio."""
-        cash = to_num(data.balance_sheet.iloc[:, 0].get('Cash And Cash Equivalents'))
+        """Score NCAV to market cap ratio."""
+        latest_bs = data.balance_sheet.iloc[:, 0]
+        current_assets = to_num(latest_bs.get('Current Assets'))
+        liabilities = first_valid(latest_bs, LIABILITY_KEYS)
         mcap = metrics['Market_Cap']
-        if cash is None or mcap <= 0:
+        if current_assets is None or liabilities is None or mcap <= 0:
             return ScoreResult('Value', 0, {})
-        ratio = cash / mcap
-        out = {'Cash_to_MarketCap_Ratio': round(ratio, 2)}
+        ratio = (current_assets - liabilities) / mcap
+        out = {'NCAV_to_MarketCap_Ratio': round(ratio, 2)}
         if ratio >= 1.0:
             out['Net_Net_Flag(T/F)'] = True
             return ScoreResult('Value', self.bonus, out, 'NET-NET')
@@ -181,7 +186,7 @@ def build_scorers(cfg: Dict[str, Any]) -> List[Scorer]:
     return [
         SalesGrowthScorer(sc['sales_cagr_threshold'], sc['sales_growth_points']),
         PsrScorer(sc['psr_super_cheap'], sc['psr_cheap_points'], sc['psr_fair_points']),
-        CashRatioScorer(sc['net_net_bonus']),
+        NetNetScorer(sc['net_net_bonus']),
         PbrMetric(),
         DividendScorer(sc['dividend_yield_target'], sc['dividend_points']),
         PerGrowthScorer(sc['per_growth_points']),

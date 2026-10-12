@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from src.scorers import (
-    CashRatioScorer, DividendScorer, PbrMetric, PsrScorer, SalesGrowthScorer, TrendScorer,
+    NetNetScorer, DividendScorer, PbrMetric, PsrScorer, SalesGrowthScorer, TrendScorer,
     build_scorers,
 )
 from src.stock_data import StockData
@@ -53,14 +53,22 @@ class TestScorers(unittest.TestCase):
         self.assertNotIn('Sales_CAGR(%)', res.metrics)
 
     def test_score_value_net_net(self):
-        bs = pd.DataFrame({'2023': {'Cash And Cash Equivalents': 200}})
+        bs = pd.DataFrame({'2023': {'Current Assets': 300, 'Total Liabilities Net Minority Interest': 100}})
         data = StockData.from_dict('T', {'balance_sheet': bs})
-        # market cap 150 < cash; psr=0.4 (<0.5) -> +3 points
-        pts, _, recs = total([PsrScorer(0.5, 3, 1), CashRatioScorer(5)], data,
+        # market cap 150 < NCAV 200; psr=0.4 (<0.5) -> +3 points
+        pts, _, recs = total([PsrScorer(0.5, 3, 1), NetNetScorer(5)], data,
                              {'Market_Cap': 150, 'PSR': 0.4})
         # Super Cheap PSR (3) + NetNet (5) = 8
         self.assertEqual(pts['Value'], 8)
         self.assertEqual(recs, ['NET-NET'])
+
+    def test_net_net_subtracts_liabilities(self):
+        # Plenty of current assets but heavy liabilities is not a net-net
+        bs = pd.DataFrame({'2023': {'Current Assets': 300, 'Total Liabilities Net Minority Interest': 250}})
+        res = NetNetScorer(5).score(StockData.from_dict('T', {'balance_sheet': bs}), {'Market_Cap': 150})
+        self.assertEqual(res.points, 0)
+        self.assertIsNone(res.recommendation)
+        self.assertEqual(res.metrics['NCAV_to_MarketCap_Ratio'], 0.33)
 
     def test_score_technical_bull(self):
         dates = pd.date_range(start='2021-08-31', periods=30, freq='ME')
@@ -74,7 +82,7 @@ class TestScorers(unittest.TestCase):
 
     def test_dividend_yield_units(self):
         bs = pd.DataFrame({'2023': {'Cash And Cash Equivalents': 0}})
-        scorers = [PsrScorer(0.5, 3, 1), CashRatioScorer(5), DividendScorer(0.03, 1)]
+        scorers = [PsrScorer(0.5, 3, 1), NetNetScorer(5), DividendScorer(0.03, 1)]
         metrics = {'Market_Cap': 150, 'PSR': 1.0}
         # trailingAnnualDividendYield is a fraction
         data = StockData.from_dict('T', {
