@@ -51,7 +51,13 @@ system:
 ```
 
 ### 2. Prepare Ticker List
-Ensure the CSV given by `input_csv` (default `japan_tickers.csv`) exists and has a `code`, `Code`, `ticker` or `Ticker` column. There is no demo list; a missing or invalid file is an error.
+Generate it from the JPX listed company list (Prime / Standard / Growth domestic stocks; JPX updates it monthly):
+
+```bash
+python3 main.py tickers
+```
+
+This writes the CSV given by `input_csv` (default `japan_tickers.csv`). A custom CSV also works if it has a `code`, `Code`, `ticker` or `Ticker` column. There is no demo list; a missing or invalid file is an error.
 
 ### 3. Fetch Data (Accumulation)
 This command downloads data for tickers whose cache is older than `cache_days` (or missing) and updates the DuckDB cache.

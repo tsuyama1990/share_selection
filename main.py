@@ -8,6 +8,7 @@ from src.cache import StockCache, refresh
 from src.config import CFG, ROOT
 from src.report import write_report
 from src.screener import Screener
+from src.tickers import update_ticker_csv
 from src.yahoo import YahooClient
 
 def get_japan_tickers() -> List[str]:
@@ -21,7 +22,7 @@ def get_japan_tickers() -> List[str]:
     List[str]
         List of ticker symbols (e.g., ['7203.T', ...]).
     """
-    csv_path = CFG['system']['input_csv']
+    csv_path = ROOT / CFG['system']['input_csv']
     
     if not os.path.exists(csv_path):
         print(f"Error: ticker CSV not found: {csv_path}")
@@ -103,8 +104,16 @@ def main():
     
     # Analyze command
     subparsers.add_parser('analyze', help='Analyze cached data')
+
+    # Tickers command
+    subparsers.add_parser('tickers', help='Update the ticker CSV from the JPX listed company list')
     
     args = parser.parse_args()
+
+    if args.command == 'tickers':
+        out_csv = ROOT / CFG['system']['input_csv']
+        print(f"Saved {update_ticker_csv(out_csv)} tickers to {out_csv}")
+        return
     
     tickers = get_japan_tickers()
     with StockCache(str(ROOT / CFG['system']['db_file'])) as cache:
