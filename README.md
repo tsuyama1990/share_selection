@@ -41,6 +41,7 @@ Edit `config.yaml` to adjust criteria. Every tunable parameter, path and file na
 *   `recommendation`: `quality_growth_min_growth_score` and `quality_value_min_value_score` for `Recommendation_Type`.
 *   `output`: report `dir`, `filename` (`{date}` = YYYY-MM-DD), `top_n` and the CSV `columns`.
 *   `tickers`: `jpx_url` and the `markets` kept by the `tickers` command.
+*   `records`: `db_file`, `export_dir` (Parquet backup per run), `horizons_months`, `benchmark_ticker`, `history_period`.
 *   `system`: `input_csv`, `db_file`, `sleep_time`, `cache_days`, `market_timezone` (timezone of the history timestamps, `Asia/Tokyo`), `daily_history_period`, `monthly_history_period`.
 
 ```yaml
@@ -85,6 +86,8 @@ uv run python main.py analyze
 ### 5. Output
 Results are saved to `results/emin_screening_result_YYYY-MM-DD.csv` (directory and file name set by `output` in `config.yaml`; `results/` is git-ignored) and the top `top_n` rows are displayed in the console.
 
+Every `analyze` also records the run (all tickers, including those that failed the gatekeeper with the failing rule, and tickers without cache as `no_cache`) in `records.duckdb` and exports it to `records/<run_id>/{runs,screen_results}.parquet`. Commit the `records/` Parquet files as the backup; `records.duckdb` is git-ignored. Optional `--issue YYYY-MM` labels the run with the Shikiho issue used.
+
 **Key Output Columns:**
 *   **Recommendation_Type**: `Quality Growth`, `Quality Value`, `NET-NET`, or `Watch`.
 *   **Cash_to_MarketCap_Ratio**: Cash and equivalents / Market Cap. >= 1.0 means Net-Net.
@@ -94,6 +97,13 @@ Results are saved to `results/emin_screening_result_YYYY-MM-DD.csv` (directory a
 *   **Sales_CAGR(%)**, **Sales_Growth_Years**: Sales CAGR and the span used (replace `Sales_Growth_4Y(%)`).
 *   **Avg_Turnover(M JPY)**: Average daily trading value over `turnover_days` sessions.
 *   **PBR**, **PSR**, **Dividend_Yield**: Standard valuation metrics.
+
+
+### 6. Evaluate Outcomes
+```bash
+uv run python main.py evaluate
+```
+For each recorded run and each `records.horizons_months` whose horizon has elapsed and has no outcomes yet, computes the return from freshly downloaded adjusted closes (last close on or before each date), the `benchmark_ticker` return and the excess; stores them in `outcomes` and writes `records/<run_id>/outcomes.parquet`.
 
 ## Testing and quality gates
 
@@ -116,7 +126,7 @@ The same checks run in CI (`.github/workflows/ci.yml`) and, except pytest, in pr
 
 ## Architecture
 
-*   `main.py`: CLI entry point (`tickers` / `fetch` / `analyze`).
+*   `main.py`: CLI entry point (`tickers` / `fetch` / `analyze` / `evaluate`).
 *   `src/stock_data.py`: `StockData`, the typed raw data of one ticker (normalizes histories to naive market-local dates).
 *   `src/metrics.py`: Pure helpers (`to_num`, `sales_cagr`, `avg_turnover`, ...).
 *   `src/rules.py`: Gatekeeper rules (one dataclass each) and `build_rules`.
@@ -124,6 +134,7 @@ The same checks run in CI (`.github/workflows/ci.yml`) and, except pytest, in pr
 *   `src/screener.py`: `Screener` runs rules then scorers and builds the result row.
 *   `src/cache.py`: `StockCache` (DuckDB) and `refresh` (download if stale).
 *   `src/yahoo.py`: `YahooClient` downloads raw data from Yahoo Finance.
+*   `src/records.py`: `RecordStore` (runs, screen_results, outcomes in `records.duckdb`, exported to Parquet) and `evaluate`.
 *   `src/tickers.py`: Builds the ticker CSV from the JPX listed company workbook.
 *   `src/report.py`: `write_report` writes the dated CSV (location, columns and `top_n` passed in from `output`) and prints the top candidates.
 *   `src/config.py`: Loads `config.yaml` once into `CFG`. Only `config.py` and `main.py` touch it; everything else receives values through `build_*` / `from_config` / dataclass fields.

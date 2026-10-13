@@ -122,3 +122,13 @@ system:
   daily_history_period: "1y"     # yfinance period of the daily history (turnover)
   market_timezone: "Asia/Tokyo" # Timezone of the history timestamps (bars are exposed as naive local dates)
   monthly_history_period: "max"  # yfinance period of the monthly history (trend, crash lows)
+
+# ------------------------------------------
+# 7. records: run records and outcome evaluation (`analyze` writes, `evaluate` reads)
+# ------------------------------------------
+records:
+  db_file: "records.duckdb"      # Record database (separate from the cache; git-ignored)
+  export_dir: "records"          # Parquet export per run: records/<run_id>/*.parquet (committed as the backup)
+  horizons_months: [6, 12]       # Outcome horizons measured from the run date
+  benchmark_ticker: "1306.T"     # TOPIX ETF; excess return is relative to it
+  history_period: "max"          # yfinance period of the adjusted daily history used by `evaluate`
