@@ -94,6 +94,10 @@ class StockCache:
             is not None
         )
 
+    def fetched_range(self) -> tuple[datetime.datetime | None, datetime.datetime | None]:
+        """Oldest and newest ``updated_at`` in the cache."""
+        return self.con.execute("SELECT min(updated_at), max(updated_at) FROM stock_cache").fetchone()  # type: ignore[return-value]
+
     def close(self) -> None:
         self.con.close()
 

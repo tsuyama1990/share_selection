@@ -46,7 +46,8 @@ def screen_sample(tmp_path: Path) -> pd.DataFrame:
     with StockCache(str(tmp_path / "sample.duckdb"), CFG["system"]["market_timezone"]) as cache:
         tickers = load_sample(cache)
         screener = Screener.from_config(CFG)
-        results = [r for t in tickers if (data := cache.get(t)) is not None and (r := screener.evaluate(data))]
+        screened = [screener.screen(d) for t in tickers if (d := cache.get(t)) is not None]
+        results = [r.row for r in screened if r.passed]
     df = pd.DataFrame(results).sort_values("Ticker").reset_index(drop=True)
     return df[[c for c in CFG["output"]["columns"] if c in df.columns]]
 

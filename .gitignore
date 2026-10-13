@@ -20,6 +20,7 @@ stocks_cache.duckdb
 emin_screening_result*.csv
 !tests/fixtures/*.csv
 results/
+# records/ (Parquet exports) is committed as the backup of records.duckdb
 
 # IDE & OS
 .vscode/

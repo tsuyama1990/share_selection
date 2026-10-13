@@ -2,7 +2,7 @@ import pytest
 
 from src import config
 
-SECTIONS = {"gatekeeper", "scoring", "recommendation", "output", "tickers", "system"}
+SECTIONS = {"gatekeeper", "scoring", "recommendation", "output", "tickers", "system", "records"}
 
 
 def test_loaded_config_has_all_sections():

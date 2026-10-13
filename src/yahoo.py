@@ -3,6 +3,7 @@
 import time
 from typing import Any
 
+import pandas as pd
 import yfinance as yf
 
 
@@ -38,3 +39,8 @@ class YahooClient:
             "cashflow": t.cashflow,
             "quarterly_income": t.quarterly_income_stmt,
         }
+
+    def adjusted_close(self, ticker: str, period: str) -> pd.Series:
+        """Split/dividend-adjusted daily closes indexed by naive market-local dates."""
+        time.sleep(self.sleep_time)
+        return yf.Ticker(ticker).history(period=period, auto_adjust=True)["Close"].tz_localize(None)

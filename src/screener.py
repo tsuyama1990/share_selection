@@ -1,10 +1,18 @@
 """Screener: runs gatekeeper rules, then scorers, and assembles the result row."""
 
-from typing import Any
+from typing import Any, NamedTuple
 
 from .rules import Rule, build_rules
 from .scorers import Scorer, build_scorers
 from .stock_data import StockData
+
+
+class ScreenResult(NamedTuple):
+    """Stage-1 outcome: ``row`` is the full result row if passed, else the metrics computed before ``fail_rule``."""
+
+    passed: bool
+    fail_rule: str | None
+    row: dict[str, Any]
 
 
 class Screener:
@@ -32,13 +40,13 @@ class Screener:
             rec["quality_value_min_value_score"],
         )
 
-    def evaluate(self, data: StockData) -> dict[str, Any] | None:
-        """Result row if the stock passes every rule (first failure rejects), else None."""
+    def screen(self, data: StockData) -> ScreenResult:
+        """Run the rules (first failure rejects), then the scorers."""
         metrics: dict[str, Any] = {}
         for rule in self.rules:
             res = rule.evaluate(data, metrics)
             if not res.passed:
-                return None
+                return ScreenResult(False, type(rule).__name__, metrics)
             metrics.update(res.metrics)
 
         scores = {"Growth": 0, "Value": 0, "Safety": 0}
@@ -59,10 +67,11 @@ class Screener:
         else:
             rec = "Watch"
 
-        return {
+        row = {
             "Ticker": data.ticker,
             "Name": data.info.get("longName", data.ticker),
             "Total_Score": growth + value + safety,
             "Recommendation_Type": rec,
             **metrics,
         }
+        return ScreenResult(True, None, row)

@@ -73,17 +73,25 @@ class TestScreener(unittest.TestCase):
         after = FakeRule(True)
         scorer = FakeScorer("Value", 1)
         screener = Screener([FakeRule(True), FakeRule(False), after], [scorer], 3, 4)
-        self.assertIsNone(screener.evaluate(DATA))
-        self.assertEqual(after.calls, 0)
+        res = screener.screen(DATA)
+        self.assertEqual((res.passed, res.fail_rule, after.calls), (False, "FakeRule", 0))
+
+    def test_failure_reports_metrics_computed_before_it(self):
+        res = Screener([FakeRule(True, {"PSR": 1.0}), FakeRule(False, {"PBR": 2.0})], [], 3, 4).screen(DATA)
+        self.assertEqual((res.passed, res.row), (False, {"PSR": 1.0}))
 
     def test_scores_and_recommendation(self):
         rules = [FakeRule(True, {"PSR": 1.0})]
-        res = Screener(
-            rules,
-            [FakeScorer("Growth", 3), FakeScorer("Value", 1), FakeScorer("Safety", 2, {"Chart_Trend": "Bull"})],
-            3,
-            4,
-        ).evaluate(DATA)
+        res = (
+            Screener(
+                rules,
+                [FakeScorer("Growth", 3), FakeScorer("Value", 1), FakeScorer("Safety", 2, {"Chart_Trend": "Bull"})],
+                3,
+                4,
+            )
+            .screen(DATA)
+            .row
+        )
         self.assertEqual(res["Ticker"], "1234.T")
         self.assertEqual(res["Name"], "Foo")
         self.assertEqual(res["Total_Score"], 6)
@@ -93,7 +101,7 @@ class TestScreener(unittest.TestCase):
 
     def test_recommendation_precedence(self):
         def rec(*scorers):
-            return Screener([], list(scorers), 3, 4).evaluate(DATA)["Recommendation_Type"]
+            return Screener([], list(scorers), 3, 4).screen(DATA).row["Recommendation_Type"]
 
         self.assertEqual(rec(FakeScorer("Value", 4)), "Quality Value")
         self.assertEqual(rec(FakeScorer("Value", 3)), "Watch")
@@ -101,7 +109,7 @@ class TestScreener(unittest.TestCase):
 
     def test_recommendation_thresholds_are_injected(self):
         def rec(growth_min, value_min, *scorers):
-            return Screener([], list(scorers), growth_min, value_min).evaluate(DATA)["Recommendation_Type"]
+            return Screener([], list(scorers), growth_min, value_min).screen(DATA).row["Recommendation_Type"]
 
         self.assertEqual(rec(5, 4, FakeScorer("Growth", 3)), "Watch")
         self.assertEqual(rec(2, 4, FakeScorer("Growth", 2)), "Quality Growth")
@@ -125,7 +133,7 @@ class TestScreener(unittest.TestCase):
                 "cashflow": pd.DataFrame({"2023": {"Operating Cash Flow": 100}}),
             },
         )
-        res = Screener.from_config(cfg).evaluate(data)
+        res = Screener.from_config(cfg).screen(data).row
         self.assertEqual(res["PSR"], 2.0)
         self.assertEqual(res["PBR"], 40000000.0)
         self.assertEqual(res["Total_Score"], 1)

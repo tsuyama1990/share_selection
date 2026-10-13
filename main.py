@@ -1,12 +1,14 @@
 import argparse
+import datetime
 import sys
-from typing import Any
+from functools import partial
 
 import pandas as pd
 from tqdm import tqdm
 
 from src.cache import StockCache, refresh
 from src.config import CFG, ROOT
+from src.records import NO_CACHE, RecordStore, evaluate, git_sha
 from src.report import write_report
 from src.screener import Screener
 from src.tickers import update_ticker_csv
@@ -44,20 +46,38 @@ def run_fetch(tickers: list[str], cache: StockCache, client: YahooClient):
     print(f"fetched {fetched} / {len(tickers)}")
 
 
-def run_analyze(tickers: list[str], cache: StockCache, screener: Screener, output_cfg: dict[str, Any]):
+def run_analyze(tickers: list[str], cache: StockCache, screener: Screener, issue: str | None):
     print(f"Starting Analysis for {len(tickers)} stocks (using cache)...")
+    output_cfg, rec = CFG["output"], CFG["records"]
     results = []
+    screened = []
     no_cache = 0
 
     for ticker in tqdm(tickers):
         data = cache.get(ticker)
         if data is None:
             no_cache += 1
+            screened.append({"ticker": ticker, "stage1_pass": False, "stage1_fail_rule": NO_CACHE, "metrics": {}})
             continue
-        res = screener.evaluate(data)
-        if res:
-            results.append(res)
+        res = screener.screen(data)
+        screened.append(
+            {"ticker": ticker, "stage1_pass": res.passed, "stage1_fail_rule": res.fail_rule, "metrics": res.row}
+        )
+        if res.passed:
+            results.append(res.row)
 
+    csv_path = ROOT / CFG["system"]["input_csv"]
+    fetched_min, fetched_max = cache.fetched_range()
+    info = {
+        "issue": issue,
+        "git_sha": git_sha(),
+        "config": CFG,
+        "ticker_list_date": datetime.date.fromtimestamp(csv_path.stat().st_mtime),
+        "data_fetched_min": fetched_min,
+        "data_fetched_max": fetched_max,
+    }
+    with RecordStore(ROOT / rec["db_file"], ROOT / rec["export_dir"]) as store:
+        print(f"Recorded run {store.record_run(info, screened)} ({len(screened)} tickers).")
     if no_cache:
         print(f"{no_cache} tickers had no cache (run `fetch` first).")
     if not results:
@@ -66,13 +86,24 @@ def run_analyze(tickers: list[str], cache: StockCache, screener: Screener, outpu
     write_report(results, ROOT / output_cfg["dir"], output_cfg["filename"], output_cfg["columns"], output_cfg["top_n"])
 
 
+def run_evaluate(client: YahooClient):
+    rec = CFG["records"]
+    history = partial(client.adjusted_close, period=rec["history_period"])
+    with RecordStore(ROOT / rec["db_file"], ROOT / rec["export_dir"]) as store:
+        added = evaluate(store, history, rec["horizons_months"], rec["benchmark_ticker"], datetime.datetime.now())
+    print(f"Added {added} outcome rows.")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Emin Yurumazu Screener")
     subparsers = parser.add_subparsers(dest="command", help="Commands")
 
     subparsers.add_parser("fetch", help="Fetch data from Yahoo Finance")
 
-    subparsers.add_parser("analyze", help="Analyze cached data")
+    analyze = subparsers.add_parser("analyze", help="Analyze cached data and record the run")
+    analyze.add_argument("--issue", help="Shikiho issue (YYYY-MM) the ticker research is based on")
+
+    subparsers.add_parser("evaluate", help="Compute outcomes of recorded runs whose horizons have elapsed")
 
     subparsers.add_parser("tickers", help="Update the ticker CSV from the JPX listed company list")
 
@@ -84,20 +115,18 @@ def main():
         print(f"Saved {count} tickers to {out_csv}")
         return
 
+    sc = CFG["system"]
+    client = YahooClient(sc["sleep_time"], sc["daily_history_period"], sc["monthly_history_period"])
+    if args.command == "evaluate":
+        run_evaluate(client)
+        return
+
     tickers = get_japan_tickers()
-    with StockCache(str(ROOT / CFG["system"]["db_file"]), CFG["system"]["market_timezone"]) as cache:
+    with StockCache(str(ROOT / sc["db_file"]), sc["market_timezone"]) as cache:
         if args.command == "fetch":
-            run_fetch(
-                tickers,
-                cache,
-                YahooClient(
-                    CFG["system"]["sleep_time"],
-                    CFG["system"]["daily_history_period"],
-                    CFG["system"]["monthly_history_period"],
-                ),
-            )
+            run_fetch(tickers, cache, client)
         elif args.command == "analyze":
-            run_analyze(tickers, cache, Screener.from_config(CFG), CFG["output"])
+            run_analyze(tickers, cache, Screener.from_config(CFG), args.issue)
         else:
             parser.print_help()
 
