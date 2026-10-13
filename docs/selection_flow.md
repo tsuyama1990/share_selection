@@ -148,7 +148,7 @@
 
 | 順 | ブランチ | 内容 | 段階 |
 |---|---|---|---|
-| 1 | `feat/quarterly-data` | 四半期の損益計算書を取得・キャッシュ。全銘柄で充足率を測る | 2 |
+| 1 | `feat/quarterly-data` | 四半期の損益計算書を取得・キャッシュ。全銘柄で充足率を測る（実装済み。充足率は再取得後に測る） | 2 |
 | 2 | `refactor/safety-gate` | 段階 1 の条件の見直し（決定事項を反映） | 1 |
 | 3 | `feat/improvement-signal` | 改善スコアと区分（四半期 EPS 前年同期比、加速、年次の推移、利益率の変化） | 2 |
 | 4 | `feat/source-types` | 型 P1〜P4 の機械的な印（旧 A〜G を再編）。`Recommendation_Type` を削除 | 3 |

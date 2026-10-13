@@ -10,7 +10,7 @@ import pandas as pd
 
 from .stock_data import StockData
 
-FRAME_KEYS = ("financials", "balance_sheet", "history", "history_monthly", "cashflow")
+FRAME_KEYS = ("financials", "balance_sheet", "history", "history_monthly", "cashflow", "quarterly_income")
 HISTORY_KEYS = ("history", "history_monthly")
 
 
@@ -30,9 +30,11 @@ class StockCache:
                 balance_sheet JSON,
                 history JSON,
                 history_monthly JSON,
-                cashflow JSON
+                cashflow JSON,
+                quarterly_income JSON
             )
         """)
+        self.con.execute("ALTER TABLE stock_cache ADD COLUMN IF NOT EXISTS quarterly_income JSON")
 
     def __enter__(self) -> "StockCache":
         return self
@@ -86,7 +88,8 @@ class StockCache:
         limit = datetime.datetime.now() - datetime.timedelta(days=max_age_days)
         return (
             self.con.execute(
-                "SELECT 1 FROM stock_cache WHERE ticker = ? AND updated_at > ?", [ticker, limit]
+                "SELECT 1 FROM stock_cache WHERE ticker = ? AND updated_at > ? AND quarterly_income IS NOT NULL",
+                [ticker, limit],
             ).fetchone()
             is not None
         )

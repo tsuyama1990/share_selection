@@ -6,7 +6,7 @@ from typing import Any
 
 import pandas as pd
 
-_FRAMES = ("financials", "balance_sheet", "cashflow", "history", "history_monthly")
+_FRAMES = ("financials", "balance_sheet", "cashflow", "history", "history_monthly", "quarterly_income")
 
 
 def _to_naive_datetime_index(df: pd.DataFrame, market_tz: str | None = None) -> pd.DataFrame:
@@ -36,6 +36,7 @@ class StockData:
     cashflow: pd.DataFrame = field(default_factory=pd.DataFrame)
     history: pd.DataFrame = field(default_factory=pd.DataFrame)
     history_monthly: pd.DataFrame = field(default_factory=pd.DataFrame)
+    quarterly_income: pd.DataFrame = field(default_factory=pd.DataFrame)
 
     @classmethod
     def from_dict(cls, ticker: str, d: dict[str, Any], market_tz: str | None = None) -> "StockData":

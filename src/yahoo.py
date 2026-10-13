@@ -36,4 +36,5 @@ class YahooClient:
             "history": t.history(period=self.daily_history_period),
             "history_monthly": t.history(period=self.monthly_history_period, interval="1mo"),
             "cashflow": t.cashflow,
+            "quarterly_income": t.quarterly_income_stmt,
         }
