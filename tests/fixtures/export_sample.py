@@ -11,7 +11,16 @@ from pathlib import Path
 import duckdb
 
 TICKERS = ["6430.T", "7713.T", "5542.T", "6599.T", "7203.T", "6920.T", "8935.T", "2491.T"]
-COLUMNS = ["info", "fast_info", "financials", "balance_sheet", "history", "history_monthly", "cashflow"]
+COLUMNS = [
+    "info",
+    "fast_info",
+    "financials",
+    "balance_sheet",
+    "history",
+    "history_monthly",
+    "cashflow",
+    "quarterly_income",
+]
 OUT = Path(__file__).with_name("sample_cache.json.gz")
 
 
