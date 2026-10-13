@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "duckdb>=1.4.4",
+    "numpy>=2.4.2",
     "openpyxl>=3.1.5",
     "pandas>=3.0.0",
     "pyyaml>=6.0.3",
@@ -22,6 +23,8 @@ dev = [
     "pre-commit>=4.0.0",
     "types-PyYAML>=6.0.0",
     "pandas-stubs>=2.2.0",
+    "vulture>=2.16",
+    "deptry>=0.25.1",
 ]
 
 [tool.pytest.ini_options]
@@ -37,11 +40,24 @@ line-length = 120
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "B", "UP", "SIM", "PLR2004"]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "PLR2004", "C901", "PLR0912", "PLR0913", "PLR0915"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["PLR2004"]
 
+[tool.vulture]
+paths = ["src", "main.py"]
+min_confidence = 60
+
+[tool.deptry.per_rule_ignores]
+DEP002 = ["openpyxl"]  # engine used by pandas.read_excel (tickers command)
+
 [tool.mypy]
 python_version = "3.12"
 ignore_missing_imports = true
+
+[tool.code_budget]
+max_source_lines = 1075

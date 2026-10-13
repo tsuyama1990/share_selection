@@ -48,7 +48,7 @@ class StockCache:
     def __enter__(self) -> "StockCache":
         return self
 
-    def __exit__(self, *exc) -> None:
+    def __exit__(self, *_exc) -> None:
         self.close()
 
     def get(self, ticker: str) -> StockData | None:

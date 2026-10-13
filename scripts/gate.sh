@@ -5,4 +5,6 @@ cd "$(dirname "$0")/.."
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy src main.py
+uv run vulture
+uv run deptry .
 uv run pytest -q
