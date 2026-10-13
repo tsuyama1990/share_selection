@@ -101,3 +101,19 @@ def test_all_missing_is_unknown():
     out = evaluate()
     assert out["Improvement_Class"] == "unknown"
     assert out["EPS_Q_YoY(%)"] is None and "EPS_Q_Latest" not in out
+
+
+def test_eps_row_with_only_nan_is_unknown():
+    out = evaluate(quarterly_income=quarterly(**{"2025-12-31": None, "2024-12-31": None}))
+    assert out["Improvement_Class"] == "unknown" and "EPS_Q_Latest" not in out
+
+
+def test_margin_change_needs_both_revenues():
+    fin = pd.DataFrame(
+        {
+            "2025": {"Total Revenue": 100.0, "Operating Income": 12.0},
+            "2024": {"Total Revenue": None, "Operating Income": 10.0},
+        }
+    )
+    out = evaluate(financials=fin)
+    assert out["OI_YoY(%)"] == 20.0 and out["Op_Margin_Change(pt)"] is None
