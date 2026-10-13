@@ -14,7 +14,7 @@ Japanese stock screener (Emin Yurumazu's theory). Python 3.12, managed with `uv`
 - Timestamps: histories are exposed as naive Asia/Tokyo dates (`system.market_timezone`); the cache stores UTC.
 
 ## Code style
-- NumPy-style docstrings on public functions and classes. Ruff line length 120, no magic numbers in comparisons (PLR2004).
+- NumPy-style docstrings only on public module-level functions/classes whose behavior is not obvious from name and signature. Everywhere else at most a one-line docstring; never restate names or types. Ruff line length 120, no magic numbers in comparisons (PLR2004).
 
 ## Commands
 - `uv sync`; `uv run python main.py {tickers|fetch|analyze}`

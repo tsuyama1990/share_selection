@@ -1,5 +1,4 @@
 import argparse
-import os
 import sys
 from typing import Any
 
@@ -15,19 +14,10 @@ from src.yahoo import YahooClient
 
 
 def get_japan_tickers() -> list[str]:
-    """
-    Retrieve the ticker list from the CSV given by ``system.input_csv``.
-
-    Exits with status 1 if the CSV is missing or has no ticker column.
-
-    Returns
-    -------
-    List[str]
-        List of ticker symbols (e.g., ['7203.T', ...]).
-    """
+    """Tickers from ``system.input_csv`` (".T" appended if missing); exits with status 1 if unusable."""
     csv_path = ROOT / CFG["system"]["input_csv"]
 
-    if not os.path.exists(csv_path):
+    if not csv_path.exists():
         print(f"Error: ticker CSV not found: {csv_path}")
         sys.exit(1)
 
@@ -48,18 +38,6 @@ def get_japan_tickers() -> list[str]:
 
 
 def run_fetch(tickers: list[str], cache: StockCache, client: YahooClient):
-    """
-    Download data for all tickers into the cache.
-
-    Parameters
-    ----------
-    tickers : List[str]
-        List of tickers to fetch.
-    cache : StockCache
-        Destination cache.
-    client : YahooClient
-        Yahoo Finance client.
-    """
     print(f"Starting Data Fetch for {len(tickers)} stocks...")
     days = CFG["system"]["cache_days"]
     fetched = sum(refresh(cache, client, t, days) for t in tqdm(tickers))
@@ -67,20 +45,6 @@ def run_fetch(tickers: list[str], cache: StockCache, client: YahooClient):
 
 
 def run_analyze(tickers: list[str], cache: StockCache, screener: Screener, output_cfg: dict[str, Any]):
-    """
-    Screen cached data and write the report.
-
-    Parameters
-    ----------
-    tickers : List[str]
-        List of tickers to analyze.
-    cache : StockCache
-        Source cache.
-    screener : Screener
-        Configured screener.
-    output_cfg : Dict[str, Any]
-        The 'output' config section (dir, filename, top_n, columns).
-    """
     print(f"Starting Analysis for {len(tickers)} stocks (using cache)...")
     results = []
     no_cache = 0
@@ -103,17 +67,13 @@ def run_analyze(tickers: list[str], cache: StockCache, screener: Screener, outpu
 
 
 def main():
-    """CLI entry point."""
     parser = argparse.ArgumentParser(description="Emin Yurumazu Screener")
     subparsers = parser.add_subparsers(dest="command", help="Commands")
 
-    # Fetch command
     subparsers.add_parser("fetch", help="Fetch data from Yahoo Finance")
 
-    # Analyze command
     subparsers.add_parser("analyze", help="Analyze cached data")
 
-    # Tickers command
     subparsers.add_parser("tickers", help="Update the ticker CSV from the JPX listed company list")
 
     args = parser.parse_args()

@@ -8,20 +8,6 @@ CONFIG_FILE = ROOT / "config.yaml"
 
 
 def _load() -> dict[str, Any]:
-    """
-    Load config.yaml from the repository root.
-
-    Returns
-    -------
-    Dict[str, Any]
-        Configuration with 'gatekeeper', 'scoring', 'recommendation', 'output',
-        'tickers' and 'system' sections.
-
-    Raises
-    ------
-    FileNotFoundError
-        If config.yaml does not exist.
-    """
     if not CONFIG_FILE.exists():
         raise FileNotFoundError(f"Config file not found: {CONFIG_FILE}")
     with open(CONFIG_FILE, encoding="utf-8") as f:

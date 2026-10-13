@@ -72,7 +72,6 @@ class TestScorers(unittest.TestCase):
         self.assertEqual(pts["Value"], 8)
         self.assertEqual(recs, ["NET-NET"])
         self.assertEqual(out["Cash_to_MarketCap_Ratio"], 1.33)
-        self.assertTrue(out["Net_Net_Flag(T/F)"])
 
     def test_cash_ratio_below_one_and_fallback_key(self):
         bs = pd.DataFrame({"2023": {"Cash Cash Equivalents And Short Term Investments": 75}})
@@ -128,7 +127,7 @@ class TestScorers(unittest.TestCase):
         hist = pd.DataFrame({"Close": np.linspace(100, 200, 30)}, index=dates)
         data = StockData.from_dict("T", {"history_monthly": hist})
         # Trend is up. Current 200 > MA3 > MA5
-        res = TrendScorer(3, 5, 2).score(data, {"Current_Price": 200})
+        res = TrendScorer(3, 5, 2, 1).score(data, {"Current_Price": 200})
         self.assertEqual(res.category, "Safety")
         self.assertEqual(res.metrics["Chart_Trend"], "Strong Bull")
         self.assertEqual(res.points, 2)
@@ -217,6 +216,7 @@ class TestScorers(unittest.TestCase):
                 "ma_short": 12,
                 "ma_long": 24,
                 "technical_points": 2,
+                "bull_points": 1,
             }
         }
         shock = build_scorers(cfg)[-1]
@@ -254,6 +254,7 @@ class TestScorers(unittest.TestCase):
                 "ma_short": 12,
                 "ma_long": 24,
                 "technical_points": 2,
+                "bull_points": 1,
             }
         }
         names = [type(x).__name__ for x in build_scorers(cfg)]

@@ -11,32 +11,11 @@ import pandas as pd
 def write_report(
     results: list[dict[str, Any]], out_dir: Path, filename: str, columns: Sequence[str], top_n: int
 ) -> Path:
-    """
-    Save results to a dated CSV (sorted by Total_Score) and print the top N.
-
-    Parameters
-    ----------
-    results : List[Dict[str, Any]]
-        Result rows from ``Screener.evaluate`` (must not be empty).
-    out_dir : Path
-        Output directory (created if missing).
-    filename : str
-        File name template; ``{date}`` is replaced by YYYY-MM-DD.
-    columns : Sequence[str]
-        Columns to write, in order (those absent from the results are skipped).
-    top_n : int
-        Number of top candidates printed to the console.
-
-    Returns
-    -------
-    Path
-        Path of the written CSV.
-    """
+    """Write results (sorted by Total_Score) to ``filename`` with ``{date}`` filled in, print the top N."""
     df = pd.DataFrame(results).sort_values("Total_Score", ascending=False)
     df = df[[c for c in columns if c in df.columns]]
 
     today = datetime.datetime.now().strftime("%Y-%m-%d")
-    out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / filename.format(date=today)
     df.to_csv(path, index=False, encoding="utf-8-sig")  # sig for Excel

@@ -10,9 +10,7 @@ import pandas as pd
 
 from .stock_data import StockData
 
-# DataFrame fields stored as JSON in the cache (order matches the table)
 FRAME_KEYS = ("financials", "balance_sheet", "history", "history_monthly", "cashflow")
-# Frames indexed by timestamps (stored as UTC instants in the JSON)
 HISTORY_KEYS = ("history", "history_monthly")
 
 
@@ -20,15 +18,6 @@ class StockCache:
     """Persists raw stock data in a DuckDB file. Usable as a context manager."""
 
     def __init__(self, db_path: str, market_timezone: str):
-        """
-        Parameters
-        ----------
-        db_path : str
-            Path to the DuckDB file (created if missing).
-        market_timezone : str
-            Market timezone (e.g., 'Asia/Tokyo'); history timestamps are
-            exposed as naive dates in it.
-        """
         self.market_timezone = market_timezone
         self.con = duckdb.connect(str(db_path))
         self.con.execute("""
@@ -52,14 +41,7 @@ class StockCache:
         self.close()
 
     def get(self, ticker: str) -> StockData | None:
-        """
-        Read a ticker from the cache regardless of its age.
-
-        Returns
-        -------
-        Optional[StockData]
-            The data, or None if not cached or corrupt.
-        """
+        """Read a ticker regardless of its age; None if not cached or corrupt."""
         res = self.con.execute(
             f"""
             SELECT info, fast_info, {", ".join(FRAME_KEYS)}
@@ -83,7 +65,7 @@ class StockCache:
             return None
 
     def put(self, ticker: str, raw: dict[str, Any]) -> None:
-        """Upsert a raw data dict (as returned by ``YahooClient.download``)."""
+        """Upsert the dict returned by ``YahooClient.download``."""
         frames: list[pd.DataFrame] = [raw[k] if raw.get(k) is not None else pd.DataFrame() for k in FRAME_KEYS]
         self.con.execute(
             f"""
@@ -101,7 +83,6 @@ class StockCache:
         )
 
     def is_fresh(self, ticker: str, max_age_days: float) -> bool:
-        """True if the entry exists and is younger than ``max_age_days``."""
         limit = datetime.datetime.now() - datetime.timedelta(days=max_age_days)
         return (
             self.con.execute(
@@ -111,30 +92,11 @@ class StockCache:
         )
 
     def close(self) -> None:
-        """Close the database connection."""
         self.con.close()
 
 
 def refresh(cache: StockCache, client, ticker: str, max_age_days: float) -> bool:
-    """
-    Download a ticker into the cache unless a fresh entry exists.
-
-    Parameters
-    ----------
-    cache : StockCache
-        Destination cache.
-    client : YahooClient
-        Anything with ``download(ticker) -> dict``.
-    ticker : str
-        Ticker symbol.
-    max_age_days : float
-        Cache entries younger than this are not re-downloaded.
-
-    Returns
-    -------
-    bool
-        True if the cache is up to date (skipped or downloaded), False on failure.
-    """
+    """Download unless a fresh entry exists; True if the cache is up to date afterwards, False on failure."""
     if cache.is_fresh(ticker, max_age_days):
         return True
     try:

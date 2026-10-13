@@ -17,18 +17,6 @@ class Screener:
         quality_growth_min_growth_score: int,
         quality_value_min_value_score: int,
     ):
-        """
-        Parameters
-        ----------
-        rules : List[Rule]
-            Gatekeeper rules, run in order; the first failure rejects the stock.
-        scorers : List[Scorer]
-            Scoring criteria, run for stocks that pass every rule.
-        quality_growth_min_growth_score : int
-            Growth score needed for 'Quality Growth'.
-        quality_value_min_value_score : int
-            Value score needed for 'Quality Value'.
-        """
         self.rules = rules
         self.scorers = scorers
         self.quality_growth_min_growth_score = quality_growth_min_growth_score
@@ -36,7 +24,6 @@ class Screener:
 
     @classmethod
     def from_config(cls, cfg: dict[str, Any]) -> "Screener":
-        """Build a Screener from the loaded configuration."""
         rec = cfg["recommendation"]
         return cls(
             build_rules(cfg),
@@ -46,19 +33,7 @@ class Screener:
         )
 
     def evaluate(self, data: StockData) -> dict[str, Any] | None:
-        """
-        Screen one stock.
-
-        Parameters
-        ----------
-        data : StockData
-            The stock's raw data.
-
-        Returns
-        -------
-        Optional[Dict[str, Any]]
-            Result row if the stock passes all rules, else None.
-        """
+        """Result row if the stock passes every rule (first failure rejects), else None."""
         metrics: dict[str, Any] = {}
         for rule in self.rules:
             res = rule.evaluate(data, metrics)
@@ -89,8 +64,5 @@ class Screener:
             "Name": data.info.get("longName", data.ticker),
             "Total_Score": growth + value + safety,
             "Recommendation_Type": rec,
-            "Score_Growth": growth,
-            "Score_Value": value,
-            "Score_Safety": safety,
             **metrics,
         }

@@ -52,6 +52,7 @@ scoring:
   ma_short: 12                 # 12-Month Moving Average
   ma_long: 24                  # 24-Month Moving Average
   technical_points: 2          # Bonus for Strong Bull Trend
+  bull_points: 1               # Bonus for Bull Trend (price > 12M MA only)
 
   # Crash lows (reported only, no points): name -> [start, end]
   # Output column: Downside_to_{Name}_Low(%)

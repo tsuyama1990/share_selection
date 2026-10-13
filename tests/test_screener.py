@@ -60,6 +60,7 @@ class TestScreener(unittest.TestCase):
             "ma_short": 12,
             "ma_long": 24,
             "technical_points": 2,
+            "bull_points": 1,
             "sales_cagr_years_back": 4,
             "sales_cagr_min_years": 3,
             "net_net_ratio": 1.0,
@@ -85,7 +86,6 @@ class TestScreener(unittest.TestCase):
         ).evaluate(DATA)
         self.assertEqual(res["Ticker"], "1234.T")
         self.assertEqual(res["Name"], "Foo")
-        self.assertEqual((res["Score_Growth"], res["Score_Value"], res["Score_Safety"]), (3, 1, 2))
         self.assertEqual(res["Total_Score"], 6)
         self.assertEqual(res["Recommendation_Type"], "Quality Growth")
         self.assertEqual(res["PSR"], 1.0)

@@ -1,8 +1,4 @@
-"""Scorers: each criterion awards points to one category and reports metrics.
-
-Thresholds and points are injected via dataclass fields; use
-:func:`build_scorers` to create scorers from config.
-"""
+"""Scorers: each criterion awards points to one category and reports metrics."""
 
 from dataclasses import dataclass
 from typing import Any, NamedTuple, Protocol
@@ -33,9 +29,7 @@ class ScoreResult(NamedTuple):
 class Scorer(Protocol):
     """A scoring criterion. ``metrics`` holds gatekeeper output (read-only)."""
 
-    def score(self, data: StockData, metrics: dict[str, Any]) -> ScoreResult:
-        """Score one stock."""
-        ...
+    def score(self, data: StockData, metrics: dict[str, Any]) -> ScoreResult: ...
 
 
 @dataclass
@@ -48,7 +42,6 @@ class SalesGrowthScorer:
     min_years: int
 
     def score(self, data: StockData, metrics: dict[str, Any]) -> ScoreResult:
-        """Score sales CAGR."""
         cagr, years = sales_cagr(data.financials, self.years_back, self.min_years)
         if cagr is None:
             return ScoreResult("Growth", 0, {})
@@ -57,19 +50,12 @@ class SalesGrowthScorer:
 
 
 def _latest_balance_sheet(data: StockData) -> pd.Series | None:
-    """Return the latest balance sheet period, or None if there is none."""
     return None if data.balance_sheet.empty else data.balance_sheet.iloc[:, 0]
 
 
 @dataclass
 class PsrScorer:
-    """
-    Value points by PSR tier: ``super_cheap_points`` if <= ``super_cheap``,
-    ``cheap_points`` if <= ``cheap``, else ``fair_points``.
-
-    Uses Real_PSR (net-cash adjusted) when an earlier scorer reported it,
-    otherwise the gatekeeper's PSR.
-    """
+    """Value points by PSR tier (<= super_cheap, <= cheap, else fair); uses Real_PSR when reported, else PSR."""
 
     super_cheap: float
     super_cheap_points: int
@@ -78,7 +64,6 @@ class PsrScorer:
     fair_points: int
 
     def score(self, data: StockData, metrics: dict[str, Any]) -> ScoreResult:
-        """Score PSR."""
         psr = metrics.get("Real_PSR", metrics["PSR"])
         if psr <= self.super_cheap:
             pts = self.super_cheap_points
@@ -91,16 +76,12 @@ class PsrScorer:
 
 @dataclass
 class CashRatioScorer:
-    """
-    Net-Net (book definition): bonus and NET-NET recommendation if cash and
-    equivalents >= ``net_net_ratio`` x market cap.
-    """
+    """Bonus and NET-NET recommendation if cash >= ``net_net_ratio`` x market cap."""
 
     bonus: int
     net_net_ratio: float
 
     def score(self, data: StockData, metrics: dict[str, Any]) -> ScoreResult:
-        """Score cash to market cap ratio."""
         latest_bs = _latest_balance_sheet(data)
         cash = None if latest_bs is None else first_valid(latest_bs, CASH_KEYS)
         mcap = metrics["Market_Cap"]
@@ -109,24 +90,17 @@ class CashRatioScorer:
         ratio = cash / mcap
         out = {"Cash_to_MarketCap_Ratio": round(ratio, 2)}
         if ratio >= self.net_net_ratio:
-            out["Net_Net_Flag(T/F)"] = True
             return ScoreResult("Value", self.bonus, out, "NET-NET")
         return ScoreResult("Value", 0, out)
 
 
 @dataclass
 class NetCashScorer:
-    """
-    Value points if net cash (cash - total debt) > 0; reports Real_PSR.
-
-    Missing debt is treated as 0 (yfinance omits it for debt-free companies),
-    but cash must exist. Real_PSR = (Market_Cap - net cash) / sales.
-    """
+    """Value points if net cash > 0; reports Real_PSR = (Market_Cap - net cash) / sales. Missing debt counts as 0."""
 
     points: int
 
     def score(self, data: StockData, metrics: dict[str, Any]) -> ScoreResult:
-        """Score net cash and compute Real_PSR."""
         latest_bs = _latest_balance_sheet(data)
         cash = None if latest_bs is None else first_valid(latest_bs, CASH_KEYS)
         if latest_bs is None or cash is None:
@@ -150,7 +124,6 @@ class PbrScorer:
     points: int
 
     def score(self, data: StockData, metrics: dict[str, Any]) -> ScoreResult:
-        """Report and score PBR."""
         pbr = to_num(data.info.get("priceToBook"))
         latest_bs = _latest_balance_sheet(data)
         if pbr is None and latest_bs is not None:
@@ -170,12 +143,7 @@ class DividendScorer:
     points: int
 
     def score(self, data: StockData, metrics: dict[str, Any]) -> ScoreResult:
-        """Score dividend yield.
-
-        Prefers the forward yield: yfinance's dividendYield is in percent
-        (3.0 = 3%), so it is divided by 100. Falls back to
-        trailingAnnualDividendYield, which is already a fraction (0.03 = 3%).
-        """
+        # dividendYield is a percent (3.0 = 3%); trailingAnnualDividendYield is a fraction
         pct = to_num(data.info.get("dividendYield"))
         div = pct / 100 if pct is not None else to_num(data.info.get("trailingAnnualDividendYield"))
         if div is None:
@@ -192,28 +160,23 @@ class PerGrowthScorer:
     points: int
 
     def score(self, data: StockData, metrics: dict[str, Any]) -> ScoreResult:
-        """Score PER growth."""
         f_pe = to_num(data.info.get("forwardPE"))
         t_pe = to_num(data.info.get("trailingPE"))
         if f_pe is None or t_pe is None or f_pe <= 0 or t_pe <= 0:
             return ScoreResult("Value", 0, {})
-        out = {"Forward_PE": round(f_pe, 2), "Trailing_PE": round(t_pe, 2)}
-        if f_pe < t_pe:
-            out["PE_Growth_Flag(T/F)"] = True
-            return ScoreResult("Value", self.points, out)
-        return ScoreResult("Value", 0, out)
+        return ScoreResult("Value", self.points if f_pe < t_pe else 0, {})
 
 
 @dataclass
 class TrendScorer:
-    """Safety points from the monthly MA trend (Strong Bull: ``points``, Bull: 1)."""
+    """Safety points from the monthly MA trend (Strong Bull: ``points``, Bull: ``bull_points``)."""
 
     ma_short: int
     ma_long: int
     points: int
+    bull_points: int
 
     def score(self, data: StockData, metrics: dict[str, Any]) -> ScoreResult:
-        """Score the monthly chart trend."""
         hist = data.history_monthly
         if hist.empty or len(hist) < self.ma_long:
             return ScoreResult("Safety", 0, {})
@@ -227,7 +190,7 @@ class TrendScorer:
         if price > ma_s > ma_l:
             out["Chart_Trend"], pts = "Strong Bull", self.points
         elif price > ma_s:
-            out["Chart_Trend"], pts = "Bull", 1
+            out["Chart_Trend"], pts = "Bull", self.bull_points
         else:
             out["Chart_Trend"], pts = "Bear", 0
         return ScoreResult("Safety", pts, out)
@@ -241,7 +204,6 @@ class EquityScorer:
     points: int
 
     def score(self, data: StockData, metrics: dict[str, Any]) -> ScoreResult:
-        """Score the equity ratio."""
         ratio = to_num(metrics.get("Equity_Ratio"))
         ok = ratio is not None and ratio >= self.ideal * 100
         return ScoreResult("Safety", self.points if ok else 0, {})
@@ -254,7 +216,6 @@ class ShockLowMetric:
     windows: dict[str, tuple[str, str]]  # name -> (start, end) dates
 
     def score(self, data: StockData, metrics: dict[str, Any]) -> ScoreResult:
-        """Report (low / price - 1) in percent for each window that has data."""
         hist = data.history_monthly
         price = to_num(metrics.get("Current_Price"))
         out: dict[str, Any] = {}
@@ -268,19 +229,7 @@ class ShockLowMetric:
 
 
 def build_scorers(cfg: dict[str, Any]) -> list[Scorer]:
-    """
-    Build the scorers from ``config['scoring']``.
-
-    Parameters
-    ----------
-    cfg : Dict[str, Any]
-        Full configuration (uses the 'scoring' section).
-
-    Returns
-    -------
-    List[Scorer]
-        Scorers to run in order.
-    """
+    """Build the scorers, in evaluation order, from ``cfg['scoring']``."""
     sc = cfg["scoring"]
     return [
         SalesGrowthScorer(
@@ -302,6 +251,6 @@ def build_scorers(cfg: dict[str, Any]) -> list[Scorer]:
         DividendScorer(sc["dividend_yield_target"], sc["dividend_points"]),
         PerGrowthScorer(sc["per_growth_points"]),
         EquityScorer(sc["equity_ratio_ideal"], sc["equity_ideal_points"]),
-        TrendScorer(sc["ma_short"], sc["ma_long"], sc["technical_points"]),
+        TrendScorer(sc["ma_short"], sc["ma_long"], sc["technical_points"], sc["bull_points"]),
         ShockLowMetric({name.capitalize(): (start, end) for name, (start, end) in sc["shock_lows"].items()}),
     ]
