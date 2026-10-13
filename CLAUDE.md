@@ -58,3 +58,8 @@ Japanese stock screener (Emin Yurumazu's theory). Python 3.12, managed with `uv`
 - Stage files by explicit path; never `git add -A` / `git add .`.
 - Push only when the user asks.
 - Never delete or commit `stocks_cache.duckdb` (git-ignored full cache) or `results/`.
+
+## Design docs (`docs/`)
+- `selection_flow.md` is the target design; `hypothesis_map.md` holds the evidence; `entry_types_design.md` is to be reorganized under it; `screening_criteria.md` describes what is implemented now.
+- Label every factual claim ([原著]/[一次]/[報道]/[データ: date]/[推論]); recompute numbers with current config and data before committing; check cited examples satisfy the definition; log corrections at the end of the doc.
+- Before saying data "cannot be obtained", exhaust the retrieval paths (all yfinance accessors, official public data such as JPX) and state exactly what was tried.
