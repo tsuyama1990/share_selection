@@ -24,9 +24,21 @@ INFO = {
     "data_fetched_max": datetime.datetime(2026, 10, 3),
 }
 ROWS = [
-    {"ticker": "1.T", "stage1_pass": True, "stage1_fail_rule": None, "metrics": {"PSR": 1.5, "Name": "x"}},
-    {"ticker": "2.T", "stage1_pass": False, "stage1_fail_rule": "PsrCap", "metrics": {"PSR": float("nan")}},
-    {"ticker": "3.T", "stage1_pass": False, "stage1_fail_rule": NO_CACHE, "metrics": {}},
+    {
+        "ticker": "1.T",
+        "stage1_pass": True,
+        "stage1_fail_rule": None,
+        "improvement_class": "clear",
+        "metrics": {"PSR": 1.5, "Name": "x"},
+    },
+    {
+        "ticker": "2.T",
+        "stage1_pass": False,
+        "stage1_fail_rule": "PsrCap",
+        "improvement_class": "none",
+        "metrics": {"PSR": float("nan")},
+    },
+    {"ticker": "3.T", "stage1_pass": False, "stage1_fail_rule": NO_CACHE, "improvement_class": None, "metrics": {}},
 ]
 
 
@@ -38,12 +50,15 @@ def test_record_run_round_trip_and_parquet(tmp_path):
     with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec") as store:
         run_id = store.record_run(INFO, ROWS)
         run = store.con.execute("SELECT issue, git_sha, config, ticker_list_date FROM runs").fetchall()
-        res = store.con.execute("SELECT ticker, stage1_pass, stage1_fail_rule, metrics FROM screen_results").fetchall()
+        res = store.con.execute(
+            "SELECT ticker, stage1_pass, stage1_fail_rule, metrics, improvement_class FROM screen_results"
+        ).fetchall()
         assert store.tickers(run_id) == ["1.T", "2.T"]
     assert run == [("2026-10", "abc", '{"a": 1}', datetime.date(2026, 10, 1))]
     assert [r[:3] for r in res] == [("1.T", True, None), ("2.T", False, "PsrCap"), ("3.T", False, NO_CACHE)]
     assert json.loads(res[0][3]) == {"PSR": 1.5, "Name": "x"}
     assert json.loads(res[1][3]) == {"PSR": None}
+    assert [r[4] for r in res] == ["clear", "none", None]
     out = tmp_path / "rec" / run_id
     assert parquet(out, "runs")["git_sha"].tolist() == ["abc"]
     assert parquet(out, "screen_results")["ticker"].tolist() == ["1.T", "2.T", "3.T"]
@@ -62,13 +77,17 @@ def test_analyze_records_every_ticker(tmp_path, monkeypatch):
         main.run_analyze(tickers, cache, Screener.from_config(CFG), "2026-10")
     rec = CFG["records"]
     with duckdb.connect(str(tmp_path / rec["db_file"])) as con:
-        rows = con.execute("SELECT ticker, stage1_pass, stage1_fail_rule, metrics FROM screen_results").fetchall()
+        rows = con.execute(
+            "SELECT ticker, stage1_pass, stage1_fail_rule, metrics, improvement_class FROM screen_results"
+        ).fetchall()
         (run_id,) = con.execute("SELECT run_id FROM runs").fetchone()
     assert sorted(r[0] for r in rows) == sorted(tickers)
     assert {r[0]: r[1:3] for r in rows}["9999.T"] == (False, NO_CACHE)
     failed = [r for r in rows if not r[1] and r[2] != NO_CACHE]
     assert failed and all(r[2] and json.loads(r[3]) is not None for r in failed)
     assert any(r[1] for r in rows)
+    assert all((r[4] is None) == (r[0] == "9999.T") for r in rows)
+    assert all(r[4] == json.loads(r[3])["Improvement_Class"] for r in rows if r[0] != "9999.T")
     assert len(parquet(tmp_path / rec["export_dir"] / run_id, "screen_results")) == len(tickers)
     assert len(list((tmp_path / CFG["output"]["dir"]).glob("*.csv"))) == 1
 

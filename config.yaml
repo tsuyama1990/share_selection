@@ -69,6 +69,13 @@ recommendation:
   quality_value_min_value_score: 4    # Value score >= 4 -> Quality Value (otherwise Watch)
 
 # ------------------------------------------
+# 3b. improvement: stage 2 signs of improvement (computed for every ticker, also those failing the gatekeeper)
+# ------------------------------------------
+improvement:
+  clear_threshold: 0.20             # Quarterly EPS or annual operating income YoY >= 20% (or EPS turnaround) -> "clear"
+  same_quarter_tolerance_days: 20   # Same quarter a year earlier = 365 +- this many days before the latest quarter
+
+# ------------------------------------------
 # 4. output: CSV report
 # ------------------------------------------
 output:
@@ -79,6 +86,10 @@ output:
     - Ticker
     - Name
     - Total_Score
+    - EPS_Q_YoY(%)
+    - OI_YoY(%)
+    - Op_Margin_Change(pt)
+    - Improvement_Class
     - Recommendation_Type
     - Current_Price
     - PSR

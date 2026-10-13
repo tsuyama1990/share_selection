@@ -3,6 +3,7 @@ import unittest
 import pandas as pd
 
 from src.cache import StockCache, refresh
+from src.improvement import ImprovementSignal
 from src.rules import RuleResult
 from src.scorers import ScoreResult
 from src.screener import Screener
@@ -26,6 +27,7 @@ class FakeScorer:
         return self.result
 
 
+NO_IMPROVEMENT = ImprovementSignal(0.2, 20)
 DATA = StockData.from_dict("1234.T", {"info": {"longName": "Foo"}})
 
 
@@ -67,23 +69,28 @@ class TestScreener(unittest.TestCase):
             "shock_lows": {"lehman": ["2008-09-01", "2009-03-31"]},
         },
         "recommendation": {"quality_growth_min_growth_score": 3, "quality_value_min_value_score": 4},
+        "improvement": {"clear_threshold": 0.2, "same_quarter_tolerance_days": 20},
     }
 
     def test_failing_rule_short_circuits(self):
         after = FakeRule(True)
         scorer = FakeScorer("Value", 1)
-        screener = Screener([FakeRule(True), FakeRule(False), after], [scorer], 3, 4)
+        screener = Screener(NO_IMPROVEMENT, [FakeRule(True), FakeRule(False), after], [scorer], 3, 4)
         res = screener.screen(DATA)
         self.assertEqual((res.passed, res.fail_rule, after.calls), (False, "FakeRule", 0))
 
     def test_failure_reports_metrics_computed_before_it(self):
-        res = Screener([FakeRule(True, {"PSR": 1.0}), FakeRule(False, {"PBR": 2.0})], [], 3, 4).screen(DATA)
-        self.assertEqual((res.passed, res.row), (False, {"PSR": 1.0}))
+        res = Screener(NO_IMPROVEMENT, [FakeRule(True, {"PSR": 1.0}), FakeRule(False, {"PBR": 2.0})], [], 3, 4).screen(
+            DATA
+        )
+        self.assertEqual((res.passed, res.row["PSR"], "PBR" in res.row), (False, 1.0, False))
+        self.assertEqual(res.row["Improvement_Class"], "unknown")
 
     def test_scores_and_recommendation(self):
         rules = [FakeRule(True, {"PSR": 1.0})]
         res = (
             Screener(
+                NO_IMPROVEMENT,
                 rules,
                 [FakeScorer("Growth", 3), FakeScorer("Value", 1), FakeScorer("Safety", 2, {"Chart_Trend": "Bull"})],
                 3,
@@ -101,7 +108,7 @@ class TestScreener(unittest.TestCase):
 
     def test_recommendation_precedence(self):
         def rec(*scorers):
-            return Screener([], list(scorers), 3, 4).screen(DATA).row["Recommendation_Type"]
+            return Screener(NO_IMPROVEMENT, [], list(scorers), 3, 4).screen(DATA).row["Recommendation_Type"]
 
         self.assertEqual(rec(FakeScorer("Value", 4)), "Quality Value")
         self.assertEqual(rec(FakeScorer("Value", 3)), "Watch")
@@ -109,7 +116,11 @@ class TestScreener(unittest.TestCase):
 
     def test_recommendation_thresholds_are_injected(self):
         def rec(growth_min, value_min, *scorers):
-            return Screener([], list(scorers), growth_min, value_min).screen(DATA).row["Recommendation_Type"]
+            return (
+                Screener(NO_IMPROVEMENT, [], list(scorers), growth_min, value_min)
+                .screen(DATA)
+                .row["Recommendation_Type"]
+            )
 
         self.assertEqual(rec(5, 4, FakeScorer("Growth", 3)), "Watch")
         self.assertEqual(rec(2, 4, FakeScorer("Growth", 2)), "Quality Growth")
@@ -119,6 +130,7 @@ class TestScreener(unittest.TestCase):
     def test_from_config_reads_recommendation_section(self):
         cfg = dict(self.CFG, recommendation={"quality_growth_min_growth_score": 7, "quality_value_min_value_score": 9})
         screener = Screener.from_config(cfg)
+        self.assertEqual(screener.improvement, ImprovementSignal(0.2, 20))
         self.assertEqual(screener.quality_growth_min_growth_score, 7)
         self.assertEqual(screener.quality_value_min_value_score, 9)
 
@@ -198,3 +210,16 @@ class TestStockCache(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_improvement_metrics_present_for_gate_failing_ticker(self):
+        data = StockData.from_dict(
+            "1234.T",
+            {
+                "quarterly_income": pd.DataFrame(
+                    {"2025-12-31": {"Diluted EPS": 12.0}, "2024-12-31": {"Diluted EPS": 10.0}}
+                )
+            },
+        )
+        res = Screener.from_config(self.CFG).screen(data)  # no market cap -> fails the first rule
+        self.assertFalse(res.passed)
+        self.assertEqual((res.row["EPS_Q_YoY(%)"], res.row["Improvement_Class"]), (20.0, "clear"))

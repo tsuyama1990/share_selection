@@ -54,7 +54,13 @@ def run_analyze(tickers: list[str], cache: StockCache, screener: Screener, issue
         data = cache.get(ticker)
         res = screener.screen(data) if data is not None else ScreenResult(False, NO_CACHE, {})
         screened.append(
-            {"ticker": ticker, "stage1_pass": res.passed, "stage1_fail_rule": res.fail_rule, "metrics": res.row}
+            {
+                "ticker": ticker,
+                "stage1_pass": res.passed,
+                "stage1_fail_rule": res.fail_rule,
+                "improvement_class": res.row.get("Improvement_Class"),
+                "metrics": res.row,
+            }
         )
     results = [r["metrics"] for r in screened if r["stage1_pass"]]
     no_cache = sum(r["stage1_fail_rule"] == NO_CACHE for r in screened)

@@ -2,6 +2,7 @@
 
 from typing import Any, NamedTuple
 
+from .improvement import ImprovementSignal
 from .rules import Rule, build_rules
 from .scorers import Scorer, build_scorers
 from .stock_data import StockData
@@ -20,11 +21,13 @@ class Screener:
 
     def __init__(
         self,
+        improvement: ImprovementSignal,
         rules: list[Rule],
         scorers: list[Scorer],
         quality_growth_min_growth_score: int,
         quality_value_min_value_score: int,
     ):
+        self.improvement = improvement
         self.rules = rules
         self.scorers = scorers
         self.quality_growth_min_growth_score = quality_growth_min_growth_score
@@ -32,8 +35,9 @@ class Screener:
 
     @classmethod
     def from_config(cls, cfg: dict[str, Any]) -> "Screener":
-        rec = cfg["recommendation"]
+        rec, imp = cfg["recommendation"], cfg["improvement"]
         return cls(
+            ImprovementSignal(imp["clear_threshold"], imp["same_quarter_tolerance_days"]),
             build_rules(cfg),
             build_scorers(cfg),
             rec["quality_growth_min_growth_score"],
@@ -41,8 +45,8 @@ class Screener:
         )
 
     def screen(self, data: StockData) -> ScreenResult:
-        """Run the rules (first failure rejects), then the scorers."""
-        metrics: dict[str, Any] = {}
+        """Compute improvement signals, run the rules (first failure rejects), then the scorers."""
+        metrics: dict[str, Any] = self.improvement.evaluate(data)
         for rule in self.rules:
             res = rule.evaluate(data, metrics)
             if not res.passed:
