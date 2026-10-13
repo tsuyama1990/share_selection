@@ -28,10 +28,11 @@ Japanese stock screener (Emin Yurumazu's theory). Python 3.12, managed with `uv`
 - Complexity limits (ruff C901 <= 10, PLR0912/0913/0915) are fixed by simplifying, not by `noqa`.
 - Dead code (`vulture`) and dependency drift (`deptry`) are gates alongside ruff, mypy and pytest.
 
-## Claude Code hooks (`.claude/settings.json`)
-- PreToolUse on Bash (`scripts/hooks/block_git_add_all.sh`): blocks `git add -A`, `--all` and `git add .`; stage explicit paths.
-- PreToolUse on Edit/Write/NotebookEdit and `git commit` (`scripts/hooks/branch_guard.sh`): blocks editing repo files or committing while on `main`. Branch first.
-- Stop (`scripts/hooks/stop_gate.sh`): if `src`, `main.py`, `tests`, `config.yaml` or `pyproject.toml` have uncommitted changes, runs `scripts/gate.sh` and blocks finishing until it passes. After 3 blocked attempts it lets the session stop with a "NOT DONE" message; report what fails instead of claiming done.
+## Claude Code hooks (user-level, `~/.claude/hooks/`)
+- Block `git add -A` / `--all` / `.`; block repo edits and `git commit` on `main` (branch first).
+- Stop: if the repo has uncommitted non-doc changes, runs `scripts/gate.sh` and blocks finishing until it
+  passes; after 3 blocked attempts the session stops with a "NOT DONE" message — report what fails.
+- This repo provides `scripts/gate.sh`; keep it identical to the CI steps.
 
 ## Golden regression
 - `tests/test_regression.py` compares screener output on `tests/fixtures/sample_cache.json.gz` to `tests/fixtures/golden_screening.csv`.
