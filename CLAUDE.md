@@ -30,13 +30,30 @@ Japanese stock screener (Emin Yurumazu's theory). Python 3.12, managed with `uv`
 
 ## Claude Code hooks (`.claude/settings.json`)
 - PreToolUse on Bash (`scripts/hooks/block_git_add_all.sh`): blocks `git add -A`, `--all` and `git add .`; stage explicit paths.
-- Stop (`scripts/hooks/stop_gate.sh`): if `src`, `main.py`, `tests`, `config.yaml` or `pyproject.toml` have uncommitted changes, runs `scripts/gate.sh` and blocks finishing until it passes.
+- PreToolUse on Edit/Write/NotebookEdit and `git commit` (`scripts/hooks/branch_guard.sh`): blocks editing repo files or committing while on `main`. Branch first.
+- Stop (`scripts/hooks/stop_gate.sh`): if `src`, `main.py`, `tests`, `config.yaml` or `pyproject.toml` have uncommitted changes, runs `scripts/gate.sh` and blocks finishing until it passes. After 3 blocked attempts it lets the session stop with a "NOT DONE" message; report what fails instead of claiming done.
 
 ## Golden regression
 - `tests/test_regression.py` compares screener output on `tests/fixtures/sample_cache.json.gz` to `tests/fixtures/golden_screening.csv`.
 - After an intended change of behavior or `config.yaml` values: `UPDATE_GOLDEN=1 uv run pytest tests/test_regression.py`, review the diff, commit it with the change.
 
+## Workflow and definition of done
+1. **Start**: branch from `main` as `<type>/<topic>` (feat, fix, refactor, chore, docs) before touching files.
+   Write the done criteria first: requirements with how each is checked, allowed behavior changes
+   (none for refactors), and the expected source line delta.
+2. **Work**: small commits, one logical change each; every commit passes `scripts/gate.sh`.
+3. **Verify** (author): all gates green; golden/full-run diff within the allowed changes; every
+   requirement mapped to evidence (test or run output). Delegated agents work in a separate worktree
+   branch; the main session re-runs the gates itself before accepting their work.
+4. **Merge**: `git merge --no-ff` into `main` with the requirement -> evidence list in the merge message.
+   Behavior-preserving changes (identical golden and full-run output) merge autonomously; changes to
+   screening results need the user's approval before merging. Delete the branch after merging.
+5. **Stop rules**: after 3 failed attempts at the same gate, stop and report what fails and what was tried.
+   Keep cleanup scoped to the diff and touched modules; record minor findings instead of fixing them.
+6. Report status as "ready for acceptance" or "merged", never just "done", with the net line delta and
+   what was deleted.
+
 ## Git rules
 - Stage files by explicit path; never `git add -A` / `git add .`.
-- One logical change per commit with a clear message. Do not push unless asked.
+- Push only when the user asks.
 - Never delete or commit `stocks_cache.duckdb` (git-ignored full cache) or `results/`.
