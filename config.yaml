@@ -26,7 +26,7 @@ scoring:
   sales_cagr_years_back: 4     # Max look-back span (years) for the Sales CAGR
   sales_cagr_min_years: 3      # Min span (years) required; shorter history = no CAGR
   sales_growth_points: 3
-  
+
   # Value
   psr_super_cheap: 0.5         # Real_PSR (PSR if unavailable) <= 0.5
   psr_super_cheap_points: 3
@@ -52,6 +52,7 @@ scoring:
   ma_short: 12                 # 12-Month Moving Average
   ma_long: 24                  # 24-Month Moving Average
   technical_points: 2          # Bonus for Strong Bull Trend
+  bull_points: 1               # Bonus for Bull Trend (price > 12M MA only)
 
   # Crash lows (reported only, no points): name -> [start, end]
   # Output column: Downside_to_{Name}_Low(%)
@@ -119,4 +120,5 @@ system:
   cache_days: 3                  # Valid period for cached data (days)
   db_file: "stocks_cache.duckdb" # Database file
   daily_history_period: "1y"     # yfinance period of the daily history (turnover)
+  market_timezone: "Asia/Tokyo" # Timezone of the history timestamps (bars are exposed as naive local dates)
   monthly_history_period: "max"  # yfinance period of the monthly history (trend, crash lows)

@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync
+      - run: uv run ruff check
+      - run: uv run ruff format --check
+      - run: uv run mypy src main.py
+      - run: uv run vulture
+      - run: uv run deptry .
+      - name: Budget increase needs a Budget-Increase trailer
+        run: |
+          if base=$(git merge-base origin/main HEAD 2>/dev/null); then
+            scripts/check_budget_increase.sh "$base"
+          else
+            echo "origin/main unavailable; skipping"
+          fi
+      - run: uv run pytest  # coverage options and fail_under live in pyproject.toml

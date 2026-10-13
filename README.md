@@ -24,15 +24,11 @@ The system uses a **Hybrid Architecture** with **DuckDB** to separate data accum
 
 ## Installation
 
-This project uses `uv` for dependency management.
+This project uses `uv` (Python 3.12+).
 
 ```bash
-uv add yfinance pandas tqdm pyyaml duckdb
-```
-
-Or using pip:
-```bash
-pip install yfinance pandas tqdm pyyaml duckdb
+uv sync                      # runtime + dev tools (pytest, ruff, mypy, pre-commit)
+uv run pre-commit install    # optional: run the checks on every commit
 ```
 
 ## Usage
@@ -45,7 +41,7 @@ Edit `config.yaml` to adjust criteria. Every tunable parameter, path and file na
 *   `recommendation`: `quality_growth_min_growth_score` and `quality_value_min_value_score` for `Recommendation_Type`.
 *   `output`: report `dir`, `filename` (`{date}` = YYYY-MM-DD), `top_n` and the CSV `columns`.
 *   `tickers`: `jpx_url` and the `markets` kept by the `tickers` command.
-*   `system`: `input_csv`, `db_file`, `sleep_time`, `cache_days`, `daily_history_period`, `monthly_history_period`.
+*   `system`: `input_csv`, `db_file`, `sleep_time`, `cache_days`, `market_timezone` (timezone of the history timestamps, `Asia/Tokyo`), `daily_history_period`, `monthly_history_period`.
 
 ```yaml
 gatekeeper:
@@ -65,7 +61,7 @@ system:
 Generate it from the JPX listed company list (Prime / Standard / Growth domestic stocks; JPX updates it monthly):
 
 ```bash
-python3 main.py tickers
+uv run python main.py tickers
 ```
 
 This writes the CSV given by `input_csv` (default `japan_tickers.csv`). A custom CSV also works if it has a `code`, `Code`, `ticker` or `Ticker` column. There is no demo list; a missing or invalid file is an error.
@@ -75,7 +71,7 @@ This command downloads data for tickers whose cache is older than `cache_days` (
 *Run this periodically (e.g., weekly).*
 
 ```bash
-python3 main.py fetch
+uv run python main.py fetch
 ```
 
 ### 4. Analyze Data (Screening)
@@ -83,7 +79,7 @@ This command runs the screening logic using **only the local cache** (it never c
 *Run this as many times as you like while tweaking `config.yaml`.*
 
 ```bash
-python3 main.py analyze
+uv run python main.py analyze
 ```
 
 ### 5. Output
@@ -99,21 +95,37 @@ Results are saved to `results/emin_screening_result_YYYY-MM-DD.csv` (directory a
 *   **Avg_Turnover(M JPY)**: Average daily trading value over `turnover_days` sessions.
 *   **PBR**, **PSR**, **Dividend_Yield**: Standard valuation metrics.
 
-## Testing
+## Testing and quality gates
 
 ```bash
-uv run pytest
+uv run pytest                          # tests + coverage (fail_under = 85)
+uv run ruff check                      # lint (E,F,W,I,B,UP,SIM,PLR2004, complexity C901<=10, PLR0912/0913/0915)
+uv run ruff format --check             # formatting (use `ruff format` to apply)
+uv run mypy src main.py                # types
+uv run vulture                         # dead code (src, main.py; min confidence 60)
+uv run deptry .                        # declared vs imported dependencies
+scripts/gate.sh                        # all of the above
 ```
+
+The same checks run in CI (`.github/workflows/ci.yml`) and, except pytest, in pre-commit (`.pre-commit-config.yaml`).
+
+*   **Golden regression**: `tests/test_regression.py` screens 8 cached tickers (`tests/fixtures/sample_cache.json.gz`, exported by `tests/fixtures/export_sample.py`) and compares with `tests/fixtures/golden_screening.csv`. After an intended behavior or config change, regenerate with `UPDATE_GOLDEN=1 uv run pytest tests/test_regression.py` and review the diff.
+*   **Architecture tests** (`tests/test_architecture.py`): `CFG` is used only in `src/config.py` and `main.py`; every key of `config.yaml` is read by the code and every key the code reads exists.
+*   **Code budget** (`tests/test_code_budget.py`): non-blank, non-comment lines of `src/**/*.py` + `main.py` (docstrings count) must not exceed `[tool.code_budget] max_source_lines` in `pyproject.toml`, and must not fall more than 10 below it (lower the budget when you delete code, so reductions are kept). Raising the budget needs a `Budget-Increase: <reason>` line in a commit message; `scripts/check_budget_increase.sh <base-ref>` checks this in CI (base = merge-base with `origin/main`).
+*   **Timezone**: Yahoo history timestamps are Asia/Tokyo; the cache stores them as UTC. `StockCache.get` converts them back so `StockData` histories always have naive local dates (a monthly bar for October is dated `YYYY-10-01`).
 
 ## Architecture
 
-*   `main.py`: CLI entry point (`fetch` / `analyze`).
-*   `src/stock_data.py`: `StockData`, the typed raw data of one ticker (normalizes histories).
+*   `main.py`: CLI entry point (`tickers` / `fetch` / `analyze`).
+*   `src/stock_data.py`: `StockData`, the typed raw data of one ticker (normalizes histories to naive market-local dates).
 *   `src/metrics.py`: Pure helpers (`to_num`, `sales_cagr`, `avg_turnover`, ...).
 *   `src/rules.py`: Gatekeeper rules (one dataclass each) and `build_rules`.
 *   `src/scorers.py`: Scoring criteria (one dataclass each) and `build_scorers`.
 *   `src/screener.py`: `Screener` runs rules then scorers and builds the result row.
 *   `src/cache.py`: `StockCache` (DuckDB) and `refresh` (download if stale).
 *   `src/yahoo.py`: `YahooClient` downloads raw data from Yahoo Finance.
+*   `src/tickers.py`: Builds the ticker CSV from the JPX listed company workbook.
 *   `src/report.py`: `write_report` writes the dated CSV (location, columns and `top_n` passed in from `output`) and prints the top candidates.
-*   `src/config.py`: Loads `config.yaml` once into `CFG`. Only `config.py` and `main.py` (plus the `build_*` / `from_config` factories) touch it; everything else receives values by injection.
+*   `src/config.py`: Loads `config.yaml` once into `CFG`. Only `config.py` and `main.py` touch it; everything else receives values through `build_*` / `from_config` / dataclass fields.
+
+See `docs/screening_criteria.md` for how the criteria map to the original book.
