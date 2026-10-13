@@ -151,6 +151,21 @@ class TestScreener(unittest.TestCase):
         self.assertEqual(res["Total_Score"], 1)
         self.assertEqual(res["Recommendation_Type"], "Watch")
 
+    def test_improvement_metrics_present_for_gate_failing_ticker(self):
+        data = StockData.from_dict(
+            "1234.T",
+            {
+                "quarterly_income": pd.DataFrame(
+                    {"2025-12-31": {"Diluted EPS": 12.0}, "2024-12-31": {"Diluted EPS": 10.0}}
+                )
+            },
+        )
+        res = Screener.from_config(self.CFG).screen(data)  # no market cap -> fails the first rule
+        self.assertFalse(res.passed)
+        self.assertEqual(
+            (res.row["EPS_Q_YoY(%)"], res.row["Improvement_Class"]), (20.0, "signal")
+        )  # 20% < clear_threshold 40%
+
 
 class FakeClient:
     def download(self, ticker):
@@ -206,20 +221,3 @@ class TestStockCache(unittest.TestCase):
         self.assertEqual(list(data.history_monthly.index), list(monthly.index.tz_localize(None)))
         self.assertEqual(list(data.history.index), list(daily.index.tz_localize(None)))
         self.assertEqual(data.history_monthly.loc["2008-10-01", "Low"], 2.0)
-
-
-if __name__ == "__main__":
-    unittest.main()
-
-    def test_improvement_metrics_present_for_gate_failing_ticker(self):
-        data = StockData.from_dict(
-            "1234.T",
-            {
-                "quarterly_income": pd.DataFrame(
-                    {"2025-12-31": {"Diluted EPS": 12.0}, "2024-12-31": {"Diluted EPS": 10.0}}
-                )
-            },
-        )
-        res = Screener.from_config(self.CFG).screen(data)  # no market cap -> fails the first rule
-        self.assertFalse(res.passed)
-        self.assertEqual((res.row["EPS_Q_YoY(%)"], res.row["Improvement_Class"]), (20.0, "clear"))

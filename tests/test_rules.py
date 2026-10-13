@@ -165,7 +165,3 @@ class TestRules(unittest.TestCase):
                 "OperatingCashFlowRule",
             ],
         )
-
-
-if __name__ == "__main__":
-    unittest.main()

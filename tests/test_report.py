@@ -48,7 +48,3 @@ class TestPrioritize(unittest.TestCase):
         rows = [row("a", "clear", eps=50.0), row("b", "signal", eps=5.0)]
         prioritize(rows, 5)
         self.assertEqual([r["Stage2_Candidate"] for r in rows], [True, False])
-
-
-if __name__ == "__main__":
-    unittest.main()
