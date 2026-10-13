@@ -128,4 +128,11 @@ The same checks run in CI (`.github/workflows/ci.yml`) and, except pytest, in pr
 *   `src/report.py`: `write_report` writes the dated CSV (location, columns and `top_n` passed in from `output`) and prints the top candidates.
 *   `src/config.py`: Loads `config.yaml` once into `CFG`. Only `config.py` and `main.py` touch it; everything else receives values through `build_*` / `from_config` / dataclass fields.
 
-See `docs/screening_criteria.md` for how the criteria map to the original book.
+## Design documents (`docs/`, Japanese)
+
+*   `screening_criteria.md`: current first-screen criteria vs. the original book, decisions and corrections.
+*   `hypothesis_map.md`: why-why hypothesis map of what makes prices jump, validated against past cases.
+*   `selection_flow.md`: target selection flow (downside safety -> signs of improvement -> catalyst within 6-12 months); open decisions.
+*   `entry_types_design.md`: entry types A-G (to be reorganized under `selection_flow.md` stage 3).
+
+Claims in these documents carry source labels ([原著]/[一次]/[報道]/[データ]/[推論]); numbers are recomputed before each commit.
