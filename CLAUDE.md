@@ -46,7 +46,11 @@ Japanese stock screener (Emin Yurumazu's theory). Python 3.12, managed with `uv`
 3. **Verify** (author): all gates green; golden/full-run diff within the allowed changes; every
    requirement mapped to evidence (test or run output). Delegated agents work in a separate worktree
    branch; the main session re-runs the gates itself before accepting their work.
-4. **Merge**: `git merge --no-ff` into `main` with the requirement -> evidence list in the merge message.
+4. **Merge**: `~/.claude/bin/merge-to-main.sh <branch> <msg-file>` (rebase onto `main` -> `scripts/gate.sh` on the
+   rebased branch -> `--no-ff` merge -> delete worktree and branch). Resolve conflicts on the branch, never on `main`.
+   Put the requirement -> evidence list in the merge message.
+   Conflict prevention: while a delegated agent works, do not edit the files named in its brief on `main`; write
+   status notes in shared docs after the merge.
    Behavior-preserving changes (identical golden and full-run output) merge autonomously; changes to
    screening results need the user's approval before merging. Delete the branch after merging.
 5. **Stop rules**: after 3 failed attempts at the same gate, stop and report what fails and what was tried.
