@@ -134,6 +134,6 @@ def test_adjusted_close_uses_adjusted_naive_dates():
     ticker = mock.MagicMock()
     ticker.history.return_value = pd.DataFrame({"Close": [1.0, 2.0]}, index=index)
     with mock.patch("src.yahoo.yf.Ticker", return_value=ticker):
-        series = YahooClient(0.0, "1y", "max").adjusted_close("1.T", "max")
-    ticker.history.assert_called_once_with(period="max", auto_adjust=True)
+        series = YahooClient(0.0, "1y", "max").adjusted_close("1.T", datetime.date(2025, 1, 1))
+    ticker.history.assert_called_once_with(start=datetime.date(2025, 1, 1), auto_adjust=True)
     assert series.index.tz is None and list(series.index.strftime("%Y-%m-%d")) == ["2025-01-06", "2025-01-07"]
