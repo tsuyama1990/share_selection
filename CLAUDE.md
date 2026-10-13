@@ -4,7 +4,7 @@ Japanese stock screener (Emin Yurumazu's theory). Python 3.12, managed with `uv`
 
 ## Architecture
 - `main.py` CLI: `tickers` (JPX list -> CSV), `fetch` (Yahoo -> DuckDB cache), `analyze` (cache -> `results/` CSV, and a run record), `evaluate` (outcomes of recorded runs).
-- `src/`: `stock_data` (typed raw data), `metrics` (pure helpers), `rules` (gatekeeper), `scorers`, `screener`, `cache`, `yahoo`, `records` (run records in `records.duckdb` + Parquet export in `records/`, committed), `tickers`, `report`, `config`.
+- `src/`: `stock_data` (typed raw data), `metrics` (pure helpers), `improvement` (stage 2 signs of improvement, computed for every cached ticker), `rules` (gatekeeper), `scorers`, `screener`, `cache`, `yahoo`, `records` (run records in `records.duckdb` + Parquet export in `records/`, committed), `tickers`, `report`, `config`.
 - Rules and scorers are dataclasses with injected thresholds, created by `build_rules` / `build_scorers`; `Screener.from_config` wires them.
 
 ## Config rule

@@ -148,7 +148,7 @@
 | 1 | `feat/quarterly-data` | 四半期の損益計算書を取得・キャッシュ。全銘柄で充足率を測る（実装済み。充足率は再取得後に測る） | 2 |
 | 2 | `feat/record` | 段階 7 の記録テーブル（DuckDB ＋ Parquet）。記録は始めた時点からしか取れないため前倒し（実装済み。初回の記録は再取得の完了後） | 7 |
 | 3 | `refactor/safety-gate` | 段階 1 の決定事項（時価総額 30 億円以上）を反映 | 1 |
-| 4 | `feat/improvement-signal` | 改善スコアと区分（四半期 EPS 前年同期比、加速、年次の推移、利益率の変化） | 2 |
+| 4 | `feat/improvement-signal` | 改善スコアと区分（四半期 EPS 前年同期比、加速、年次の推移、利益率の変化）（実装済み：区分 clear/signal/none/unknown。区分ルールの見直し（四半期優先）と候補数の調整は次のブランチ） | 2 |
 | 5 | `feat/catalyst-calendar` | JPX 決算発表予定日の取得（`tickers` コマンドと同じ方式） | 4 |
 | 6 | `feat/source-types` | 型 P1〜P4 の機械的な印（旧 A〜G を再編）。`Recommendation_Type` を削除 | 3 |
 | 7 | `feat/rebuttal-checks` | N3・N4・織り込み済みの機械判定 | 5 |

@@ -81,8 +81,11 @@ def avg_turnover(hist_daily: pd.DataFrame | None, days: int) -> float | None:
     return to_num(turnover.mean()) if len(turnover) else None
 
 
+DAYS_PER_YEAR = 365
+
+
 def quarterly_eps_pair(
-    quarterly_income: pd.DataFrame, tolerance_days: int, year_days: int = 365
+    quarterly_income: pd.DataFrame, tolerance_days: int
 ) -> tuple[float, pd.Timestamp, float | None] | None:
     """Latest quarter's Diluted EPS, its period end, and the EPS of the quarter one year earlier (within tolerance)."""
     if "Diluted EPS" not in quarterly_income.index:
@@ -93,28 +96,19 @@ def quarterly_eps_pair(
     dates = pd.to_datetime(eps.index)
     values = eps.to_numpy()
     latest = dates.max()
-    near = values[np.abs(np.asarray((latest - dates).days) - year_days) <= tolerance_days]
+    near = values[np.abs(np.asarray((latest - dates).days) - DAYS_PER_YEAR) <= tolerance_days]
     return float(values[dates == latest][0]), latest, float(near[0]) if len(near) else None
 
 
 def annual_operating_change(financials: pd.DataFrame) -> tuple[float | None, float | None]:
     """(operating income growth, operating margin change in points) of the latest annual period vs the one before."""
-    keys = ("Total Revenue", "Operating Income")
-    i = latest_valid_period(financials, keys)
+    i = latest_valid_period(financials, ("Total Revenue", "Operating Income"))
     if i is None or i + 1 >= financials.shape[1]:
         return None, None
-    cur, prev = (
-        {k: to_num(financials[financials.columns[j]][k]) for k in ("Total Revenue", "Operating Income")}
-        for j in (i, i + 1)
-    )
-    oi, oi_prev, rev, rev_prev = (
-        cur["Operating Income"],
-        prev["Operating Income"],
-        cur["Total Revenue"],
-        prev["Total Revenue"],
-    )
+    cur, prev = financials.iloc[:, i], financials.iloc[:, i + 1]
+    oi, oi_prev = to_num(cur.get("Operating Income")), to_num(prev.get("Operating Income"))
+    rev, rev_prev = to_num(cur.get("Total Revenue")), to_num(prev.get("Total Revenue"))
     growth = oi / oi_prev - 1 if oi is not None and oi_prev is not None and oi_prev > 0 else None
-    margin = None
-    if None not in (oi, oi_prev, rev, rev_prev) and rev > 0 and rev_prev > 0:  # type: ignore[operator]
-        margin = (oi / rev - oi_prev / rev_prev) * 100  # type: ignore[operator]
-    return growth, margin
+    if oi is None or oi_prev is None or rev is None or rev_prev is None or rev <= 0 or rev_prev <= 0:
+        return growth, None
+    return growth, (oi / rev - oi_prev / rev_prev) * 100
