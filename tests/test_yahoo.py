@@ -19,6 +19,7 @@ def fake_ticker(fast_ok=True, info_ok=True):
     t.financials = pd.DataFrame({"a": [1]})
     t.balance_sheet = pd.DataFrame({"b": [1]})
     t.cashflow = pd.DataFrame({"c": [1]})
+    t.quarterly_income_stmt = pd.DataFrame({"2025-09-30": {"Diluted EPS": 12.5}})
     t.history.side_effect = lambda period, interval="1d": pd.DataFrame({"Close": [1.0]}, index=[period + interval])
     return t
 
@@ -35,6 +36,7 @@ def test_download_collects_all_parts():
     assert raw["fast_info"] == {"market_cap": 5.0, "last_price": 7.0}
     assert list(raw["history"].index) == ["1y1d"]
     assert list(raw["history_monthly"].index) == ["max1mo"]
+    assert raw["quarterly_income"].loc["Diluted EPS", "2025-09-30"] == 12.5
     assert not raw["financials"].empty and not raw["balance_sheet"].empty and not raw["cashflow"].empty
 
 

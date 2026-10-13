@@ -36,7 +36,7 @@ def load_sample(cache: StockCache) -> list[str]:
     for ticker, row in rows.items():
         cache.con.execute(
             f"INSERT INTO stock_cache (ticker, updated_at, {names}) VALUES (?, ?, {marks})",
-            [ticker, datetime.datetime.now(), *(row[c] for c in cols)],
+            [ticker, datetime.datetime.now(), *(row.get(c) for c in cols)],
         )
     return sorted(rows)
 

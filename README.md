@@ -7,7 +7,7 @@ The system uses a **Hybrid Architecture** with **DuckDB** to separate data accum
 ## Features
 
 *   **Hybrid System**:
-    *   **Fetch Mode**: Downloads raw data (Financials, Balance Sheet, Monthly History) from Yahoo Finance and stores it in `stocks_cache.duckdb`.
+    *   **Fetch Mode**: Downloads raw data (Financials, Balance Sheet, Cash Flow, Quarterly Income Statement, Daily and Monthly History) from Yahoo Finance and stores it in `stocks_cache.duckdb`.
     *   **Analyze Mode**: Runs screening logic against the local database instantly (zero API latency).
 *   **Gatekeeper (Fast Screening)**:
     *   Market Cap >= `market_cap_min` (default 100M JPY)
