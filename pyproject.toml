@@ -51,7 +51,6 @@ max-complexity = 10
 [tool.vulture]
 paths = ["src", "main.py"]
 min_confidence = 60
-ignore_names = ["quarterly_income"]  # read by the improvement-signal branch (selection_flow roadmap 3)
 
 [tool.deptry.per_rule_ignores]
 DEP002 = ["openpyxl"]  # engine used by pandas.read_excel (tickers command)
@@ -61,4 +60,4 @@ python_version = "3.12"
 ignore_missing_imports = true
 
 [tool.code_budget]
-max_source_lines = 909
+max_source_lines = 992
