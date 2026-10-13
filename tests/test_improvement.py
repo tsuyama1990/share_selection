@@ -4,7 +4,7 @@ import pytest
 from src.improvement import ImprovementSignal
 from src.stock_data import StockData
 
-SIGNAL = ImprovementSignal(clear_threshold=0.20, same_quarter_tolerance_days=20)
+SIGNAL = ImprovementSignal(clear_threshold=0.40, same_quarter_tolerance_days=20)
 
 
 def quarterly(**eps: float | None) -> pd.DataFrame:
@@ -32,8 +32,8 @@ def q(latest: float, prev: float | None, prev_date: str = "2024-12-31") -> pd.Da
 @pytest.mark.parametrize(
     ("latest", "prev", "expected"),
     [
-        (12.0, 10.0, "clear"),
-        (11.99, 10.0, "signal"),
+        (14.0, 10.0, "clear"),
+        (13.99, 10.0, "signal"),
         (10.0, 10.0, "signal"),
         (9.0, 10.0, "none"),
         (5.0, 0.0, "clear"),
@@ -80,7 +80,7 @@ def test_latest_is_newest_non_nan_column():
 
 def test_operating_income_growth_and_margin_change():
     out = evaluate(financials=annual(oi=24.0, oi_prev=20.0, rev=100.0, rev_prev=160.0))
-    assert (out["OI_YoY(%)"], out["Op_Margin_Change(pt)"], out["Improvement_Class"]) == (20.0, 11.5, "clear")
+    assert (out["OI_YoY(%)"], out["Op_Margin_Change(pt)"], out["Improvement_Class"]) == (20.0, 11.5, "signal")
 
 
 def test_operating_income_prev_not_positive_gives_no_yoy():
@@ -88,13 +88,18 @@ def test_operating_income_prev_not_positive_gives_no_yoy():
     assert (out["OI_YoY(%)"], out["Op_Margin_Change(pt)"], out["Improvement_Class"]) == (None, 6.0, "unknown")
 
 
-def test_none_when_all_available_are_negative():
-    out = evaluate(q(5.0, 10.0), annual(oi=10.0, oi_prev=20.0))
-    assert out["Improvement_Class"] == "none"
+def test_quarterly_decides_even_if_annual_is_strong():
+    assert evaluate(q(9.0, 10.0), annual(oi=30.0, oi_prev=20.0))["Improvement_Class"] == "none"
 
 
-def test_signal_when_any_available_is_non_negative():
-    assert evaluate(q(5.0, 10.0), annual(oi=21.0, oi_prev=20.0))["Improvement_Class"] == "signal"
+def test_annual_is_the_fallback_when_quarterly_is_missing():
+    assert evaluate(financials=annual(oi=29.0, oi_prev=20.0))["Improvement_Class"] == "clear"
+    assert evaluate(financials=annual(oi=21.0, oi_prev=20.0))["Improvement_Class"] == "signal"
+    assert evaluate(financials=annual(oi=19.0, oi_prev=20.0))["Improvement_Class"] == "none"
+
+
+def test_turnaround_is_clear_regardless_of_annual():
+    assert evaluate(q(5.0, -2.0), annual(oi=10.0, oi_prev=20.0))["Improvement_Class"] == "clear"
 
 
 def test_all_missing_is_unknown():

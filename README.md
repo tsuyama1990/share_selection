@@ -10,11 +10,11 @@ The system uses a **Hybrid Architecture** with **DuckDB** to separate data accum
     *   **Fetch Mode**: Downloads raw data (Financials, Balance Sheet, Cash Flow, Quarterly Income Statement, Daily and Monthly History) from Yahoo Finance and stores it in `stocks_cache.duckdb`.
     *   **Analyze Mode**: Runs screening logic against the local database instantly (zero API latency).
 *   **Gatekeeper (Fast Screening)**:
-    *   Market Cap >= `market_cap_min` (default 100M JPY)
+    *   Market Cap >= `market_cap_min` (default 3B JPY)
     *   Liquidity: average daily trading value over `turnover_days` (60) sessions >= `turnover_min` (default 30M JPY/day, i.e. order sizes of a few hundred thousand to a few million JPY; see the `Avg_Turnover(M JPY)` output column)
     *   Equity Ratio >= 50% (Configurable). Uses Stockholders' Equity first (Japanese 自己資本比率 definition, excludes non-controlling interests)
-    *   Operating Margin >= 7% (Configurable)
-    *   PSR Cap <= 2.0
+    *   Operating Margin >= 5% (Configurable)
+    *   PSR Cap <= 1.2
     *   Operating CF > 0 (missing OCF fails)
     *   Missing/NaN metrics FAIL these rules (they no longer slip through). If the latest fiscal year column is unreported (all NaN), the most recent period with values is used.
 *   **Scoring System**:
@@ -39,8 +39,9 @@ Edit `config.yaml` to adjust criteria. Every tunable parameter, path and file na
 *   `gatekeeper`: pass/fail filters (equity ratio, margin, PSR cap, cash flow, market cap, `turnover_min` / `turnover_days`).
 *   `scoring`: points and thresholds (Sales CAGR span, PSR tiers, `net_net_ratio`, moving averages, `shock_lows` crash windows).
 *   `recommendation`: `quality_growth_min_growth_score` and `quality_value_min_value_score` for `Recommendation_Type`.
-*   `improvement`: stage 2 signs of improvement: `clear_threshold` (0.20) and `same_quarter_tolerance_days` (20, window around 365 days for the same quarter a year earlier).
-*   `output`: report `dir`, `filename` (`{date}` = YYYY-MM-DD), `top_n` and the CSV `columns`.
+*   `improvement`: stage 2 signs of improvement: `clear_threshold` (0.40) and `same_quarter_tolerance_days` (20, window around 365 days for the same quarter a year earlier).
+*   `selection`: `candidates_n` (50), the number of top-ranked `clear` stocks flagged `Stage2_Candidate`.
+*   `output`: report `dir`, `filename` (`{date}` = YYYY-MM-DD) and the CSV `columns`.
 *   `tickers`: `jpx_url` and the `markets` kept by the `tickers` command.
 *   `records`: `db_file`, `export_dir` (Parquet backup per run), `horizons_months`, `benchmark_ticker`.
 *   `system`: `input_csv`, `db_file`, `sleep_time`, `cache_days`, `market_timezone` (timezone of the history timestamps, `Asia/Tokyo`), `daily_history_period`, `monthly_history_period`.
@@ -85,14 +86,15 @@ uv run python main.py analyze
 ```
 
 ### 5. Output
-Results are saved to `results/emin_screening_result_YYYY-MM-DD.csv` (directory and file name set by `output` in `config.yaml`; `results/` is git-ignored) and the top `top_n` rows are displayed in the console.
+Results are saved to `results/emin_screening_result_YYYY-MM-DD.csv` (directory and file name set by `output` in `config.yaml`; `results/` is git-ignored) sorted by `Priority_Rank`; the `Stage2_Candidate` rows are displayed in the console.
 
 Every `analyze` also records the run (all tickers, including those that failed the gatekeeper with the failing rule, and tickers without cache as `no_cache`) in `records.duckdb` and exports it to `records/<run_id>/{runs,screen_results}.parquet`. Commit the `records/` Parquet files as the backup; `records.duckdb` is git-ignored. Optional `--issue YYYY-MM` labels the run with the Shikiho issue used.
 
 **Key Output Columns:**
 *   **Recommendation_Type**: `Quality Growth`, `Quality Value`, `NET-NET`, or `Watch`.
 *   **EPS_Q_YoY(%)**, **OI_YoY(%)**, **Op_Margin_Change(pt)**: Latest quarter's Diluted EPS vs the same quarter a year earlier (only if that one is positive), latest annual operating income vs the previous year (only if that one is positive), and the change of the annual operating margin in points.
-*   **Improvement_Class**: `clear` (EPS or operating income YoY >= `clear_threshold`, or EPS turnaround from <= 0 to > 0), `signal` (an available YoY >= 0), `none` (available but negative), `unknown` (neither available). Computed for every ticker, including those failing the gatekeeper; recorded in `screen_results.improvement_class` (raw quarterly EPS stays in the metrics JSON).
+*   **Improvement_Class**: decided by quarterly EPS alone when it is available (YoY, or turnaround from <= 0 to > 0 = `clear`), otherwise by annual operating income YoY: `clear` (>= `clear_threshold`), `signal` (>= 0), `none` (negative), `unknown` (neither available). Computed for every ticker, including those failing the gatekeeper; recorded in `screen_results.improvement_class` (raw quarterly EPS stays in the metrics JSON).
+*   **Priority_Rank**, **Stage2_Candidate**: rank 1..n by Improvement_Class (clear > signal > none > unknown), then the class-deciding growth (EPS_Q_YoY, else OI_YoY) descending, then Real_PSR ascending. `Stage2_Candidate` is True for rank <= `candidates_n` with class `clear`. Both are stored in the metrics JSON of passing tickers.
 *   **Cash_to_MarketCap_Ratio**: Cash and equivalents / Market Cap. >= 1.0 means Net-Net.
 *   **Net_Cash(Billion)**, **Real_PSR**: Cash - total debt, and (Market Cap - net cash) / sales.
 *   **Downside_to_Lehman_Low(%)**, **Downside_to_Corona_Low(%)**: Change from the current price to the lowest monthly low in each crash window.
@@ -139,7 +141,7 @@ The same checks run in CI (`.github/workflows/ci.yml`) and, except pytest, in pr
 *   `src/yahoo.py`: `YahooClient` downloads raw data from Yahoo Finance.
 *   `src/records.py`: `RecordStore` (runs, screen_results, outcomes in `records.duckdb`, exported to Parquet) and `evaluate`.
 *   `src/tickers.py`: Builds the ticker CSV from the JPX listed company workbook.
-*   `src/report.py`: `write_report` writes the dated CSV (location, columns and `top_n` passed in from `output`) and prints the top candidates.
+*   `src/report.py`: `write_report` writes the dated CSV (location and columns passed in from `output`), `prioritize` adds `Priority_Rank` / `Stage2_Candidate`, and the candidates are printed.
 *   `src/config.py`: Loads `config.yaml` once into `CFG`. Only `config.py` and `main.py` touch it; everything else receives values through `build_*` / `from_config` / dataclass fields.
 
 ## Design documents (`docs/`, Japanese)

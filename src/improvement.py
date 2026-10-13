@@ -12,7 +12,7 @@ YOY_DECIMALS = 3
 
 @dataclass
 class ImprovementSignal:
-    """Class ``clear`` if a YoY growth >= ``clear_threshold`` or EPS turnaround, ``signal`` if >= 0."""
+    """Quarterly EPS decides (turnaround = clear), else annual operating income: clear >= threshold, signal >= 0."""
 
     clear_threshold: float
     same_quarter_tolerance_days: int
@@ -38,9 +38,11 @@ class ImprovementSignal:
         return out
 
     def _classify(self, eps_yoy: float | None, oi_yoy: float | None, turnaround: bool | None) -> str:
-        known = [v for v in (eps_yoy, oi_yoy) if v is not None]
-        if turnaround or any(v >= self.clear_threshold for v in known):
+        if turnaround:
             return "clear"
-        if any(v >= 0 for v in known):
-            return "signal"
-        return "none" if known else "unknown"
+        growth = eps_yoy if eps_yoy is not None else oi_yoy
+        if growth is None:
+            return "unknown"
+        if growth >= self.clear_threshold:
+            return "clear"
+        return "signal" if growth >= 0 else "none"
