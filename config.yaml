@@ -131,4 +131,3 @@ records:
   export_dir: "records"          # Parquet export per run: records/<run_id>/*.parquet (committed as the backup)
   horizons_months: [6, 12]       # Outcome horizons measured from the run date
   benchmark_ticker: "1306.T"     # TOPIX ETF; excess return is relative to it
-  history_period: "max"          # yfinance period of the adjusted daily history used by `evaluate`

@@ -10,7 +10,7 @@ from src.cache import StockCache, refresh
 from src.config import CFG, ROOT
 from src.records import NO_CACHE, RecordStore, evaluate, git_sha
 from src.report import write_report
-from src.screener import Screener
+from src.screener import Screener, ScreenResult
 from src.tickers import update_ticker_csv
 from src.yahoo import YahooClient
 
@@ -49,30 +49,22 @@ def run_fetch(tickers: list[str], cache: StockCache, client: YahooClient):
 def run_analyze(tickers: list[str], cache: StockCache, screener: Screener, issue: str | None):
     print(f"Starting Analysis for {len(tickers)} stocks (using cache)...")
     output_cfg, rec = CFG["output"], CFG["records"]
-    results = []
     screened = []
-    no_cache = 0
-
     for ticker in tqdm(tickers):
         data = cache.get(ticker)
-        if data is None:
-            no_cache += 1
-            screened.append({"ticker": ticker, "stage1_pass": False, "stage1_fail_rule": NO_CACHE, "metrics": {}})
-            continue
-        res = screener.screen(data)
+        res = screener.screen(data) if data is not None else ScreenResult(False, NO_CACHE, {})
         screened.append(
             {"ticker": ticker, "stage1_pass": res.passed, "stage1_fail_rule": res.fail_rule, "metrics": res.row}
         )
-        if res.passed:
-            results.append(res.row)
+    results = [r["metrics"] for r in screened if r["stage1_pass"]]
+    no_cache = sum(r["stage1_fail_rule"] == NO_CACHE for r in screened)
 
-    csv_path = ROOT / CFG["system"]["input_csv"]
     fetched_min, fetched_max = cache.fetched_range()
     info = {
         "issue": issue,
         "git_sha": git_sha(),
         "config": CFG,
-        "ticker_list_date": datetime.date.fromtimestamp(csv_path.stat().st_mtime),
+        "ticker_list_date": datetime.date.fromtimestamp((ROOT / CFG["system"]["input_csv"]).stat().st_mtime),
         "data_fetched_min": fetched_min,
         "data_fetched_max": fetched_max,
     }
@@ -86,10 +78,16 @@ def run_analyze(tickers: list[str], cache: StockCache, screener: Screener, issue
     write_report(results, ROOT / output_cfg["dir"], output_cfg["filename"], output_cfg["columns"], output_cfg["top_n"])
 
 
+# Days of history fetched before the earliest run, so a close "on or before t0" exists across holidays.
+LOOKBACK_DAYS = 14
+
+
 def run_evaluate(client: YahooClient):
     rec = CFG["records"]
-    history = partial(client.adjusted_close, period=rec["history_period"])
     with RecordStore(ROOT / rec["db_file"], ROOT / rec["export_dir"]) as store:
+        earliest = min((at for _, at in store.runs()), default=datetime.datetime.now())
+        start = (earliest - datetime.timedelta(days=LOOKBACK_DAYS)).date()
+        history = partial(client.adjusted_close, start=start)
         added = evaluate(store, history, rec["horizons_months"], rec["benchmark_ticker"], datetime.datetime.now())
     print(f"Added {added} outcome rows.")
 

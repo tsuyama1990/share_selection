@@ -52,7 +52,7 @@ class RecordStore:
         Each result has ``ticker``, ``stage1_pass``, ``stage1_fail_rule`` and ``metrics`` (dict).
         """
         run_at = datetime.datetime.now()
-        run_id = run_at.strftime("%Y%m%dT%H%M%S")
+        run_id = run_at.strftime("%Y%m%dT%H%M%S%f")
         self.con.execute(
             "INSERT INTO runs VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             [
@@ -83,9 +83,8 @@ class RecordStore:
         self._export(run_id, ["runs", "screen_results"])
         return run_id
 
-    def runs(self) -> list[tuple[str, pd.Timestamp]]:
-        rows = self.con.execute("SELECT run_id, run_at FROM runs ORDER BY run_id").fetchall()
-        return [(rid, pd.Timestamp(at)) for rid, at in rows]
+    def runs(self) -> list[tuple[str, datetime.datetime]]:
+        return self.con.execute("SELECT run_id, run_at FROM runs ORDER BY run_id").fetchall()
 
     def tickers(self, run_id: str) -> list[str]:
         """Tickers of a run that were screened (without those lacking cached data)."""
@@ -146,7 +145,7 @@ def evaluate(
 
     added = 0
     for run_id, run_at in store.runs():
-        t0 = run_at.normalize()
+        t0 = pd.Timestamp(run_at).normalize()
         rows = []
         for h in horizons:
             t1 = t0 + pd.DateOffset(months=h)

@@ -1,5 +1,6 @@
 """Yahoo Finance downloader."""
 
+import datetime
 import time
 from typing import Any
 
@@ -40,7 +41,7 @@ class YahooClient:
             "quarterly_income": t.quarterly_income_stmt,
         }
 
-    def adjusted_close(self, ticker: str, period: str) -> pd.Series:
-        """Split/dividend-adjusted daily closes indexed by naive market-local dates."""
+    def adjusted_close(self, ticker: str, start: datetime.date) -> pd.Series:
+        """Split/dividend-adjusted daily closes from ``start``, indexed by naive market-local dates."""
         time.sleep(self.sleep_time)
-        return yf.Ticker(ticker).history(period=period, auto_adjust=True)["Close"].tz_localize(None)
+        return yf.Ticker(ticker).history(start=start, auto_adjust=True)["Close"].tz_localize(None)

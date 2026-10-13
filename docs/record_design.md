@@ -1,6 +1,6 @@
 # 記録（段階 7）設計書：フローが必要とするデータからの逆算
 
-作成：2026-10-14 ／ 状態：**承認済み・実装中**（`feat/record`）
+作成：2026-10-14 ／ 状態：**実装済み**（`runs`・`screen_results`・`outcomes`。その他のテーブルは各ブランチで追加）
 
 根拠の表記は `docs/hypothesis_map.md` と同じ。段階番号は `docs/selection_flow.md`。
 
@@ -55,7 +55,7 @@
 |---|---|---|---|---|
 | `runs` | 1 回のスクリーニング実行 | run_id、run_at、issue（四季報の号）、git_sha、config（JSON）、ticker_list_date、data_fetched_min/max | 機械 | `feat/record` |
 | `screen_results` | 実行 × 銘柄（**全銘柄**） | run_id、ticker、stage1_pass、stage1_fail_rule、improvement_class、types、next_earnings_date、rebuttal_flags、metrics（その時の出力行すべてを JSON） | 機械 | `feat/record`（段階 2〜5 の列は各ブランチで埋める） |
-| `outcomes` | 実行 × 銘柄 × 期間（6・12 か月） | price_t0、price_t1、return、topix_return、excess、computed_at | 機械（`evaluate` コマンド） | `feat/record` |
+| `outcomes` | 実行 × 銘柄 × 期間（6・12 か月） | price_t0、price_t1、return、benchmark_return（比較対象は config の `records.benchmark_ticker`、既定は TOPIX 連動の 1306）、excess、computed_at | 機械（`evaluate` コマンド） | `feat/record` |
 | `events` | 銘柄 × 開示 | ticker、date、kind（決算・予想修正・中計・資本政策・テーマ）、detail、source | 機械＋人 | `feat/catalyst-calendar`、`feat/company-forecast` |
 | `forecasts` | 銘柄 × 開示 × 予想の対象期 | ticker、disclosed_date、target（今期・来期・中間）、sales、op、odp、np、eps、source | 機械（J-Quants） | `feat/company-forecast` |
 | `reviews` | 実行 × 銘柄（二次で調べた銘柄のみ） | decision（採用／落選／監視）、reason、type、chokepoint、evidence_links、llm_prompt、llm_answer、sources、thesis（4 行） | 人＋LLM | 二次スクリーニングの自動化時（当面は CSV で取り込み） |
@@ -78,3 +78,10 @@
 1. **バックアップ**：実行ごとに `records/` へ Parquet で書き出し、リポジトリにコミットする（`records.duckdb` 本体は `.gitignore` のまま）
 2. **全銘柄を記録する**（段階 1 で落ちた銘柄も、落ちた条件と計算済みの指標を記録）
 3. **最初の記録**：再取得の完了後、すぐに初回を記録する
+
+## 6. 実装メモ（2026-10-14）
+
+- `run_id` は実行時刻（`YYYYMMDDTHHMMSSffffff`、マイクロ秒まで）。
+- `evaluate` は、記録のうち最も古い実行の 14 日前から調整済み日足を取得する（休日をまたいでも「判定日以前の終値」が取れるように）。
+- キャッシュがない銘柄は `stage1_fail_rule = "no_cache"` で記録し、`evaluate` の対象から外す。
+- 判定日・評価日の株価は、その日以前で最後の終値。履歴がない場合は NULL。
