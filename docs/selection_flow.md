@@ -151,7 +151,7 @@
 | 4 | `feat/improvement-signal` | 改善スコアと区分（四半期 EPS 前年同期比、加速、年次の推移、利益率の変化）（実装済み：区分 clear/signal/none/unknown。区分ルールの見直し（四半期優先）と候補数の調整は次のブランチ） | 2 |
 | 5 | `feat/catalyst-calendar` | JPX 決算発表予定日の取得（`tickers` コマンドと同じ方式） | 4 |
 | 6 | `feat/source-types` | 型 P1〜P4 の機械的な印（旧 A〜G を再編）。`Recommendation_Type` を削除 | 3 |
-| 7 | `feat/rebuttal-checks` | N3・N4・織り込み済みの機械判定 | 5 |
+| 7 | `feat/rebuttal-checks` | N3・N4・織り込み済みの機械判定（N3 の一部＝四半期 EPS の一時的損益の旗 `Quality_Flags` は `feat/eps-quality-flags` で実装済み） | 5 |
 | 8 | `feat/company-forecast` | J-Quants 無料プランで会社予想を取得（事後検証用。12 週遅れ） | 2・7 |
 | ― | （手作業→後で自動化） | 段階 3〜5 の LLM 部分。まずはプロンプトの雛形をレイヤーマスターから流用して手で回す | 3〜5 |
 
