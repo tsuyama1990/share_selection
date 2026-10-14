@@ -11,10 +11,13 @@ CLASS_ORDER = {"clear": 0, "signal": 1, "none": 2, "unknown": 3}
 
 
 def _priority_key(row: dict[str, Any]) -> tuple[int, float, float]:
-    """Class, then the class-deciding growth (EPS_Q_YoY, else OI_YoY) descending, then Real_PSR ascending."""
-    growth = next((g for g in (row.get("EPS_Q_YoY(%)"), row.get("OI_YoY(%)")) if pd.notna(g)), float("-inf"))
-    psr = row.get("Real_PSR")
-    return CLASS_ORDER[row["Improvement_Class"]], -growth, float("inf") if pd.isna(psr) else psr
+    """Class, then Improvement_Yield (earnings change / price) descending, then Real_PSR ascending."""
+    yield_, psr = row.get("Improvement_Yield(%)"), row.get("Real_PSR")
+    return (
+        CLASS_ORDER[row["Improvement_Class"]],
+        float("inf") if pd.isna(yield_) else -yield_,
+        float("inf") if pd.isna(psr) else psr,
+    )
 
 
 def prioritize(rows: list[dict[str, Any]], candidates_n: int) -> None:

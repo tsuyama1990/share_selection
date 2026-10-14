@@ -100,15 +100,16 @@ def quarterly_eps_pair(
     return float(values[dates == latest][0]), latest, float(near[0]) if len(near) else None
 
 
-def annual_operating_change(financials: pd.DataFrame) -> tuple[float | None, float | None]:
-    """(operating income growth, operating margin change in points) of the latest annual period vs the one before."""
+def annual_operating_change(financials: pd.DataFrame) -> tuple[float | None, float | None, float | None]:
+    """(operating income growth, margin change in points, operating income change) of the latest year vs the prior."""
     i = latest_valid_period(financials, ("Total Revenue", "Operating Income"))
     if i is None or i + 1 >= financials.shape[1]:
-        return None, None
+        return None, None, None
     cur, prev = financials.iloc[:, i], financials.iloc[:, i + 1]
     oi, oi_prev = to_num(cur.get("Operating Income")), to_num(prev.get("Operating Income"))
     rev, rev_prev = to_num(cur.get("Total Revenue")), to_num(prev.get("Total Revenue"))
     growth = oi / oi_prev - 1 if oi is not None and oi_prev is not None and oi_prev > 0 else None
+    delta = oi - oi_prev if oi is not None and oi_prev is not None else None
     if oi is None or oi_prev is None or rev is None or rev_prev is None or rev <= 0 or rev_prev <= 0:
-        return growth, None
-    return growth, (oi / rev - oi_prev / rev_prev) * 100
+        return growth, None, delta
+    return growth, (oi / rev - oi_prev / rev_prev) * 100, delta

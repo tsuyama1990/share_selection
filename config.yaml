@@ -97,6 +97,7 @@ output:
     - OI_YoY(%)
     - Op_Margin_Change(pt)
     - Improvement_Class
+    - Improvement_Yield(%)
     - Recommendation_Type
     - Current_Price
     - PSR

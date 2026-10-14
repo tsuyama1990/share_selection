@@ -122,3 +122,41 @@ def test_margin_change_needs_both_revenues():
     )
     out = evaluate(financials=fin)
     assert out["OI_YoY(%)"] == 20.0 and out["Op_Margin_Change(pt)"] is None
+
+
+def with_price(quarterly_income=None, financials=None, price=None, mcap=None):
+    data = StockData.from_dict(
+        "1.T",
+        {
+            "quarterly_income": quarterly_income,
+            "financials": financials,
+            "fast_info": {"last_price": price, "market_cap": mcap},
+        },
+    )
+    return SIGNAL.evaluate(data)
+
+
+def test_yield_is_annualized_quarterly_eps_change_over_price():
+    out = with_price(quarterly_income=q(12.0, 10.0), price=400.0)
+    assert out["Improvement_Yield(%)"] == 2.0  # (12 - 10) * 4 / 400
+
+
+def test_yield_falls_back_to_operating_income_change_over_market_cap():
+    out = with_price(financials=annual(oi=15.0, oi_prev=10.0), mcap=100.0)
+    assert out["Improvement_Class"] == "clear" and out["Improvement_Yield(%)"] == 5.0
+
+
+def test_small_base_growth_does_not_inflate_yield():
+    big = with_price(quarterly_income=q(7.7, 0.1), price=1000.0)  # +7600%
+    steady = with_price(quarterly_income=q(60.0, 40.0), price=1000.0)  # +50%
+    assert big["EPS_Q_YoY(%)"] > steady["EPS_Q_YoY(%)"]
+    assert big["Improvement_Yield(%)"] < steady["Improvement_Yield(%)"]
+
+
+@pytest.mark.parametrize(
+    ("latest", "prev", "expected"),
+    [(-1.0, -3.0, "signal"), (-3.0, -1.0, "none"), (-2.0, -2.0, "none"), (1.0, -2.0, "clear")],
+)
+def test_loss_quarter_is_decided_by_quarterly_eps_not_annual(latest, prev, expected):
+    out = with_price(quarterly_income=q(latest, prev), financials=annual(oi=30.0, oi_prev=10.0), price=100.0)
+    assert out["Improvement_Class"] == expected
