@@ -1,40 +1,13 @@
-"""Placeholder for I-C2-4 (Web 取得 → 文書ストア) (no network)."""
+"""I-C2-4 placeholder: the checks are listed in docs/architecture/L2_C2_data_acquisition.md section 7.
+
+Passes (and so fails as strict xfail) once src/webfetch.py exists: replace it with the real tests then.
+"""
 
 import importlib
 
 import pytest
 
-PLANNED = "src.webfetch"
-FUNCTION = "fetch_document"
-
-
-def planned():
-    return getattr(importlib.import_module(PLANNED), FUNCTION)
-
 
 @pytest.mark.xfail(strict=True, reason="I-C2-4 not implemented")
-def test_follows_redirects():
-    """リダイレクト追従"""
-    planned()
-    raise AssertionError("I-C2-4: follows_redirects not implemented")
-
-
-@pytest.mark.xfail(strict=True, reason="I-C2-4 not implemented")
-def test_extracts_html_and_pdf():
-    """HTML・PDF の本文抽出"""
-    planned()
-    raise AssertionError("I-C2-4: extracts_html_and_pdf not implemented")
-
-
-@pytest.mark.xfail(strict=True, reason="I-C2-4 not implemented")
-def test_size_limit():
-    """サイズ上限"""
-    planned()
-    raise AssertionError("I-C2-4: size_limit not implemented")
-
-
-@pytest.mark.xfail(strict=True, reason="I-C2-4 not implemented")
-def test_failure_recorded():
-    """失敗の記録"""
-    planned()
-    raise AssertionError("I-C2-4: failure_recorded not implemented")
+def test_module_exists():
+    importlib.import_module("src.webfetch")

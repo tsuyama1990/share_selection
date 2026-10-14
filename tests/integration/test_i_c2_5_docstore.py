@@ -1,26 +1,13 @@
-"""Placeholder for I-C2-5 (文書ストア) (no network)."""
+"""I-C2-5 placeholder: the checks are listed in docs/architecture/L2_C2_data_acquisition.md section 7.
+
+Passes (and so fails as strict xfail) once src/docstore.py exists: replace it with the real tests then.
+"""
 
 import importlib
 
 import pytest
 
-PLANNED = "src.docstore"
-FUNCTION = "DocStore"
-
-
-def planned():
-    return getattr(importlib.import_module(PLANNED), FUNCTION)
-
 
 @pytest.mark.xfail(strict=True, reason="I-C2-5 not implemented")
-def test_save_and_get():
-    """保存・取得"""
-    planned()
-    raise AssertionError("I-C2-5: save_and_get not implemented")
-
-
-@pytest.mark.xfail(strict=True, reason="I-C2-5 not implemented")
-def test_rejects_overwrite():
-    """本文を書き換えない（同じ doc_id への上書きを拒否）"""
-    planned()
-    raise AssertionError("I-C2-5: rejects_overwrite not implemented")
+def test_module_exists():
+    importlib.import_module("src.docstore")
