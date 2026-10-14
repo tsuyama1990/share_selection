@@ -44,4 +44,4 @@ L1 全体設計 ─▶ L2 詳細設計 ─▶ L3 クラス設計 ─▶ 実装
 | L1 設計・QA | 完了（設計の関門 `tests/unit/test_design_docs.py`、E2E E1〜E5、E6 は strict xfail） |
 | L2 詳細設計（C2 データ取得、C4 二次調査） | 承認（2026-10-14）。`L2_C2_data_acquisition.md`、`L2_C4_stage2_research.md` |
 | L2 の QA（結合テストの用意、設計の関門を L2 へ拡張） | 次の作業 |
-| `feat/llm-client` | 実装済み・未マージ。C4 の L2 設計（`llm.py`）と一致。L2 の QA で結合テストの階層へ移してからマージ |
+| `feat/llm-client` | マージ済み（L2 の QA で結合テストの階層へ移した） |
