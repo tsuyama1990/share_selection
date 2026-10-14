@@ -20,32 +20,18 @@ from src.llm import GeminiSearch, LLMClient, Provider, RateLimiter
 from src.records import NO_CACHE, RecordStore, evaluate, git_sha, latest_issue
 from src.report import prioritize, write_report
 from src.screener import Screener, ScreenResult
-from src.tickers import update_ticker_csv
+from src.tickers import TICKER_SUFFIX, update_ticker_csv
 from src.yahoo import YahooClient
 
 
 def get_japan_tickers(cfg: dict[str, Any]) -> list[str]:
-    """Tickers from ``system.input_csv`` (".T" appended if missing); exits with status 1 if unusable."""
+    """Tickers (code + suffix) from the ``code`` column of ``system.input_csv``; exits with status 1 if missing."""
     csv_path = ROOT / cfg["system"]["input_csv"]
-
     if not csv_path.exists():
-        print(f"Error: ticker CSV not found: {csv_path}")
+        print(f"Error: ticker CSV not found: {csv_path} (run `tickers`)")
         sys.exit(1)
-
     print(f"Reading tickers from {csv_path}...")
-    df = pd.read_csv(csv_path)
-    col = next((c for c in ["code", "Code", "ticker", "Ticker"] if c in df.columns), None)
-    if col is None:
-        print(f"Error: {csv_path} needs a 'code', 'Code', 'ticker' or 'Ticker' column.")
-        sys.exit(1)
-
-    tickers = []
-    for t in df[col].astype(str):
-        t = t.strip()
-        if not t.endswith(".T"):
-            t += ".T"
-        tickers.append(t)
-    return tickers
+    return [code.strip() + TICKER_SUFFIX for code in pd.read_csv(csv_path, dtype=str)["code"]]
 
 
 def run_fetch(cfg: dict[str, Any], tickers: list[str], cache: StockCache, client: YahooClient):

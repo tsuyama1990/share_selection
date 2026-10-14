@@ -26,7 +26,9 @@ class Project:
         return tickers
 
     def write_tickers(self, tickers: list[str], cfg: dict = CFG) -> None:
-        (self.root / cfg["system"]["input_csv"]).write_text("\n".join(["code", *tickers]) + "\n", encoding="utf-8")
+        (self.root / cfg["system"]["input_csv"]).write_text(
+            "\n".join(["code", *(t.removesuffix(".T") for t in tickers)]) + "\n", encoding="utf-8"
+        )
 
     def run(self, *args: str, cfg: dict = CFG) -> None:
         config_path = self.root / "test_config.yaml"

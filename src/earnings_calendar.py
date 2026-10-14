@@ -10,6 +10,8 @@ from urllib.parse import urljoin
 
 import pandas as pd
 
+from .tickers import TICKER_SUFFIX
+
 CODE_PATTERN = re.compile(r"^\d{3}[0-9A-Z]$")
 # JPX workbook columns: announcement date, code, fiscal year end, English period
 DATE_COL, CODE_COL, FISCAL_YEAR_END_COL, PERIOD_COL = 0, 1, 4, 8
@@ -56,13 +58,13 @@ def update_calendar_csv(out_csv: Path, page_url: str, link_pattern: str, user_ag
 
 
 def load_calendar(path: Path) -> dict[str, tuple[str | None, str | None]]:
-    """Ticker (``<code>.T``) -> (announce date ``YYYY-MM-DD`` or None, English period or None); empty if no file."""
+    """Ticker -> (announce date ``YYYY-MM-DD`` or None, English period or None); empty if no file."""
     if not path.exists():
         print(f"Warning: earnings calendar not found: {path} (run `calendar`); Next_Earnings_Date left empty.")
         return {}
     df = pd.read_csv(path, dtype=str)
     return {
-        f"{code}.T": (_text(date), _text(period))
+        code + TICKER_SUFFIX: (_text(date), _text(period))
         for code, date, period in zip(df["code"], df["announce_date"], df["period_en"], strict=True)
     }
 

@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pandas as pd
 
+# Yahoo Finance suffix of Tokyo Stock Exchange tickers: ticker = code + suffix ("130A" -> "130A.T")
+TICKER_SUFFIX = ".T"
 # Output schema (not a parameter): JPX column -> CSV column
 COLUMNS = {
     "コード": "code",
