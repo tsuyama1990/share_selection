@@ -53,12 +53,14 @@ def run_analyze(tickers: list[str], cache: StockCache, screener: Screener, issue
     for ticker in tqdm(tickers):
         data = cache.get(ticker)
         res = screener.screen(data) if data is not None else ScreenResult(False, NO_CACHE, {})
+        flags = res.row.get("Quality_Flags")
         screened.append(
             {
                 "ticker": ticker,
                 "stage1_pass": res.passed,
                 "stage1_fail_rule": res.fail_rule,
                 "improvement_class": res.row.get("Improvement_Class"),
+                "quality_flags": None if flags is None else [f for f in flags.split(",") if f],
                 "metrics": res.row,
             }
         )

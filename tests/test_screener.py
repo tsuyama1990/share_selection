@@ -4,6 +4,7 @@ import pandas as pd
 
 from src.cache import StockCache, refresh
 from src.improvement import ImprovementSignal
+from src.quality import EpsQualityFlags
 from src.rules import RuleResult
 from src.scorers import ScoreResult
 from src.screener import Screener
@@ -28,6 +29,7 @@ class FakeScorer:
 
 
 NO_IMPROVEMENT = ImprovementSignal(0.4, 20, 200)
+NO_QUALITY = EpsQualityFlags(0.5)
 DATA = StockData.from_dict("1234.T", {"info": {"longName": "Foo"}})
 
 
@@ -69,20 +71,21 @@ class TestScreener(unittest.TestCase):
             "shock_lows": {"lehman": ["2008-09-01", "2009-03-31"]},
         },
         "recommendation": {"quality_growth_min_growth_score": 3, "quality_value_min_value_score": 4},
+        "quality": {"max_quarter_share_of_annual": 0.5},
         "improvement": {"clear_threshold": 0.4, "same_quarter_tolerance_days": 20, "max_quarter_age_days": 200},
     }
 
     def test_failing_rule_short_circuits(self):
         after = FakeRule(True)
         scorer = FakeScorer("Value", 1)
-        screener = Screener(NO_IMPROVEMENT, [FakeRule(True), FakeRule(False), after], [scorer], 3, 4)
+        screener = Screener(NO_IMPROVEMENT, NO_QUALITY, [FakeRule(True), FakeRule(False), after], [scorer], (3, 4))
         res = screener.screen(DATA)
         self.assertEqual((res.passed, res.fail_rule, after.calls), (False, "FakeRule", 0))
 
     def test_failure_reports_metrics_computed_before_it(self):
-        res = Screener(NO_IMPROVEMENT, [FakeRule(True, {"PSR": 1.0}), FakeRule(False, {"PBR": 2.0})], [], 3, 4).screen(
-            DATA
-        )
+        res = Screener(
+            NO_IMPROVEMENT, NO_QUALITY, [FakeRule(True, {"PSR": 1.0}), FakeRule(False, {"PBR": 2.0})], [], (3, 4)
+        ).screen(DATA)
         self.assertEqual((res.passed, res.row["PSR"], "PBR" in res.row), (False, 1.0, False))
         self.assertEqual(res.row["Improvement_Class"], "unknown")
 
@@ -91,10 +94,10 @@ class TestScreener(unittest.TestCase):
         res = (
             Screener(
                 NO_IMPROVEMENT,
+                NO_QUALITY,
                 rules,
                 [FakeScorer("Growth", 3), FakeScorer("Value", 1), FakeScorer("Safety", 2, {"Chart_Trend": "Bull"})],
-                3,
-                4,
+                (3, 4),
             )
             .screen(DATA)
             .row
@@ -108,7 +111,9 @@ class TestScreener(unittest.TestCase):
 
     def test_recommendation_precedence(self):
         def rec(*scorers):
-            return Screener(NO_IMPROVEMENT, [], list(scorers), 3, 4).screen(DATA).row["Recommendation_Type"]
+            return (
+                Screener(NO_IMPROVEMENT, NO_QUALITY, [], list(scorers), (3, 4)).screen(DATA).row["Recommendation_Type"]
+            )
 
         self.assertEqual(rec(FakeScorer("Value", 4)), "Quality Value")
         self.assertEqual(rec(FakeScorer("Value", 3)), "Watch")
@@ -117,7 +122,7 @@ class TestScreener(unittest.TestCase):
     def test_recommendation_thresholds_are_injected(self):
         def rec(growth_min, value_min, *scorers):
             return (
-                Screener(NO_IMPROVEMENT, [], list(scorers), growth_min, value_min)
+                Screener(NO_IMPROVEMENT, NO_QUALITY, [], list(scorers), (growth_min, value_min))
                 .screen(DATA)
                 .row["Recommendation_Type"]
             )
@@ -131,8 +136,8 @@ class TestScreener(unittest.TestCase):
         cfg = dict(self.CFG, recommendation={"quality_growth_min_growth_score": 7, "quality_value_min_value_score": 9})
         screener = Screener.from_config(cfg)
         self.assertEqual(screener.improvement, ImprovementSignal(0.4, 20, 200))
-        self.assertEqual(screener.quality_growth_min_growth_score, 7)
-        self.assertEqual(screener.quality_value_min_value_score, 9)
+        self.assertEqual(screener.quality, NO_QUALITY)
+        self.assertEqual((screener.min_growth_score, screener.min_value_score), (7, 9))
 
     def test_from_config_end_to_end(self):
         cfg = self.CFG

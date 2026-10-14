@@ -40,7 +40,8 @@ Edit `config.yaml` to adjust criteria. Every tunable parameter, path and file na
 *   `scoring`: points and thresholds (Sales CAGR span, PSR tiers, `net_net_ratio`, moving averages, `shock_lows` crash windows).
 *   `recommendation`: `quality_growth_min_growth_score` and `quality_value_min_value_score` for `Recommendation_Type`.
 *   `improvement`: stage 2 signs of improvement: `clear_threshold` (0.40), `same_quarter_tolerance_days` (20, window around 365 days for the same quarter a year earlier) and `max_quarter_age_days` (200: quarterly EPS older than this vs the price data end is ignored).
-*   `selection`: `candidates_n` (50), the number of top-ranked `clear` stocks flagged `Stage2_Candidate`.
+*   `quality`: `max_quarter_share_of_annual` (0.5): latest quarterly EPS at or above this share of the latest annual Diluted EPS (> 0) raises `quarter_spike`.
+*   `selection`: `candidates_n` (50), the number of top-ranked unflagged `clear` stocks flagged `Stage2_Candidate`.
 *   `output`: report `dir`, `filename` (`{date}` = YYYY-MM-DD) and the CSV `columns`.
 *   `tickers`: `jpx_url` and the `markets` kept by the `tickers` command.
 *   `records`: `db_file`, `export_dir` (Parquet backup per run), `horizons_months`, `benchmark_ticker`.
@@ -95,7 +96,8 @@ Every `analyze` also records the run (all tickers, including those that failed t
 *   **EPS_Q_YoY(%)**, **OI_YoY(%)**, **Op_Margin_Change(pt)**: Latest quarter's Diluted EPS vs the same quarter a year earlier (only if that one is positive), latest annual operating income vs the previous year (only if that one is positive), and the change of the annual operating margin in points.
 *   **Improvement_Class**: decided by quarterly EPS alone when a fresh year-ago pair is available (YoY; with a loss a year earlier: turnaround to > 0 = `clear`, narrower loss = `signal`, else `none`), otherwise by annual operating income YoY: `clear` (>= `clear_threshold`), `signal` (>= 0), `none` (negative), `unknown` (neither available). Computed for every ticker, including those failing the gatekeeper; recorded in `screen_results.improvement_class` (raw quarterly EPS stays in the metrics JSON).
 *   **Improvement_Yield(%)**: size of the improvement relative to the price: annualized quarterly EPS change / price (when quarterly EPS decides), else operating income change / market cap. Unlike growth %, a tiny base does not inflate it.
-*   **Priority_Rank**, **Stage2_Candidate**: rank 1..n by Improvement_Class (clear > signal > none > unknown), then Improvement_Yield descending, then Real_PSR ascending. `Stage2_Candidate` is True for rank <= `candidates_n` with class `clear`. Both are stored in the metrics JSON of passing tickers.
+*   **Quality_Flags**: comma-joined flags on a `clear` class decided by quarterly EPS (empty otherwise): `oi_divergence` (annual `OI_YoY(%)` < 0) and `quarter_spike` (latest quarterly EPS >= `max_quarter_share_of_annual` x latest annual Diluted EPS, annual EPS > 0), i.e. the improvement may come from one-off gains or losses. Also stored as the `rebuttal_flags` list in the run records.
+*   **Priority_Rank**, **Stage2_Candidate**: rank 1..n by Improvement_Class (clear > signal > none > unknown), then Improvement_Yield descending, then Real_PSR ascending. `Stage2_Candidate` is True for the first `candidates_n` rows in rank order with class `clear` and empty `Quality_Flags` (flagged rows keep their rank but are skipped, the next clean ones fill the slots). Both are stored in the metrics JSON of passing tickers.
 *   **Cash_to_MarketCap_Ratio**: Cash and equivalents / Market Cap. >= 1.0 means Net-Net.
 *   **Net_Cash(Billion)**, **Real_PSR**: Cash - total debt, and (Market Cap - net cash) / sales.
 *   **Downside_to_Lehman_Low(%)**, **Downside_to_Corona_Low(%)**: Change from the current price to the lowest monthly low in each crash window.

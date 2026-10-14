@@ -42,9 +42,11 @@ class ImprovementSignal:
         delta: float | None
         if latest is not None and eps_delta is not None:  # quarterly EPS decides
             out["Improvement_Class"] = self._classify_quarter(latest, eps_delta, eps_yoy)
+            out["Improvement_Source"] = "quarterly"
             delta, base = eps_delta * QUARTERS_PER_YEAR, to_num(data.fast_info.get("last_price"))
         else:
             out["Improvement_Class"] = self._classify_growth(oi_yoy)
+            out["Improvement_Source"] = None if oi_yoy is None else "annual"
             delta, base = oi_delta, to_num(data.fast_info.get("market_cap"))
         out["Improvement_Yield(%)"] = None if delta is None or not base else round(delta / base * 100, 2)
         return out

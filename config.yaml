@@ -77,10 +77,16 @@ improvement:
   max_quarter_age_days: 200         # Ignore quarterly EPS when the latest quarter is older than this vs the price data end (newer quarters missing)
 
 # ------------------------------------------
+# 3b2. quality: stage 5 flags on one-off-driven EPS improvement (clear + quarterly-EPS decided only)
+# ------------------------------------------
+quality:
+  max_quarter_share_of_annual: 0.5  # Latest quarterly EPS >= this share of latest annual Diluted EPS (> 0) -> quarter_spike; OI_YoY < 0 -> oi_divergence
+
+# ------------------------------------------
 # 3c. selection: stage 2 priority ranking
 # ------------------------------------------
 selection:
-  candidates_n: 50                  # Top N by Priority_Rank with Improvement_Class "clear" are Stage2_Candidate
+  candidates_n: 50                  # First N by Priority_Rank with Improvement_Class "clear" and no Quality_Flags are Stage2_Candidate
 
 # ------------------------------------------
 # 4. output: CSV report
@@ -99,6 +105,7 @@ output:
     - Op_Margin_Change(pt)
     - Improvement_Class
     - Improvement_Yield(%)
+    - Quality_Flags
     - Recommendation_Type
     - Current_Price
     - PSR

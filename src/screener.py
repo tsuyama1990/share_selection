@@ -3,6 +3,7 @@
 from typing import Any, NamedTuple
 
 from .improvement import ImprovementSignal
+from .quality import EpsQualityFlags
 from .rules import Rule, build_rules
 from .scorers import Scorer, build_scorers
 from .stock_data import StockData
@@ -22,31 +23,32 @@ class Screener:
     def __init__(
         self,
         improvement: ImprovementSignal,
+        quality: EpsQualityFlags,
         rules: list[Rule],
         scorers: list[Scorer],
-        quality_growth_min_growth_score: int,
-        quality_value_min_value_score: int,
+        min_scores: tuple[int, int],
     ):
         self.improvement = improvement
+        self.quality = quality
         self.rules = rules
         self.scorers = scorers
-        self.quality_growth_min_growth_score = quality_growth_min_growth_score
-        self.quality_value_min_value_score = quality_value_min_value_score
+        self.min_growth_score, self.min_value_score = min_scores
 
     @classmethod
     def from_config(cls, cfg: dict[str, Any]) -> "Screener":
-        rec, imp = cfg["recommendation"], cfg["improvement"]
+        rec, imp, qual = cfg["recommendation"], cfg["improvement"], cfg["quality"]
         return cls(
             ImprovementSignal(imp["clear_threshold"], imp["same_quarter_tolerance_days"], imp["max_quarter_age_days"]),
+            EpsQualityFlags(qual["max_quarter_share_of_annual"]),
             build_rules(cfg),
             build_scorers(cfg),
-            rec["quality_growth_min_growth_score"],
-            rec["quality_value_min_value_score"],
+            (rec["quality_growth_min_growth_score"], rec["quality_value_min_value_score"]),
         )
 
     def screen(self, data: StockData) -> ScreenResult:
         """Compute improvement signals, run the rules (first failure rejects), then the scorers."""
         metrics: dict[str, Any] = self.improvement.evaluate(data)
+        metrics["Quality_Flags"] = ",".join(self.quality.evaluate(data, metrics))
         for rule in self.rules:
             res = rule.evaluate(data, metrics)
             if not res.passed:
@@ -64,9 +66,9 @@ class Screener:
         growth, value, safety = scores["Growth"], scores["Value"], scores["Safety"]
         if net_net:
             rec = "NET-NET"
-        elif growth >= self.quality_growth_min_growth_score:
+        elif growth >= self.min_growth_score:
             rec = "Quality Growth"
-        elif value >= self.quality_value_min_value_score:
+        elif value >= self.min_value_score:
             rec = "Quality Value"
         else:
             rec = "Watch"

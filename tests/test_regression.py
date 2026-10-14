@@ -59,6 +59,6 @@ def test_screener_matches_golden(tmp_path):
     if os.environ.get("UPDATE_GOLDEN"):
         actual.to_csv(GOLDEN, index=False)
         pytest.skip(f"golden regenerated: {GOLDEN}")
-    expected = pd.read_csv(GOLDEN)
+    expected = pd.read_csv(GOLDEN).fillna({"Quality_Flags": ""})  # empty flags read back as NaN
     assert len(actual) > 0
     pd.testing.assert_frame_equal(actual.reset_index(drop=True), expected, check_dtype=False, rtol=1e-6)

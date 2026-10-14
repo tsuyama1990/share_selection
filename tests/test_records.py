@@ -29,6 +29,7 @@ ROWS = [
         "stage1_pass": True,
         "stage1_fail_rule": None,
         "improvement_class": "clear",
+        "quality_flags": ["quarter_spike", "oi_divergence"],
         "metrics": {"PSR": 1.5, "Name": "x"},
     },
     {
@@ -36,9 +37,17 @@ ROWS = [
         "stage1_pass": False,
         "stage1_fail_rule": "PsrCap",
         "improvement_class": "none",
+        "quality_flags": [],
         "metrics": {"PSR": float("nan")},
     },
-    {"ticker": "3.T", "stage1_pass": False, "stage1_fail_rule": NO_CACHE, "improvement_class": None, "metrics": {}},
+    {
+        "ticker": "3.T",
+        "stage1_pass": False,
+        "stage1_fail_rule": NO_CACHE,
+        "improvement_class": None,
+        "quality_flags": None,
+        "metrics": {},
+    },
 ]
 
 
@@ -53,11 +62,15 @@ def test_record_run_round_trip_and_parquet(tmp_path):
         res = store.con.execute(
             "SELECT ticker, stage1_pass, stage1_fail_rule, metrics, improvement_class FROM screen_results"
         ).fetchall()
+        flags = [
+            r for (r,) in store.con.execute("SELECT rebuttal_flags FROM screen_results ORDER BY ticker").fetchall()
+        ]
         assert store.tickers(run_id) == ["1.T", "2.T"]
     assert run == [("2026-10", "abc", '{"a": 1}', datetime.date(2026, 10, 1))]
     assert [r[:3] for r in res] == [("1.T", True, None), ("2.T", False, "PsrCap"), ("3.T", False, NO_CACHE)]
     assert json.loads(res[0][3]) == {"PSR": 1.5, "Name": "x"}
     assert json.loads(res[1][3]) == {"PSR": None}
+    assert flags == ['["quarter_spike", "oi_divergence"]', "[]", None]
     assert [r[4] for r in res] == ["clear", "none", None]
     out = tmp_path / "rec" / run_id
     assert parquet(out, "runs")["git_sha"].tolist() == ["abc"]

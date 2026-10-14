@@ -49,7 +49,8 @@ class RecordStore:
     def record_run(self, info: dict[str, Any], results: list[dict[str, Any]]) -> str:
         """Store one run (``info``: issue, git_sha, config, ticker_list_date, data_fetched_min/max) and its ticker rows.
 
-        Each result has ``ticker``, ``stage1_pass``, ``stage1_fail_rule``, ``improvement_class`` and ``metrics`` (dict).
+        Each result has ``ticker``, ``stage1_pass``, ``stage1_fail_rule``, ``improvement_class``,
+        ``quality_flags`` (list, None without data) and ``metrics`` (dict).
         """
         run_at = datetime.datetime.now()
         run_id = run_at.strftime("%Y%m%dT%H%M%S%f")
@@ -67,8 +68,9 @@ class RecordStore:
             ],
         )
         self.con.executemany(
-            "INSERT INTO screen_results (run_id, ticker, stage1_pass, stage1_fail_rule, improvement_class, metrics)"
-            "  VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO screen_results"
+            " (run_id, ticker, stage1_pass, stage1_fail_rule, improvement_class, rebuttal_flags, metrics)"
+            "  VALUES (?, ?, ?, ?, ?, ?, ?)",
             [
                 [
                     run_id,
@@ -76,6 +78,7 @@ class RecordStore:
                     r["stage1_pass"],
                     r["stage1_fail_rule"],
                     r["improvement_class"],
+                    None if r["quality_flags"] is None else json.dumps(r["quality_flags"]),
                     pd.Series(r["metrics"], dtype=object).to_json(),
                 ]
                 for r in results
