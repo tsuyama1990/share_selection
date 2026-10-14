@@ -1,6 +1,6 @@
 # L3 クラス設計：二次調査（C2 文書の取得、C4 二次調査、C5 `reviews`、C6 調査メモ）
 
-作成：2026-10-14 ／ 状態：**承認待ち**　親：`L2_C2_data_acquisition.md`、`L2_C4_stage2_research.md`　対応テスト：単体テスト（4 章）
+作成：2026-10-14 ／ 状態：**承認（2026-10-15）**　親：`L2_C2_data_acquisition.md`、`L2_C4_stage2_research.md`　対応テスト：単体テスト（4 章）
 
 凡例：✅ 実装済み ／ 🆕 未実装。根拠：[データ：日付]＝実測、[推論]＝未検証の判断。
 
@@ -135,7 +135,7 @@ def render_memo(ticker: str, name: str, review: dict, sector_comparison: dict, s
 
 ### 3.8 `records.py` と `main.py` の追加
 
-- `reviews`：主キー（run_id, ticker）。列は L2 C4 §6 から `human_decision`・`decided_at` を除き（5 章の変更 2）、`needs_attention`、`reviewed_at` を足す。書くたびに Parquet にも書き出す。
+- `reviews`：主キー（run_id, ticker）。列は L2 C4 §6 から `human_decision`・`decided_at` を除き（5 章の変更 2）、`needs_attention`、`reviewed_at` を足す。書くたびに Parquet を git 対象外の `review.export_dir` に書き出す（公開リポジトリに引用と提案を載せない。`.gitignore` への追加は `feat/review-command` で設定と一緒に行う）。調査メモは `results/` の下（既に git 対象外）。
 - `candidates(run_id)`：`Stage2_Candidate` が真の銘柄の (ticker, metrics)。`run_metrics(run_id)`：全銘柄の metrics（業種の中央値の母集団）。`reviewed(run_id)`：status が `ok` の ticker（再実行のとき飛ばす。失敗した銘柄は取り直して上書き）。
 - `main.run_review`：実行の選択（既定は最新）→ 業種の中央値 → EDINET の索引の更新 → 候補ごとに（有価証券報告書の取得、検索 → 出典の取得、文書の読み出し、`review_ticker`、`record_review`、`render_memo` の書き出し）。検索の回答文そのものは LLM の生成なので根拠の文書にしない（出典の本文だけを使う）。
 
@@ -162,7 +162,7 @@ def render_memo(ticker: str, name: str, review: dict, sector_comparison: dict, s
 
 `DocStore`、`EdinetClient`、`update_index`、`fetch_annual_report`、`fetch_document`、`review_ticker`、`records` の追加は、L2 の結合テスト（I-C2-3〜5、I-C4-2〜4）と E2E の E6 で確かめる。
 
-## 5. L2 の変更（L3 で分かったこと。承認をお願いする点）
+## 5. L2 の変更（L3 で分かったこと。2026-10-15 承認、L2 に反映済み）
 
 1. **claims に `field` を足す**（L2 C4 §4）：`{"field": "answer の項目名", "claim", "quote", "doc_id"}`。L2 C4 §5 の「answer の項目が残った主張で支えられない場合は unknown」を機械で判定するには、主張がどの項目を支えるかが要る。
 2. **`human_decision`・`decided_at` を `reviews` から外す**（L2 C4 §6）：人の判断を入れるコマンドが設計に無く、列だけ作っても使われない。人の判断を記録する方法は、調査メモを使い始めてから決める（先送り）。
@@ -176,8 +176,8 @@ def render_memo(ticker: str, name: str, review: dict, sector_comparison: dict, s
 | `webfetch` | timeout_s、max_bytes、user_agent、request_interval_s、max_sources（1 銘柄で取る出典の数） |
 | `docstore` | db_file |
 | `sector` | metrics（`Real_PSR`、`PBR`、`Improvement_Yield(%)`）、min_peers |
-| `review` | max_tickers、min_verified_ratio、search、search_prompt、prompt_dir（`prompts/v1`）、prompt_version、max_doc_chars、tasks（タスクごとの項目名） |
-| `memo` | dir、filename |
+| `review` | max_tickers、min_verified_ratio、search、search_prompt、prompt_dir（`prompts/v1`）、prompt_version、max_doc_chars、tasks（タスクごとの項目名）、export_dir |
+| `memo` | dir（`results/` の下）、filename |
 
 ## 7. 実装の順番（1 ブランチ＝1 まとまり。各ブランチで単体テスト → 実装 → 結合テストの仮置きを本物に → bonsai）
 

@@ -75,7 +75,7 @@
 
 ## 5. 決定事項（2026-10-14、ユーザー承認）
 
-1. **バックアップ**：実行ごとに `records/` へ Parquet で書き出し、リポジトリにコミットする（`records.duckdb` 本体は `.gitignore` のまま）
+1. **バックアップ**：実行ごとに `records/` へ Parquet で書き出し、リポジトリにコミットする（`records.duckdb` 本体は `.gitignore` のまま）。`reviews` だけは公開リポジトリに載せないため、git 対象外の `review.export_dir` に書き出す（2026-10-15 決定、`docs/architecture/L2_C4_stage2_research.md` 6 章）
 2. **全銘柄を記録する**（段階 1 で落ちた銘柄も、落ちた条件と計算済みの指標を記録）
 3. **最初の記録**：再取得の完了後、すぐに初回を記録する
 

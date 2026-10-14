@@ -38,7 +38,7 @@
 
 ```json
 {"answer": {...タスクごとの項目...},
- "claims": [{"claim": "...", "quote": "文書からの逐語引用", "doc_id": "..."}],
+ "claims": [{"field": "支える answer の項目名", "claim": "...", "quote": "文書からの逐語引用", "doc_id": "..."}],
  "unknown": ["文書から分からなかった点"]}
 ```
 
@@ -65,11 +65,13 @@
 
 ## 6. 記録（`reviews`、`docs/record_design.md` の設計に沿う）
 
-主キー（run_id, ticker）。列：status（完了／失敗の種類）、suggestion、source_type、reason_forgotten、answers（T1〜T5 の JSON）、evidence（照合できた主張の JSON）、verified_ratio、sector_comparison（JSON）、doc_ids、llm_providers、prompt_version、searched（検索の有無）、human_decision、decided_at。Parquet にも書き出す。
+主キー（run_id, ticker）。列：status（完了／失敗の種類）、suggestion、source_type、reason_forgotten、answers（T1〜T5 の JSON）、evidence（照合できた主張の JSON）、verified_ratio、needs_attention、sector_comparison（JSON）、doc_ids、llm_providers、prompt_version、searched（検索の有無）、reviewed_at。人の判断の記録は、調査メモを使い始めてから設計する（先送り）。
+
+Parquet の書き出し先は `review.export_dir`（git 対象外）。**リポジトリは公開のため、`reviews` と調査メモはコミットしない**（Web 記事の逐語引用と銘柄ごとの提案を含むため。2026-10-15 決定）。バックアップは公開リポジトリ以外に取る。
 
 ## 7. 設定（`config.yaml` に追加する節）
 
-`llm:`（✅ 実装済み）、`review:`（対象の上限件数、照合率の下限、検索の有無、プロンプトの版、1 回の実行の呼び出し上限）、`sector:`（比較に使う指標）。
+`llm:`（✅ 実装済み）、`review:`（対象の上限件数、照合率の下限、検索の有無、プロンプトの版、1 文書の文字数の上限、書き出し先）、`sector:`（比較に使う指標）。
 
 ## 8. 結合テスト計画
 
@@ -91,4 +93,4 @@ E2E（L1 E6）は、複数銘柄で `review` を通しで実行し、調査メ�
 
 ## 10. 訂正履歴
 
-（なし）
+- 2026-10-15（L3 の設計で変更、承認済み）：claims に `field` を追加。`reviews` から `human_decision`・`decided_at` を外し（先送り）、`needs_attention`・`reviewed_at` を追加。`review` の呼び出し上限を外し、1 文書の文字数の上限を追加。`reviews` と調査メモはコミットしない（公開リポジトリのため）。
