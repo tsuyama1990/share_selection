@@ -60,9 +60,11 @@
 | `EPS_Q_YoY(%)` | 直近四半期 EPS（希薄化後）の前年同期比。前年同期 EPS が 0 以下なら空欄 |
 | `OI_YoY(%)` | 年次営業利益の前年比 |
 | `Op_Margin_Change(pt)` | 年次営業利益率の前年差 |
-| `Improvement_Class` | clear（いずれか ≥ `improvement.clear_threshold` 20%、または黒字転換）／signal（いずれか ≥ 0）／none／unknown |
+| `Improvement_Class` | **四半期優先**：前年同期と比較できる新しい四半期 EPS があればそれだけで判定（≥ `improvement.clear_threshold` 40% → clear、≥ 0 → signal、それ以外 → none。前年同期が赤字なら、黒字転換 → clear、赤字縮小 → signal）。なければ年次営業利益で同じ判定。どちらもなければ unknown |
+| `Improvement_Yield(%)` | 改善の大きさ÷株価：四半期 EPS の変化×4÷株価（四半期で判定した場合）、または営業利益の変化÷時価総額。伸び率と違い、小さな基準値で膨らまない |
+| `Priority_Rank`・`Stage2_Candidate` | 区分 → Improvement_Yield の大きさ → 実質PSR の低さの順位。上位 `selection.candidates_n` 件の clear が二次の候補 |
 
-足切りで落ちた銘柄も含め、キャッシュのある全銘柄について計算し、実行記録（`screen_results`）に残す。
+足切りで落ちた銘柄も含め、キャッシュのある全銘柄について計算し、実行記録（`screen_results`）に残す。最新四半期が株価データの最終日より `improvement.max_quarter_age_days`（200 日）以上古い場合は、それ以降の四半期が欠けているとみなし、四半期 EPS では判定しない。
 
 ### yfinance では取れない（四季報を手で読む部分として残す）
 

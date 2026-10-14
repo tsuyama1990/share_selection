@@ -22,17 +22,16 @@ class ImprovementSignal:
 
     def evaluate(self, data: StockData) -> dict[str, Any]:
         out: dict[str, Any] = {}
-        eps_yoy = eps_delta = None
+        latest = eps_yoy = eps_delta = None
         pair = quarterly_eps_pair(data.quarterly_income, self.same_quarter_tolerance_days)
-        # A latest quarter far older than the price data means newer quarters are missing: do not judge on it.
-        as_of = None if data.history.empty else data.history.index.max()
-        fresh = pair is not None and (as_of is None or (as_of - pair[1]).days <= self.max_quarter_age_days)
         if pair is not None:
             latest, date, prev = pair
             out.update(
                 {"EPS_Q_Latest": latest, "EPS_Q_Latest_Date": date.strftime("%Y-%m-%d"), "EPS_Q_Prev_Year": prev}
             )
-            if prev is not None and fresh:
+            # A latest quarter far older than the price data means newer quarters are missing: do not judge on it.
+            as_of = None if data.history.empty else data.history.index.max()
+            if prev is not None and (as_of is None or (as_of - date).days <= self.max_quarter_age_days):
                 eps_delta = latest - prev
                 eps_yoy = round(latest / prev - 1, YOY_DECIMALS) if prev > 0 else None
         oi_yoy, margin_change, oi_delta = annual_operating_change(data.financials)
@@ -40,21 +39,20 @@ class ImprovementSignal:
         out["EPS_Q_YoY(%)"] = None if eps_yoy is None else round(eps_yoy * 100, 1)
         out["OI_YoY(%)"] = None if oi_yoy is None else round(oi_yoy * 100, 1)
         out["Op_Margin_Change(pt)"] = None if margin_change is None else round(margin_change, 1)
-        if fresh and pair is not None and pair[2] is not None:
-            out["Improvement_Class"] = self._classify_quarter(pair[0], pair[2], eps_yoy)
-            price = to_num(data.fast_info.get("last_price"))
-            yield_ = eps_delta * QUARTERS_PER_YEAR / price if eps_delta is not None and price else None
+        delta: float | None
+        if latest is not None and eps_delta is not None:  # quarterly EPS decides
+            out["Improvement_Class"] = self._classify_quarter(latest, eps_delta, eps_yoy)
+            delta, base = eps_delta * QUARTERS_PER_YEAR, to_num(data.fast_info.get("last_price"))
         else:
             out["Improvement_Class"] = self._classify_growth(oi_yoy)
-            mcap = to_num(data.fast_info.get("market_cap"))
-            yield_ = oi_delta / mcap if oi_delta is not None and mcap else None
-        out["Improvement_Yield(%)"] = None if yield_ is None else round(yield_ * 100, 2)
+            delta, base = oi_delta, to_num(data.fast_info.get("market_cap"))
+        out["Improvement_Yield(%)"] = None if delta is None or not base else round(delta / base * 100, 2)
         return out
 
-    def _classify_quarter(self, latest: float, prev: float, eps_yoy: float | None) -> str:
-        """Quarterly EPS decides: turnaround -> clear; with a loss a year earlier, a narrower loss -> signal."""
-        if prev <= 0:
-            return "clear" if latest > 0 else "signal" if latest > prev else "none"
+    def _classify_quarter(self, latest: float, delta: float, eps_yoy: float | None) -> str:
+        """Turnaround -> clear; with a loss a year earlier (no YoY %), a narrower loss -> signal."""
+        if eps_yoy is None:
+            return "clear" if latest > 0 else "signal" if delta > 0 else "none"
         return self._classify_growth(eps_yoy)
 
     def _classify_growth(self, growth: float | None) -> str:
