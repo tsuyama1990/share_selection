@@ -24,6 +24,17 @@ SCHEMA = (
 NO_CACHE = "no_cache"
 
 
+def latest_issue(today: datetime.date, months: Sequence[int], release_day: int) -> str:
+    """Latest Shikiho issue (``YYYY-MM``) out by ``today``; an issue is out on ``release_day`` of its month."""
+    released = [
+        (year, month)
+        for year in (today.year - 1, today.year)
+        for month in months
+        if datetime.date(year, month, release_day) <= today
+    ]
+    return "{}-{:02d}".format(*max(released))
+
+
 def git_sha() -> str | None:
     try:
         return subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()

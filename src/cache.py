@@ -102,13 +102,12 @@ class StockCache:
         self.con.close()
 
 
-def refresh(cache: StockCache, client, ticker: str, max_age_days: float) -> bool:
-    """Download unless a fresh entry exists; True if the cache is up to date afterwards, False on failure."""
+def refresh(cache: StockCache, client, ticker: str, max_age_days: float) -> str | None:
+    """Download unless a fresh entry exists; None if the cache is up to date afterwards, else the error message."""
     if cache.is_fresh(ticker, max_age_days):
-        return True
+        return None
     try:
         cache.put(ticker, client.download(ticker))
-        return True
+        return None
     except Exception as e:
-        print(f"Fetch failed {ticker}: {e}")
-        return False
+        return str(e)

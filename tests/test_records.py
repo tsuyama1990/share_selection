@@ -90,6 +90,34 @@ def test_next_earnings_date_is_stored(tmp_path):
     assert [d for (d,) in dates] == [datetime.date(2026, 11, 5), None, None]
 
 
+@pytest.mark.parametrize(
+    ("today", "issue"),
+    [
+        (datetime.date(2026, 10, 14), "2026-09"),
+        (datetime.date(2026, 9, 14), "2026-06"),
+        (datetime.date(2026, 9, 15), "2026-09"),
+        (datetime.date(2026, 12, 15), "2026-12"),
+        (datetime.date(2027, 1, 1), "2026-12"),
+        (datetime.date(2027, 3, 14), "2026-12"),
+        (datetime.date(2027, 3, 15), "2027-03"),
+    ],
+)
+def test_latest_issue_boundaries(today, issue):
+    rec = CFG["records"]
+    assert records.latest_issue(today, rec["shikiho_issue_months"], rec["shikiho_release_day"]) == issue
+
+
+def test_fetch_writes_failures_csv(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(main, "ROOT", tmp_path)
+    client = mock.Mock()
+    client.download.side_effect = lambda t: {} if t == "1.T" else (_ for _ in ()).throw(RuntimeError("boom"))
+    with StockCache(str(tmp_path / "c.duckdb"), CFG["system"]["market_timezone"]) as cache:
+        main.run_fetch(CFG, ["1.T", "2.T"], cache, client)
+    (path,) = (tmp_path / CFG["output"]["dir"]).glob("fetch_failures_*.csv")
+    assert pd.read_csv(path).to_dict("records") == [{"ticker": "2.T", "error": "boom"}]
+    assert "1 fetch failures saved" in capsys.readouterr().out
+
+
 def test_head_commit_none_when_unavailable():
     with mock.patch("src.records.subprocess.run", side_effect=OSError):
         assert records.git_sha() is None
@@ -227,6 +255,20 @@ def test_analyze_fills_earnings_columns_from_calendar(tmp_path, monkeypatch):
         assert report.loc[tickers[0], "Next_Earnings_Date"] == "2026-11-05"
         assert report.loc[tickers[0], "Earnings_Period"] == "Second quarter"
     assert report.drop(index=tickers[0], errors="ignore")["Next_Earnings_Date"].isna().all()
+
+
+def test_analyze_issue_defaults_to_latest_shikiho_issue(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "ROOT", tmp_path)
+    (tmp_path / CFG["system"]["input_csv"]).write_text("code\n1.T\n", encoding="utf-8")
+    cfg_path = tmp_path / "c.yaml"
+    cfg_path.write_text(yaml.safe_dump(CFG), encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(main, "run_analyze", lambda *a: calls.append(a[-1]))
+    monkeypatch.setattr(main, "default_issue", lambda cfg: "2099-03")
+    for argv, expected in ((["analyze"], "2099-03"), (["analyze", "--issue", "2020-06"], "2020-06")):
+        monkeypatch.setattr(sys, "argv", ["main.py", "--config", str(cfg_path), *argv])
+        main.main()
+        assert calls[-1] == expected
 
 
 def test_analyze_warns_once_without_calendar(tmp_path, monkeypatch, capsys):

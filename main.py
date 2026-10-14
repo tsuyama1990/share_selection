@@ -11,7 +11,7 @@ from tqdm import tqdm
 from src.cache import StockCache, refresh
 from src.config import CONFIG_FILE, ROOT, load_config
 from src.earnings_calendar import load_calendar, update_calendar_csv
-from src.records import NO_CACHE, RecordStore, evaluate, git_sha
+from src.records import NO_CACHE, RecordStore, evaluate, git_sha, latest_issue
 from src.report import prioritize, write_report
 from src.screener import Screener, ScreenResult
 from src.tickers import update_ticker_csv
@@ -45,8 +45,16 @@ def get_japan_tickers(cfg: dict[str, Any]) -> list[str]:
 def run_fetch(cfg: dict[str, Any], tickers: list[str], cache: StockCache, client: YahooClient):
     print(f"Starting Data Fetch for {len(tickers)} stocks...")
     days = cfg["system"]["cache_days"]
-    fetched = sum(refresh(cache, client, t, days) for t in tqdm(tickers))
-    print(f"fetched {fetched} / {len(tickers)}")
+    errors = {t: refresh(cache, client, t, days) for t in tqdm(tickers)}
+    failures = pd.DataFrame([(t, e) for t, e in errors.items() if e is not None], columns=["ticker", "error"])
+    print(f"fetched {len(tickers) - len(failures)} / {len(tickers)}")
+    if failures.empty:
+        return
+    output_cfg = cfg["output"]
+    path = ROOT / output_cfg["dir"] / output_cfg["failures_filename"].format(date=datetime.date.today())
+    path.parent.mkdir(parents=True, exist_ok=True)
+    failures.to_csv(path, index=False, encoding="utf-8")
+    print(f"{len(failures)} fetch failures saved to {path}")
 
 
 def run_analyze(cfg: dict[str, Any], tickers: list[str], cache: StockCache, screener: Screener, issue: str | None):
@@ -108,6 +116,11 @@ def run_evaluate(cfg: dict[str, Any], client: YahooClient):
     print(f"Added {added} outcome rows.")
 
 
+def default_issue(cfg: dict[str, Any]) -> str:
+    rec = cfg["records"]
+    return latest_issue(datetime.date.today(), rec["shikiho_issue_months"], rec["shikiho_release_day"])
+
+
 def main():
     parser = argparse.ArgumentParser(description="Emin Yurumazu Screener")
     parser.add_argument("--config", type=Path, default=CONFIG_FILE, help="Config file (default: config.yaml)")
@@ -116,7 +129,9 @@ def main():
     subparsers.add_parser("fetch", help="Fetch data from Yahoo Finance")
 
     analyze = subparsers.add_parser("analyze", help="Analyze cached data and record the run")
-    analyze.add_argument("--issue", help="Shikiho issue (YYYY-MM) the ticker research is based on")
+    analyze.add_argument(
+        "--issue", help="Shikiho issue (YYYY-MM) the ticker research is based on (default: latest released)"
+    )
 
     subparsers.add_parser("evaluate", help="Compute outcomes of recorded runs whose horizons have elapsed")
 
@@ -152,7 +167,7 @@ def main():
         if args.command == "fetch":
             run_fetch(cfg, tickers, cache, client)
         elif args.command == "analyze":
-            run_analyze(cfg, tickers, cache, Screener.from_config(cfg), args.issue)
+            run_analyze(cfg, tickers, cache, Screener.from_config(cfg), args.issue or default_issue(cfg))
         else:
             parser.print_help()
 
