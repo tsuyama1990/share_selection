@@ -6,7 +6,6 @@ from src.cache import StockCache, refresh
 from src.improvement import ImprovementSignal
 from src.quality import EpsQualityFlags
 from src.rules import RuleResult
-from src.scorers import ScoreResult
 from src.screener import Screener
 from src.stock_data import StockData
 
@@ -20,12 +19,12 @@ class FakeRule:
         return RuleResult(self.passed, self.metrics)
 
 
-class FakeScorer:
-    def __init__(self, category, points, metrics=None, recommendation=None):
-        self.result = ScoreResult(category, points, metrics or {}, recommendation)
+class FakeIndicator:
+    def __init__(self, metrics=None):
+        self.metrics = metrics or {}
 
-    def score(self, data, metrics):
-        return self.result
+    def compute(self, data, metrics):
+        return self.metrics
 
 
 NO_IMPROVEMENT = ImprovementSignal(0.4, 20, 200)
@@ -44,33 +43,13 @@ class TestScreener(unittest.TestCase):
             "turnover_min": 0,
             "turnover_days": 60,
         },
-        "scoring": {
-            "sales_cagr_threshold": 0.189,
-            "sales_growth_points": 3,
-            "psr_super_cheap": 0.5,
-            "psr_super_cheap_points": 3,
-            "psr_cheap": 1.0,
-            "psr_cheap_points": 2,
-            "psr_fair_points": 1,
-            "net_net_bonus": 5,
-            "net_cash_points": 1,
-            "pbr_cheap": 1.0,
-            "pbr_points": 1,
-            "dividend_yield_target": 0.03,
-            "dividend_points": 1,
-            "per_growth_points": 2,
-            "equity_ratio_ideal": 0.7,
-            "equity_ideal_points": 1,
+        "indicators": {
             "ma_short": 12,
             "ma_long": 24,
-            "technical_points": 2,
-            "bull_points": 1,
             "sales_cagr_years_back": 4,
             "sales_cagr_min_years": 3,
-            "net_net_ratio": 1.0,
             "shock_lows": {"lehman": ["2008-09-01", "2009-03-31"]},
         },
-        "recommendation": {"quality_growth_min_growth_score": 3, "quality_value_min_value_score": 4},
         "quality": {"max_quarter_share_of_annual": 0.5},
         "improvement": {"clear_threshold": 0.4, "same_quarter_tolerance_days": 20, "max_quarter_age_days": 200},
     }
@@ -81,15 +60,14 @@ class TestScreener(unittest.TestCase):
             NO_IMPROVEMENT,
             NO_QUALITY,
             [FakeRule(True, {"PSR": 1.0}), FakeRule(False), after],
-            [FakeScorer("Value", 1, {"Dividend_Yield(%)": 3.0})],
-            (3, 4),
+            [FakeIndicator({"Dividend_Yield(%)": 3.0})],
         )
         res = screener.screen(DATA)
         self.assertEqual((res.passed, res.fail_rule, after.calls), (False, "FakeRule", 1))
         self.assertEqual((res.row["PSR"], res.row["PBR"], res.row["Dividend_Yield(%)"]), (1.0, 2.0, 3.0))
         self.assertEqual(res.row["Improvement_Class"], "unknown")
 
-    def test_first_rule_failure_keeps_later_rule_and_scorer_metrics(self):
+    def test_first_rule_failure_keeps_later_rule_and_indicator_metrics(self):
         data = StockData.from_dict(
             "1234.T",
             {
@@ -123,55 +101,26 @@ class TestScreener(unittest.TestCase):
         self.assertEqual((res.row["Equity_Ratio"], res.row["Net_Cash(Billion)"]), (50.0, 0.0))
         self.assertTrue({"PSR", "Real_PSR", "PBR", "Cash_to_MarketCap_Ratio"}.isdisjoint(res.row))
 
-    def test_scores_and_recommendation(self):
-        rules = [FakeRule(True, {"PSR": 1.0})]
+    def test_row_has_identity_and_merged_metrics(self):
         res = (
             Screener(
                 NO_IMPROVEMENT,
                 NO_QUALITY,
-                rules,
-                [FakeScorer("Growth", 3), FakeScorer("Value", 1), FakeScorer("Safety", 2, {"Chart_Trend": "Bull"})],
-                (3, 4),
+                [FakeRule(True, {"PSR": 1.0})],
+                [FakeIndicator({"Chart_Trend": "Bull"})],
             )
             .screen(DATA)
             .row
         )
-        self.assertEqual(res["Ticker"], "1234.T")
-        self.assertEqual(res["Name"], "Foo")
-        self.assertEqual(res["Total_Score"], 6)
-        self.assertEqual(res["Recommendation_Type"], "Quality Growth")
-        self.assertEqual(res["PSR"], 1.0)
-        self.assertEqual(res["Chart_Trend"], "Bull")
+        self.assertEqual((res["Ticker"], res["Name"]), ("1234.T", "Foo"))
+        self.assertEqual((res["PSR"], res["Chart_Trend"]), (1.0, "Bull"))
+        self.assertNotIn("Total_Score", res)
+        self.assertNotIn("Recommendation_Type", res)
 
-    def test_recommendation_precedence(self):
-        def rec(*scorers):
-            return (
-                Screener(NO_IMPROVEMENT, NO_QUALITY, [], list(scorers), (3, 4)).screen(DATA).row["Recommendation_Type"]
-            )
-
-        self.assertEqual(rec(FakeScorer("Value", 4)), "Quality Value")
-        self.assertEqual(rec(FakeScorer("Value", 3)), "Watch")
-        self.assertEqual(rec(FakeScorer("Growth", 3), FakeScorer("Value", 5, recommendation="NET-NET")), "NET-NET")
-
-    def test_recommendation_thresholds_are_injected(self):
-        def rec(growth_min, value_min, *scorers):
-            return (
-                Screener(NO_IMPROVEMENT, NO_QUALITY, [], list(scorers), (growth_min, value_min))
-                .screen(DATA)
-                .row["Recommendation_Type"]
-            )
-
-        self.assertEqual(rec(5, 4, FakeScorer("Growth", 3)), "Watch")
-        self.assertEqual(rec(2, 4, FakeScorer("Growth", 2)), "Quality Growth")
-        self.assertEqual(rec(3, 6, FakeScorer("Value", 4)), "Watch")
-        self.assertEqual(rec(3, 2, FakeScorer("Value", 2)), "Quality Value")
-
-    def test_from_config_reads_recommendation_section(self):
-        cfg = dict(self.CFG, recommendation={"quality_growth_min_growth_score": 7, "quality_value_min_value_score": 9})
-        screener = Screener.from_config(cfg)
+    def test_from_config_wires_improvement_and_quality(self):
+        screener = Screener.from_config(self.CFG)
         self.assertEqual(screener.improvement, ImprovementSignal(0.4, 20, 200))
         self.assertEqual(screener.quality, NO_QUALITY)
-        self.assertEqual((screener.min_growth_score, screener.min_value_score), (7, 9))
 
     def test_from_config_end_to_end(self):
         cfg = self.CFG
@@ -187,8 +136,6 @@ class TestScreener(unittest.TestCase):
         res = Screener.from_config(cfg).screen(data).row
         self.assertEqual(res["PSR"], 2.0)
         self.assertEqual(res["PBR"], 40000000.0)
-        self.assertEqual(res["Total_Score"], 1)
-        self.assertEqual(res["Recommendation_Type"], "Watch")
 
     def test_improvement_metrics_present_for_gate_failing_ticker(self):
         data = StockData.from_dict(

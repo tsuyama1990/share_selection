@@ -1,6 +1,6 @@
 # Emin Yurumazu Investment Theory Screener (Hybrid v2.0)
 
-This is a Python-based stock screener implementing the investment philosophy of Emin Yurumazu. It is designed to find **Quality Growth** and **Quality Value** stocks in the Japanese market.
+This is a Python-based stock screener implementing the investment philosophy of Emin Yurumazu. It screens Japanese stocks with a gatekeeper and ranks them by improvement of earnings (stage 2 priority).
 
 The system uses a **Hybrid Architecture** with **DuckDB** to separate data accumulation from analysis, ensuring high performance and offline capability.
 
@@ -17,10 +17,10 @@ The system uses a **Hybrid Architecture** with **DuckDB** to separate data accum
     *   PSR Cap <= 1.2
     *   Operating CF > 0 (missing OCF fails)
     *   Missing/NaN metrics FAIL these rules (they no longer slip through). If the latest fiscal year column is unreported (all NaN), the most recent period with values is used.
-*   **Scoring System**:
-    *   **Growth**: Sales CAGR over the available 3-4 years; threshold `sales_cagr_threshold` 0.189 (= 2x over 4 years).
-    *   **Value**: **Real_PSR** tiers (net-cash adjusted PSR, falls back to PSR): <= 0.5 gives 3, <= 1.0 gives 2, else 1; **Net Cash** (cash - total debt > 0, missing debt counts as 0) +1; **PBR** < 1.0 +1; **Dividend Yield** >= 3% (forward `dividendYield`, a percent divided by 100; falls back to `trailingAnnualDividendYield`, a fraction); **PER Growth** (Forward < Trailing); **Net-Net** (cash >= market cap) +5 and `NET-NET` recommendation.
-    *   **Safety**: Equity Ratio >= 70% +1; **Monthly Chart Trend** (Price > 12M MA > 24M MA). Also reports the downside to the Lehman (2008-09 to 2009-03) and Corona (2020-02 to 2020-04) monthly lows (no points).
+*   **Reported metrics** (no points; ranking is by `Priority_Rank`):
+    *   **Growth**: Sales CAGR over the available 3-4 years.
+    *   **Value**: **Real_PSR** (net-cash adjusted PSR), **Net Cash** (cash - total debt, missing debt counts as 0), **Cash / Market Cap**, **PBR**, **Dividend Yield** (forward `dividendYield`, a percent divided by 100; falls back to `trailingAnnualDividendYield`, a fraction).
+    *   **Technicals**: Monthly Chart Trend (Price > 12M MA > 24M MA) and the downside to the Lehman (2008-09 to 2009-03) and Corona (2020-02 to 2020-04) monthly lows.
 
 ## Installation
 
@@ -37,8 +37,7 @@ uv run pre-commit install    # optional: run the checks on every commit
 Edit `config.yaml` to adjust criteria. Every tunable parameter, path and file name lives there, grouped in sections:
 
 *   `gatekeeper`: pass/fail filters (equity ratio, margin, PSR cap, cash flow, market cap, `turnover_min` / `turnover_days`).
-*   `scoring`: points and thresholds (Sales CAGR span, PSR tiers, `net_net_ratio`, moving averages, `shock_lows` crash windows).
-*   `recommendation`: `quality_growth_min_growth_score` and `quality_value_min_value_score` for `Recommendation_Type`.
+*   `indicators`: metric parameters (Sales CAGR span, moving averages, `shock_lows` crash windows).
 *   `improvement`: stage 2 signs of improvement: `clear_threshold` (0.40), `same_quarter_tolerance_days` (20, window around 365 days for the same quarter a year earlier) and `max_quarter_age_days` (200: quarterly EPS older than this vs the price data end is ignored).
 *   `quality`: `max_quarter_share_of_annual` (0.5): latest quarterly EPS at or above this share of the latest annual Diluted EPS (> 0) raises `quarter_spike`.
 *   `selection`: `candidates_n` (50), the number of top-ranked unflagged `clear` stocks flagged `Stage2_Candidate`.
@@ -50,11 +49,8 @@ Edit `config.yaml` to adjust criteria. Every tunable parameter, path and file na
 ```yaml
 gatekeeper:
   equity_ratio_min: 0.45
-scoring:
-  sales_growth_points: 3
-  technical_points: 2
-recommendation:
-  quality_value_min_value_score: 4
+indicators:
+  ma_short: 12
 output:
   dir: "results"
 system:
@@ -89,24 +85,23 @@ uv run python main.py analyze
 ### 5. Output
 Results are saved to `results/emin_screening_result_YYYY-MM-DD.csv` (directory and file name set by `output` in `config.yaml`; `results/` is git-ignored) sorted by `Priority_Rank`; the `Stage2_Candidate` rows are displayed in the console.
 
-Every `analyze` also records the run (all tickers, including those that failed the gatekeeper with the failing rule, and tickers without cache as `no_cache`) in `records.duckdb` and exports it to `records/<run_id>/{runs,screen_results}.parquet`. Commit the `records/` Parquet files as the backup; `records.duckdb` is git-ignored. Optional `--issue YYYY-MM` labels the run with the Shikiho issue used. Every recorded ticker carries all metrics computable from its cached data (rules and scorers run for gatekeeper failures too, skipping what lacks inputs), so a run can be replayed under other thresholds.
+Every `analyze` also records the run (all tickers, including those that failed the gatekeeper with the failing rule, and tickers without cache as `no_cache`) in `records.duckdb` and exports it to `records/<run_id>/{runs,screen_results}.parquet`. Commit the `records/` Parquet files as the backup; `records.duckdb` is git-ignored. Optional `--issue YYYY-MM` labels the run with the Shikiho issue used. Every recorded ticker carries all metrics computable from its cached data (rules and indicators run for gatekeeper failures too, skipping what lacks inputs), so a run can be replayed under other thresholds.
 
 Global option `--config PATH` (before the subcommand, e.g. `uv run python main.py --config experiments/a.yaml analyze`) uses another config file instead of `config.yaml`. Relative paths in any config file stay relative to the repo root. Experiment configs should set their own `output.dir`, `records.db_file` and `records.export_dir` so they do not mix with the main records and results.
 
 **Key Output Columns:**
-*   **Recommendation_Type**: `Quality Growth`, `Quality Value`, `NET-NET`, or `Watch`.
 *   **EPS_Q_YoY(%)**, **OI_YoY(%)**, **Op_Margin_Change(pt)**: Latest quarter's Diluted EPS vs the same quarter a year earlier (only if that one is positive), latest annual operating income vs the previous year (only if that one is positive), and the change of the annual operating margin in points.
 *   **Improvement_Class**: decided by quarterly EPS alone when a fresh year-ago pair is available (YoY; with a loss a year earlier: turnaround to > 0 = `clear`, narrower loss = `signal`, else `none`), otherwise by annual operating income YoY: `clear` (>= `clear_threshold`), `signal` (>= 0), `none` (negative), `unknown` (neither available). Computed for every ticker, including those failing the gatekeeper; recorded in `screen_results.improvement_class` (raw quarterly EPS stays in the metrics JSON).
 *   **Improvement_Yield(%)**: size of the improvement relative to the price: annualized quarterly EPS change / price (when quarterly EPS decides), else operating income change / market cap. Unlike growth %, a tiny base does not inflate it.
 *   **Quality_Flags**: comma-joined flags on a `clear` class decided by quarterly EPS (empty otherwise): `oi_divergence` (annual `OI_YoY(%)` < 0) and `quarter_spike` (latest quarterly EPS >= `max_quarter_share_of_annual` x latest annual Diluted EPS, annual EPS > 0), i.e. the improvement may come from one-off gains or losses. Also stored as the `rebuttal_flags` list in the run records.
 *   **Priority_Rank**, **Stage2_Candidate**: rank 1..n by Improvement_Class (clear > signal > none > unknown), then Improvement_Yield descending, then Real_PSR ascending. `Stage2_Candidate` is True for the first `candidates_n` rows in rank order with class `clear` and empty `Quality_Flags` (flagged rows keep their rank but are skipped, the next clean ones fill the slots). Both are stored in the metrics JSON of passing tickers.
-*   **Cash_to_MarketCap_Ratio**: Cash and equivalents / Market Cap. >= 1.0 means Net-Net.
+*   **Cash_to_MarketCap_Ratio**: Cash and equivalents / Market Cap.
 *   **Net_Cash(Billion)**, **Real_PSR**: Cash - total debt, and (Market Cap - net cash) / sales.
 *   **Downside_to_Lehman_Low(%)**, **Downside_to_Corona_Low(%)**: Change from the current price to the lowest monthly low in each crash window.
 *   **Chart_Trend**: `Strong Bull` (Perfect Order), `Bull`, or `Bear`.
 *   **Sales_CAGR(%)**, **Sales_Growth_Years**: Sales CAGR and the span used (replace `Sales_Growth_4Y(%)`).
 *   **Avg_Turnover(M JPY)**: Average daily trading value over `turnover_days` sessions.
-*   **PBR**, **PSR**, **Dividend_Yield**: Standard valuation metrics.
+*   **PBR**, **PSR**, **Dividend_Yield(%)**: Standard valuation metrics.
 
 
 ### 6. Evaluate Outcomes
@@ -140,8 +135,8 @@ The same checks run in CI (`.github/workflows/ci.yml`) and, except pytest, in pr
 *   `src/stock_data.py`: `StockData`, the typed raw data of one ticker (normalizes histories to naive market-local dates).
 *   `src/metrics.py`: Pure helpers (`to_num`, `sales_cagr`, `avg_turnover`, ...).
 *   `src/rules.py`: Gatekeeper rules (one dataclass each) and `build_rules`.
-*   `src/scorers.py`: Scoring criteria (one dataclass each) and `build_scorers`.
-*   `src/screener.py`: `Screener` runs rules then scorers and builds the result row.
+*   `src/indicators.py`: Metric providers (one class each) and `build_indicators`.
+*   `src/screener.py`: `Screener` runs rules then indicators and builds the result row.
 *   `src/cache.py`: `StockCache` (DuckDB) and `refresh` (download if stale).
 *   `src/yahoo.py`: `YahooClient` downloads raw data from Yahoo Finance.
 *   `src/records.py`: `RecordStore` (runs, screen_results, outcomes in `records.duckdb`, exported to Parquet) and `evaluate`.
