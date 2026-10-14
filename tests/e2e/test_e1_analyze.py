@@ -17,7 +17,7 @@ import pytest
 
 import main
 from src.records import NO_CACHE
-from tests.e2e.conftest import CFG
+from tests.fixtures.config import CFG
 
 GOLDEN = Path(__file__).parent.parent / "fixtures" / "golden_screening.csv"
 CALENDAR_COLUMNS = ["Next_Earnings_Date", "Earnings_Period"]  # filled by E2, not part of the golden file

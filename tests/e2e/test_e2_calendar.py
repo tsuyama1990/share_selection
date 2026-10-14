@@ -6,8 +6,8 @@ from unittest import mock
 
 import pandas as pd
 
-from tests.e2e.conftest import CFG
-from tests.unit.test_earnings_calendar import row, workbook
+from tests.fixtures.calendar_workbook import row, workbook
+from tests.fixtures.config import CFG
 
 GOLDEN = Path(__file__).parent.parent / "fixtures" / "golden_screening.csv"
 DATE = datetime.datetime(2099, 1, 5)

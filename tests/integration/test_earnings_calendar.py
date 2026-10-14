@@ -2,7 +2,7 @@ import datetime
 from unittest import mock
 
 from src.earnings_calendar import CSV_COLUMNS, load_calendar, merge_calendars, parse_calendar, update_calendar_csv
-from tests.unit.test_earnings_calendar import TODAY, row, workbook
+from tests.fixtures.calendar_workbook import TODAY, row, workbook
 
 
 def test_calendar_csv_round_trip_and_missing_file(tmp_path, capsys):

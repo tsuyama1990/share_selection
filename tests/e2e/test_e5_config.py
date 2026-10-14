@@ -2,7 +2,7 @@
 
 import json
 
-from tests.e2e.conftest import CFG
+from tests.fixtures.config import CFG
 
 ALT = {
     **CFG,

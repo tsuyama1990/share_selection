@@ -8,7 +8,7 @@ import pandas as pd
 
 import main
 from src.records import RecordStore
-from tests.e2e.conftest import CFG
+from tests.fixtures.config import CFG
 
 RUN_AGE_DAYS = 200  # between the 6 and 12 month horizons
 ROW = {

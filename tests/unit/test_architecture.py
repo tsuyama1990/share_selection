@@ -78,3 +78,15 @@ def test_every_key_read_by_code_exists_in_config():
     config = yaml.safe_load((ROOT / "config.yaml").read_text(encoding="utf-8"))
     missing = _keys_read_by_code() - _config_keys(config) - DYNAMIC_PARENTS
     assert not missing, f"keys read by code but absent from config.yaml: {sorted(missing)}"
+
+
+def test_test_levels_do_not_import_each_other():
+    """Shared test helpers live in tests/fixtures; a level never imports another level's test module."""
+    tests = Path(__file__).resolve().parent.parent
+    bad = [
+        f"{p.relative_to(tests)}: {line.strip()}"
+        for p in tests.rglob("test_*.py")
+        for line in p.read_text(encoding="utf-8").splitlines()
+        if line.startswith(("from tests.unit", "from tests.integration", "from tests.e2e", "import tests."))
+    ]
+    assert not bad, f"cross-level test imports (move helpers to tests/fixtures): {bad}"

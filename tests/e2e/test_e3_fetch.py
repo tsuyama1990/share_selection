@@ -4,7 +4,7 @@ import pandas as pd
 
 import main
 from src.cache import StockCache
-from tests.e2e.conftest import CFG
+from tests.fixtures.config import CFG
 
 
 class FlakyYahoo:

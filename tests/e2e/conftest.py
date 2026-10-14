@@ -7,10 +7,8 @@ import yaml
 
 import main
 from src.cache import StockCache
-from src.config import load_config
+from tests.fixtures.config import CFG
 from tests.fixtures.sample import load_sample
-
-CFG = load_config()
 
 
 class Project:
