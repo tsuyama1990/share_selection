@@ -69,11 +69,11 @@
 | ID | コンポーネント | 責務 | モジュール（現状） | 状態 |
 |---|---|---|---|---|
 | C1 | 銘柄一覧 | JPX の一覧から対象銘柄 CSV を作る | `tickers.py` | ✅ |
-| C2 | データ取得 | 外部システムからの取得と保存（キャッシュ・文書） | `yahoo.py`、`cache.py`、`stock_data.py`、`earnings_calendar.py`、EDINET・文書取得 🆕 | ✅／🆕 |
+| C2 | データ取得 | 外部システムからの取得と保存（キャッシュ・文書） | `yahoo.py`、`cache.py`、`stock_data.py`、`earnings_calendar.py`、`edinet.py` 🆕、`webfetch.py` 🆕、`docstore.py` 🆕（詳細は `L2_C2_data_acquisition.md`） | ✅／🆕 |
 | C3 | 一次スクリーニング | 足切り（R1）、指標、改善の兆し（R2）、質の旗（R4）、順位と二次候補 | `rules.py`、`indicators.py`、`improvement.py`、`quality.py`、`metrics.py`、`screener.py`、`report.py` | ✅ |
-| C4 | 二次調査 | 業種の文脈、LLM による企業分析、引用の照合、調査メモ（R5） | LLM クライアント ⏸、調査タスク・照合・業種比較 🆕 | ⏸／🆕 |
+| C4 | 二次調査 | 業種の文脈、LLM による企業分析、引用の照合、調査メモ（R5） | `llm.py` ⏸、`sector.py` 🆕、`research.py` 🆕、`verify.py` 🆕（詳細は `L2_C4_stage2_research.md`） | ⏸／🆕 |
 | C5 | 記録と答え合わせ | 実行・全銘柄の判定・二次の調査結果の記録、結果の計算（R6） | `records.py`（`reviews` テーブル 🆕） | ✅／🆕 |
-| C6 | 出力 | 結果 CSV、二次候補の一覧、調査メモ | `report.py`（調査メモ 🆕） | ✅／🆕 |
+| C6 | 出力 | 結果 CSV、二次候補の一覧、調査メモ | `report.py`、`memo.py` 🆕（調査メモ） | ✅／🆕 |
 | C7 | 設定と起動 | 設定の読み込み、`.env`、CLI、各コンポーネントの組み立て | `config.py`、`main.py` | ✅ |
 | C8 | 実験 | 過去の記録を別の設定で再現し比較する（R7） | 🆕（結果が貯まる 2027 年春以降） | 🆕 |
 
@@ -164,5 +164,7 @@ E2E テストは、この表の形式が守られることを確かめる。
 | L2 の順番 | C4 二次調査と C2 データ取得から |
 
 ## 11. 訂正履歴
+
+- 2026-10-14：3 章に、追加予定のモジュール名（L2 で決定）を記載
 
 - 2026-10-14：追跡表に N5 が抜けていた。E2E ではなく関門（設計の関門・アーキテクチャテスト・コード予算）で守る要件として追加
