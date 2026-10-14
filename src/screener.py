@@ -10,7 +10,7 @@ from .stock_data import StockData
 
 
 class ScreenResult(NamedTuple):
-    """Stage-1 outcome: ``row`` is the full result row if passed, else the metrics computed before ``fail_rule``."""
+    """Stage-1 outcome: ``row`` is the full result row if passed, else all metrics computable for the ticker."""
 
     passed: bool
     fail_rule: str | None
@@ -46,13 +46,14 @@ class Screener:
         )
 
     def screen(self, data: StockData) -> ScreenResult:
-        """Compute improvement signals, run the rules (first failure rejects), then the scorers."""
+        """Compute improvement signals, run all rules (``fail_rule`` is the first failure), then the scorers."""
         metrics: dict[str, Any] = self.improvement.evaluate(data)
         metrics["Quality_Flags"] = ",".join(self.quality.evaluate(data, metrics))
+        fail_rule = None
         for rule in self.rules:
             res = rule.evaluate(data, metrics)
-            if not res.passed:
-                return ScreenResult(False, type(rule).__name__, metrics)
+            if not res.passed and fail_rule is None:
+                fail_rule = type(rule).__name__
             metrics.update(res.metrics)
 
         scores = {"Growth": 0, "Value": 0, "Safety": 0}
@@ -62,6 +63,9 @@ class Screener:
             scores[score.category] += score.points
             metrics.update(score.metrics)
             net_net = net_net or score.recommendation == "NET-NET"
+
+        if fail_rule is not None:
+            return ScreenResult(False, fail_rule, metrics)
 
         growth, value, safety = scores["Growth"], scores["Value"], scores["Safety"]
         if net_net:
