@@ -120,6 +120,14 @@ uv run python main.py evaluate
 ```
 For each recorded run and each `records.horizons_months` whose horizon has elapsed and has no outcomes yet, computes the return from freshly downloaded adjusted closes (last close on or before each date), the `benchmark_ticker` return and the excess; stores them in `outcomes` and writes `records/<run_id>/outcomes.parquet`.
 
+### 7. LLM Check (stage 2)
+```bash
+uv run python main.py llm-check
+```
+Smoke test: sends one prompt through the provider fallback chain and one Gemini grounded-search query, and prints which provider/model answered, the answer length and the number of sources (never keys).
+
+The `llm:` section of `config.yaml` holds the ordered `providers` (name, base_url, model, `key_env`), `timeout_s`, `temperature`, `max_calls_per_minute` and `search`. A provider whose `key_env` variable is empty is skipped; on HTTP errors (e.g. 429, 5xx), timeouts or connection errors the next provider is tried. API keys are never put in the config: they come from environment variables, optionally loaded at startup from a git-ignored `.env` in the repo root (`KEY=value` lines; variables already set in the shell win over `.env`).
+
 ## Testing and quality gates
 
 ```bash
