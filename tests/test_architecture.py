@@ -1,6 +1,6 @@
 """Architecture rules enforced as tests.
 
-(a) ``CFG`` (the loaded config) is referenced only by ``src/config.py`` and ``main.py``;
+(a) ``load_config`` (the config loader) is referenced only by ``src/config.py`` and ``main.py``;
     every other module receives values through ``build_*``/``from_config``/constructor arguments.
 (b) ``config.yaml`` and the code agree: every key in the file is read somewhere, and every key the
     code reads exists. Reads are found statically: string-literal subscripts (``x["key"]``) whose
@@ -55,17 +55,17 @@ def _keys_read_by_code() -> set[str]:
     return keys
 
 
-def test_cfg_is_referenced_only_by_config_and_main():
+def test_config_is_loaded_only_by_config_and_main():
     offenders = []
     for path in CODE_FILES:
         if path in CFG_ALLOWED:
             continue
         for node in ast.walk(_parse(path)):
-            if (isinstance(node, ast.Name) and node.id == "CFG") or (
-                isinstance(node, ast.ImportFrom) and any(a.name == "CFG" for a in node.names)
+            if (isinstance(node, ast.Name) and node.id == "load_config") or (
+                isinstance(node, ast.ImportFrom) and any(a.name == "load_config" for a in node.names)
             ):
                 offenders.append(f"{path.relative_to(ROOT)}:{node.lineno}")
-    assert not offenders, f"CFG used outside src/config.py and main.py: {offenders}"
+    assert not offenders, f"load_config used outside src/config.py and main.py: {offenders}"
 
 
 def test_every_config_key_is_consumed_by_code():
