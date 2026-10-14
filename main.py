@@ -1,16 +1,20 @@
 import argparse
 import datetime
+import os
 import sys
 from functools import partial
 from pathlib import Path
 from typing import Any
 
+import httpx
 import pandas as pd
+from dotenv import load_dotenv
 from tqdm import tqdm
 
 from src.cache import StockCache, refresh
 from src.config import CONFIG_FILE, ROOT, load_config
 from src.earnings_calendar import load_calendar, update_calendar_csv
+from src.llm import GeminiSearch, LLMClient, Provider, RateLimiter
 from src.records import NO_CACHE, RecordStore, evaluate, git_sha, latest_issue
 from src.report import prioritize, write_report
 from src.screener import Screener, ScreenResult
@@ -116,6 +120,29 @@ def run_evaluate(cfg: dict[str, Any], client: YahooClient):
     print(f"Added {added} outcome rows.")
 
 
+SECONDS_PER_MINUTE = 60
+CHECK_CHAT_PROMPT = "Reply with the single word: ok"
+CHECK_SEARCH_PROMPT = "What is the Tokyo Stock Exchange's Prime Market? Answer in one sentence."
+
+
+def run_llm_check(cfg: dict[str, Any]):
+    """Smoke test: one prompt through the fallback chain and one grounded search; prints no secrets."""
+    llm = cfg["llm"]
+    providers = [
+        Provider(p["name"], p["base_url"], p["model"], os.environ.get(p["key_env"], "")) for p in llm["providers"]
+    ]
+    search = llm["search"]
+    with httpx.Client(timeout=llm["timeout_s"]) as http:
+        limiter = RateLimiter(llm["max_calls_per_minute"], SECONDS_PER_MINUTE)
+        reply = LLMClient(providers, http, llm["temperature"], limiter).chat(
+            [{"role": "user", "content": CHECK_CHAT_PROMPT}]
+        )
+        print(f"chat: {reply.provider} / {reply.model}, answer {len(reply.text)} chars")
+        key = os.environ.get(search["key_env"], "")
+        answer = GeminiSearch(search["base_url"], search["model"], key, http).search(CHECK_SEARCH_PROMPT)
+        print(f"search: answer {len(answer.text)} chars, {len(answer.sources)} sources, {len(answer.queries)} queries")
+
+
 def default_issue(cfg: dict[str, Any]) -> str:
     rec = cfg["records"]
     return latest_issue(datetime.date.today(), rec["shikiho_issue_months"], rec["shikiho_release_day"])
@@ -139,8 +166,15 @@ def main():
 
     subparsers.add_parser("calendar", help="Update the earnings calendar CSV from the JPX announcement schedule")
 
+    subparsers.add_parser("llm-check", help="Smoke-test the LLM fallback chain and Gemini search")
+
     args = parser.parse_args()
+    load_dotenv(ROOT / ".env")
     cfg = load_config(args.config)
+
+    if args.command == "llm-check":
+        run_llm_check(cfg)
+        return
 
     if args.command == "tickers":
         out_csv = ROOT / cfg["system"]["input_csv"]

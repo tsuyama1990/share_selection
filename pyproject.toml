@@ -6,9 +6,11 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "duckdb>=1.4.4",
+    "httpx>=0.28.1",
     "numpy>=2.4.2",
     "openpyxl>=3.1.5",
     "pandas>=3.0.0",
+    "python-dotenv>=1.2.4",
     "pyyaml>=6.0.3",
     "tqdm>=4.67.2",
     "yfinance>=1.1.0",
@@ -65,4 +67,4 @@ python_version = "3.12"
 ignore_missing_imports = true
 
 [tool.code_budget]
-max_source_lines = 1043
+max_source_lines = 1160

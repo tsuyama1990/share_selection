@@ -133,3 +133,19 @@ calendar:
   link_pattern: 'href="([^"]+\.xlsx)"'   # regex; group 1 = workbook link (one workbook per quarter-end month)
   user_agent: "Mozilla/5.0"              # JPX answers 403 to plain clients
   out_csv: "earnings_calendar.csv"       # Merged calendar (git-ignored)
+
+# ------------------------------------------
+# 9. llm: stage 2 LLM calls (`main.py llm-check`). API keys come from the environment / .env, never from here
+# ------------------------------------------
+llm:
+  timeout_s: 60                  # Per-request timeout (seconds)
+  temperature: 0
+  max_calls_per_minute: 20       # Shared across providers
+  providers:                     # Tried in this order; a provider whose key_env variable is empty is skipped
+    - {name: gemini, base_url: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-2.5-flash", key_env: GEMINI_API_KEY}
+    - {name: groq, base_url: "https://api.groq.com/openai/v1", model: "openai/gpt-oss-120b", key_env: GROQ_API_KEY}
+    - {name: deepseek, base_url: "https://api.deepseek.com", model: "deepseek-v4-flash", key_env: DEEPSEEK_API_KEY}  # paid, last resort
+  search:                        # Gemini native generateContent + google_search tool
+    base_url: "https://generativelanguage.googleapis.com/v1beta"
+    model: "gemini-2.5-flash"
+    key_env: GEMINI_API_KEY

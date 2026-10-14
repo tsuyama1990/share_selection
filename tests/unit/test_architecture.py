@@ -17,7 +17,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 CODE_FILES = sorted((ROOT / "src").glob("*.py")) + [ROOT / "main.py"]
 CFG_ALLOWED = {ROOT / "src" / "config.py", ROOT / "main.py"}
-CONFIG_NAMES = {"cfg", "CFG", "sc", "gk", "rec", "output_cfg", "imp", "qual"}
+CONFIG_NAMES = {"cfg", "CFG", "sc", "gk", "rec", "output_cfg", "imp", "qual", "llm", "search", "p"}
 DYNAMIC_PARENTS = {"shock_lows"}
 
 
@@ -26,8 +26,11 @@ def _parse(path: Path) -> ast.AST:
 
 
 def _config_keys(node, parent: str = "") -> set[str]:
-    """All dict keys of the YAML tree (list values are data, dynamic mappings are skipped)."""
+    """All dict keys of the YAML tree (dicts inside lists included, dynamic mappings skipped)."""
     keys: set[str] = set()
+    if isinstance(node, list):
+        for item in node:
+            keys |= _config_keys(item, parent)
     if isinstance(node, dict) and parent not in DYNAMIC_PARENTS:
         for k, v in node.items():
             keys.add(k)
