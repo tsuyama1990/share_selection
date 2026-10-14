@@ -139,7 +139,7 @@
 
 - `docs/entry_types_design.md` の型（A, B, G, D, C, F）は、段階 3 の型（P1〜P4）の機械的な印として再編する。対応：P1 ← G・D・レイヤーマスター、P2 ← D・B、P3 ← C、P4 ← A・B・F。[データ] 鳥羽洋行の例から、A（キャッシュリッチ）単独では候補にしない
 - レイヤーマスターの手順は、段階 3 の P1 の調べ方（Step 2）と、段階 5・6（Step 3〜6）にそのまま組み込む
-- `Recommendation_Type` は、段階 2 の改善区分と段階 3 の型に置き換える
+- `Recommendation_Type`・`Total_Score`（加点）は 2026-10-14 に廃止した。順位は段階 2 の改善区分と改善の大きさで付け、段階 3 の型は今後追加する
 
 ## 4. 実装計画（案。各ブランチは bonsai-cleanup の手順に従う）
 
@@ -149,8 +149,8 @@
 | 2 | `feat/record` | 段階 7 の記録テーブル（DuckDB ＋ Parquet）。記録は始めた時点からしか取れないため前倒し（実装済み。初回の記録は再取得の完了後） | 7 |
 | 3 | `refactor/safety-gate` | 段階 1 の決定事項（時価総額 30 億円以上）を反映 | 1 |
 | 4 | `feat/improvement-signal` | 改善スコアと区分（四半期 EPS 前年同期比、加速、年次の推移、利益率の変化）（実装済み：区分 clear/signal/none/unknown。区分ルールの見直し（四半期優先）と候補数の調整は次のブランチ） | 2 |
-| 5 | `feat/catalyst-calendar` | JPX 決算発表予定日の取得（`tickers` コマンドと同じ方式） | 4 |
-| 6 | `feat/source-types` | 型 P1〜P4 の機械的な印（旧 A〜G を再編）。`Recommendation_Type` を削除 | 3 |
+| 5 | `feat/catalyst-calendar` | JPX 決算発表予定日の取得（実装済み：`calendar` コマンド、出力列 `Next_Earnings_Date`・`Earnings_Period`） | 4 |
+| 6 | `feat/source-types` | 型 P1〜P4 の機械的な印（旧 A〜G を再編） | 3 |
 | 7 | `feat/rebuttal-checks` | N3・N4・織り込み済みの機械判定（N3 の一部＝四半期 EPS の一時的損益の旗 `Quality_Flags` は `feat/eps-quality-flags` で実装済み） | 5 |
 | 8 | `feat/company-forecast` | J-Quants 無料プランで会社予想を取得（事後検証用。12 週遅れ） | 2・7 |
 | ― | （手作業→後で自動化） | 段階 3〜5 の LLM 部分。まずはプロンプトの雛形をレイヤーマスターから流用して手で回す | 3〜5 |

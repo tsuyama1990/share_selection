@@ -3,9 +3,9 @@
 Japanese stock screener (Emin Yurumazu's theory). Python 3.12, managed with `uv`.
 
 ## Architecture
-- `main.py` CLI: `tickers` (JPX list -> CSV), `fetch` (Yahoo -> DuckDB cache), `analyze` (cache -> `results/` CSV, and a run record), `evaluate` (outcomes of recorded runs).
-- `src/`: `stock_data` (typed raw data), `metrics` (pure helpers), `improvement` (stage 2 signs of improvement), `quality` (stage 5 one-off EPS flags), `rules` (gatekeeper), `scorers`, `screener`, `cache`, `yahoo`, `records` (run records in `records.duckdb` + Parquet export in `records/`, committed), `tickers`, `report`, `config`.
-- Rules and scorers are dataclasses with injected thresholds, created by `build_rules` / `build_scorers`; `Screener.from_config` wires them.
+- `main.py` CLI: `tickers` (JPX list -> CSV), `fetch` (Yahoo -> DuckDB cache), `analyze` (cache -> `results/` CSV, and a run record), `evaluate` (outcomes of recorded runs), `calendar` (JPX earnings announcement dates -> CSV).
+- `src/`: `stock_data` (typed raw data), `metrics` (pure helpers), `improvement` (stage 2 signs of improvement), `quality` (stage 5 one-off EPS flags), `rules` (gatekeeper), `indicators` (metrics such as Real_PSR, PBR, trend), `earnings_calendar`, `screener`, `cache`, `yahoo`, `records` (run records in `records.duckdb` + Parquet export in `records/`, committed), `tickers`, `report`, `config`.
+- Rules and indicators are dataclasses with injected thresholds, created by `build_rules` / `build_indicators`; `Screener.from_config` wires them.
 
 ## Config rule
 - Every tunable value, path and file name lives in `config.yaml`.
