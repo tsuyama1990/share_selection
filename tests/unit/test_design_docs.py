@@ -1,5 +1,8 @@
 """Design gate: docs/architecture/L1_architecture.md must agree with src/ and tests/e2e/.
 
+L2 documents (docs/architecture/L2_*.md) are checked as well: module table state vs src/, integration plan vs
+tests/integration/.
+
 Rules (L1 section 9): modules listed in section 3 match src/ one to one; every requirement is traced to an E2E or a
 gate in section 8; every E2E in section 7 has a test file (a not-yet-implemented one must be strict xfail);
 no open-decision section remains.
@@ -11,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 DOC = ROOT / "docs" / "architecture" / "L1_architecture.md"
-NOT_BUILT = ("🆕", "⏸")
+NOT_BUILT = "🆕"
 OPEN_DECISIONS_TITLE = "決めていただきたいこと"
 
 
@@ -41,11 +44,9 @@ def test_section3_modules_match_src():
     absent = [
         f"{name} (row: {row[:40]}...)"
         for name, row in listed.items()
-        if not (ROOT / "src" / name).exists()
-        and not (ROOT / name).exists()
-        and not any(mark in row for mark in NOT_BUILT)
+        if not (ROOT / "src" / name).exists() and not (ROOT / name).exists() and NOT_BUILT not in row
     ]
-    assert not absent, f"L1 section 3 lists modules that do not exist and are not marked 🆕 or ⏸: {absent}"
+    assert not absent, f"L1 section 3 lists modules that do not exist and are not marked 🆕: {absent}"
 
 
 def requirement_ids() -> list[str]:
@@ -99,3 +100,83 @@ def test_no_open_decisions_section():
     titles = [line for line in DOC.read_text(encoding="utf-8").splitlines() if line.startswith("#")]
     open_titles = [t for t in titles if OPEN_DECISIONS_TITLE in t]
     assert not open_titles, f"resolve or defer (with a reason) the open decisions: {open_titles}"
+
+
+L2_DOCS = sorted((ROOT / "docs" / "architecture").glob("L2_*.md"))
+INTEGRATION_ID = re.compile(r"I-C(\d+)-(\d+)")
+
+
+def l2_table(doc: Path, title_part: str) -> list[list[str]]:
+    """Rows of the first table in the '## ' section of an L2 document whose title contains title_part."""
+    lines = doc.read_text(encoding="utf-8").splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith("## ") and title_part in line)
+    end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
+    return [
+        [c.strip() for c in line.strip().strip("|").split("|")] for line in lines[start:end] if line.startswith("|")
+    ]
+
+
+def l2_modules(doc: Path) -> dict[str, str]:
+    """Module name -> state mark (the leading ✅ or 🆕 of the state cell) from the L2 module table."""
+    modules = {}
+    for row in l2_table(doc, "モジュール"):
+        match = re.match(r"`(\w+\.py)`", row[0])
+        if match:
+            modules[match.group(1)] = row[-1][:1]
+    return modules
+
+
+def test_l2_modules_are_in_l1_and_state_matches_src():
+    l1_text = " ".join(" ".join(r) for r in table_rows(section(3)))
+    problems = []
+    for doc in L2_DOCS:
+        for name, state in l2_modules(doc).items():
+            built = (ROOT / "src" / name).exists()
+            if f"`{name}`" not in l1_text:
+                problems.append(f"{doc.name}: {name} is not in L1 section 3")
+            if state not in ("✅", "🆕"):
+                problems.append(f"{doc.name}: {name} has state {state!r}; only ✅ or 🆕 are allowed")
+            elif state == "✅" and not built:
+                problems.append(f"{doc.name}: {name} is ✅ but src/{name} does not exist")
+            elif state == "🆕" and built:
+                problems.append(f"{doc.name}: {name} is 🆕 but src/{name} exists; update the state to ✅")
+    assert not problems, "L2 module tables: " + "; ".join(problems)
+
+
+def integration_plan() -> list[tuple[Path, list[str]]]:
+    return [
+        (doc, row) for doc in L2_DOCS for row in l2_table(doc, "結合テスト計画") if INTEGRATION_ID.fullmatch(row[0])
+    ]
+
+
+def test_l2_integration_ids_are_unique():
+    ids = [row[0] for _, row in integration_plan()]
+    dup = sorted({i for i in ids if ids.count(i) > 1})
+    assert ids, "no integration test IDs (I-C*-*) found in the L2 documents"
+    assert not dup, f"duplicate integration test IDs across L2 documents: {dup}"
+
+
+def test_l2_integration_plan_matches_tests():
+    problems = []
+    for doc, row in integration_plan():
+        i_id, status = row[0], row[-1]
+        c, n = INTEGRATION_ID.fullmatch(i_id).groups()  # type: ignore[union-attr]
+        if status.startswith("✅"):
+            paths = re.findall(r"`(tests/integration/[\w./*-]+)`", status)
+            if not any((ROOT / p).is_file() for p in paths):
+                problems.append(f"{doc.name} {i_id} is ✅ but names no existing file under tests/integration/: {paths}")
+        elif status.startswith("🆕"):
+            files = sorted((ROOT / "tests" / "integration").glob(f"test_i_c{c}_{n}_*.py"))
+            if not files:
+                problems.append(
+                    f"{doc.name} {i_id} is 🆕 but has no tests/integration/test_i_c{c}_{n}_*.py placeholder"
+                )
+            for path in files:
+                body = ast.parse(path.read_text(encoding="utf-8")).body
+                tests = [x for x in body if isinstance(x, ast.FunctionDef) and x.name.startswith("test_")]
+                plain = [t.name for t in tests if not any(is_strict_xfail(d) for d in t.decorator_list)]
+                if plain or not tests:
+                    problems.append(f"{i_id} is 🆕 but {path.name} has tests that are not strict xfail: {plain}")
+        else:
+            problems.append(f"{doc.name} {i_id} has state {status[:10]!r}; only ✅ or 🆕 are allowed")
+    assert not problems, "L2 integration plans vs tests/integration: " + "; ".join(problems)
