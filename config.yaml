@@ -144,8 +144,6 @@ llm:
   providers:                     # Tried in this order; a provider whose key_env variable is empty is skipped
     - {name: gemini, base_url: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-2.5-flash", key_env: GEMINI_API_KEY}
     - {name: groq, base_url: "https://api.groq.com/openai/v1", model: "openai/gpt-oss-120b", key_env: GROQ_API_KEY}
-    - {name: cerebras, base_url: "https://api.cerebras.ai/v1", model: "gpt-oss-120b", key_env: CEREBRAS_API_KEY}
-    - {name: mistral, base_url: "https://api.mistral.ai/v1", model: "mistral-medium-latest", key_env: MISTRAL_API_KEY}
     - {name: deepseek, base_url: "https://api.deepseek.com", model: "deepseek-v4-flash", key_env: DEEPSEEK_API_KEY}  # paid, last resort
   search:                        # Gemini native generateContent + google_search tool
     base_url: "https://generativelanguage.googleapis.com/v1beta"

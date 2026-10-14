@@ -183,7 +183,7 @@ def test_llm_check_prints_only_summary(monkeypatch, capsys):
     monkeypatch.setattr(main.httpx, "Client", lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw))
     monkeypatch.setenv("GEMINI_API_KEY", "SECRET")
     cfg = main.load_config()
-    for name in ("GROQ_API_KEY", "CEREBRAS_API_KEY", "MISTRAL_API_KEY", "DEEPSEEK_API_KEY"):
+    for name in ("GROQ_API_KEY", "DEEPSEEK_API_KEY"):
         monkeypatch.delenv(name, raising=False)
     main.run_llm_check(cfg)
     out = capsys.readouterr().out
