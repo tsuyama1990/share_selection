@@ -1,6 +1,6 @@
 # L1 全体アーキテクチャ
 
-作成：2026-10-14 ／ 状態：**承認（2026-10-14、ユーザー：提案どおり）・QA 中**。進め方は `docs/architecture/process.md`
+作成：2026-10-14 ／ 状態：**承認・QA 完了**（2026-10-14）。進め方は `docs/architecture/process.md`
 
 設計の階層（V 字モデル）：
 
@@ -146,7 +146,7 @@ E2E テストは、この表の形式が守られることを確かめる。
 | N2 | C4、C7 | E6 |
 | N3 | C4 | E6 |
 | N4 | C4 | E6 |
-| N5 | C7 | ゲート（設計の関門 `tests/test_design_docs.py`、`tests/test_architecture.py`、コード予算） |
+| N5 | C7 | ゲート（設計の関門 `tests/unit/test_design_docs.py`、`tests/unit/test_architecture.py`、コード予算） |
 | N6 | C2 | E3 |
 
 ## 9. 機械的な強制（この設計を守らせる仕組み）

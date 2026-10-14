@@ -1,6 +1,6 @@
 # 二次スクリーニング自動化 設計書
 
-作成：2026-10-14 ／ 状態：**決定済み・実装開始**（2026-10-14 更新：Web 検索をフェーズ 1 に含める、DeepSeek を最後のフォールバックに、業種の扱い、全体の流れ）
+作成：2026-10-14 ／ 状態：**決定済み**。詳細設計と実装計画は `docs/architecture/L2_C2_data_acquisition.md`・`L2_C4_stage2_research.md` が引き継ぐ（本書 8 章の計画より優先）（2026-10-14 更新：Web 検索をフェーズ 1 に含める、DeepSeek を最後のフォールバックに、業種の扱い、全体の流れ）
 
 根拠の表記は `docs/hypothesis_map.md` と同じ（[原著] [一次] [報道] [データ] [推論]）。段階は `docs/selection_flow.md`、記録は `docs/record_design.md`。
 
