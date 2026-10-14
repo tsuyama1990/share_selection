@@ -1,4 +1,5 @@
-"""Gatekeeper rules: pass/fail filters run before scoring. A metric that cannot be computed fails its rule."""
+"""Gatekeeper rules: pass/fail filters. Every rule reports the metrics it can compute even when it fails; a metric
+that cannot be computed fails its rule."""
 
 from dataclasses import dataclass
 from typing import Any, NamedTuple, Protocol
@@ -27,7 +28,7 @@ _FAIL = RuleResult(False, {})
 
 
 class Rule(Protocol):
-    """A gatekeeper rule. ``metrics`` holds earlier rules' output (read-only)."""
+    """A gatekeeper rule. ``metrics`` holds earlier rules' output (read-only; may lack keys of failed rules)."""
 
     def evaluate(self, data: StockData, metrics: dict[str, Any]) -> RuleResult: ...
 
@@ -49,9 +50,10 @@ class MarketCapRule:
 
     def evaluate(self, data: StockData, metrics: dict[str, Any]) -> RuleResult:
         mcap = to_num(data.fast_info.get("market_cap"))
-        if mcap is None or mcap < self.min_cap:
-            return _FAIL
-        return RuleResult(True, {"Current_Price": to_num(data.fast_info.get("last_price")), "Market_Cap": mcap})
+        out = {"Current_Price": to_num(data.fast_info.get("last_price"))}
+        if mcap is not None:
+            out["Market_Cap"] = mcap
+        return RuleResult(mcap is not None and mcap >= self.min_cap, out)
 
 
 @dataclass
@@ -64,9 +66,8 @@ class LiquidityRule:
     def evaluate(self, data: StockData, metrics: dict[str, Any]) -> RuleResult:
         turnover = avg_turnover(data.history, self.days)
         out = {"Avg_Turnover(M JPY)": round(turnover / 1e6, 1) if turnover is not None else None}
-        if self.min_turnover > 0 and (turnover is None or turnover < self.min_turnover):
-            return _FAIL
-        return RuleResult(True, out)
+        too_thin = self.min_turnover > 0 and (turnover is None or turnover < self.min_turnover)
+        return RuleResult(not too_thin, out)
 
 
 @dataclass
@@ -103,15 +104,16 @@ class OperatingMarginRule:
 
 @dataclass
 class PsrRule:
-    """PSR (Market_Cap / sales) <= ``cap``; needs Market_Cap in metrics."""
+    """PSR (Market_Cap / sales) <= ``cap``; fails without Market_Cap in metrics."""
 
     cap: float
 
     def evaluate(self, data: StockData, metrics: dict[str, Any]) -> RuleResult:
         found = _sales_and_income(data)
-        if found is None or found[0] <= 0:
+        mcap = metrics.get("Market_Cap")
+        if found is None or found[0] <= 0 or mcap is None:
             return _FAIL
-        psr = metrics["Market_Cap"] / found[0]
+        psr = mcap / found[0]
         return RuleResult(psr <= self.cap, {"PSR": round(psr, 2)})
 
 
@@ -126,10 +128,8 @@ class OperatingCashFlowRule:
             return _FAIL
         latest = data.cashflow.iloc[:, 0]
         ocf = first_valid(latest, OCF_KEYS)
-        if ocf is None or ocf <= self.min_ocf:
-            return _FAIL
         return RuleResult(
-            True,
+            ocf is not None and ocf > self.min_ocf,
             {
                 "Operating_Cash_Flow": ocf,
                 "Investing_Cash_Flow": first_valid(latest, ICF_KEYS),

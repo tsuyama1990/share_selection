@@ -19,10 +19,11 @@ import pandas as pd
 import pytest
 
 from src.cache import FRAME_KEYS, StockCache
-from src.config import CFG
+from src.config import load_config
 from src.report import prioritize
 from src.screener import Screener
 
+CFG = load_config()
 FIXTURES = Path(__file__).parent / "fixtures"
 SAMPLE = FIXTURES / "sample_cache.json.gz"
 GOLDEN = FIXTURES / "golden_screening.csv"

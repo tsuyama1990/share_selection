@@ -75,19 +75,53 @@ class TestScreener(unittest.TestCase):
         "improvement": {"clear_threshold": 0.4, "same_quarter_tolerance_days": 20, "max_quarter_age_days": 200},
     }
 
-    def test_failing_rule_short_circuits(self):
-        after = FakeRule(True)
-        scorer = FakeScorer("Value", 1)
-        screener = Screener(NO_IMPROVEMENT, NO_QUALITY, [FakeRule(True), FakeRule(False), after], [scorer], (3, 4))
+    def test_all_rules_run_and_fail_rule_is_the_first_failure(self):
+        after = FakeRule(False, {"PBR": 2.0})
+        screener = Screener(
+            NO_IMPROVEMENT,
+            NO_QUALITY,
+            [FakeRule(True, {"PSR": 1.0}), FakeRule(False), after],
+            [FakeScorer("Value", 1, {"Dividend_Yield(%)": 3.0})],
+            (3, 4),
+        )
         res = screener.screen(DATA)
-        self.assertEqual((res.passed, res.fail_rule, after.calls), (False, "FakeRule", 0))
-
-    def test_failure_reports_metrics_computed_before_it(self):
-        res = Screener(
-            NO_IMPROVEMENT, NO_QUALITY, [FakeRule(True, {"PSR": 1.0}), FakeRule(False, {"PBR": 2.0})], [], (3, 4)
-        ).screen(DATA)
-        self.assertEqual((res.passed, res.row["PSR"], "PBR" in res.row), (False, 1.0, False))
+        self.assertEqual((res.passed, res.fail_rule, after.calls), (False, "FakeRule", 1))
+        self.assertEqual((res.row["PSR"], res.row["PBR"], res.row["Dividend_Yield(%)"]), (1.0, 2.0, 3.0))
         self.assertEqual(res.row["Improvement_Class"], "unknown")
+
+    def test_first_rule_failure_keeps_later_rule_and_scorer_metrics(self):
+        data = StockData.from_dict(
+            "1234.T",
+            {
+                "fast_info": {"market_cap": 5e7, "last_price": 1000},  # below market_cap_min
+                "info": {"dividendYield": 4.0},
+                "balance_sheet": pd.DataFrame(
+                    {"2023": {"Total Assets": 100, "Stockholders Equity": 50, "Cash And Cash Equivalents": 20}}
+                ),
+                "financials": pd.DataFrame({"2023": {"Total Revenue": 1e9, "Operating Income": 0.15e9}}),
+            },
+        )
+        res = Screener.from_config(self.CFG).screen(data)
+        self.assertEqual((res.passed, res.fail_rule), (False, "MarketCapRule"))
+        self.assertEqual(
+            (res.row["PSR"], res.row["Equity_Ratio"], res.row["Real_PSR"], res.row["Dividend_Yield(%)"]),
+            (0.05, 50.0, 0.05, 4.0),
+        )
+
+    def test_missing_market_cap_skips_dependent_metrics_without_raising(self):
+        data = StockData.from_dict(
+            "1234.T",
+            {
+                "balance_sheet": pd.DataFrame(
+                    {"2023": {"Total Assets": 100, "Stockholders Equity": 50, "Cash And Cash Equivalents": 20}}
+                ),
+                "financials": pd.DataFrame({"2023": {"Total Revenue": 1e9, "Operating Income": 0.15e9}}),
+            },
+        )
+        res = Screener.from_config(self.CFG).screen(data)
+        self.assertEqual((res.passed, res.fail_rule), (False, "MarketCapRule"))
+        self.assertEqual((res.row["Equity_Ratio"], res.row["Net_Cash(Billion)"]), (50.0, 0.0))
+        self.assertTrue({"PSR", "Real_PSR", "PBR", "Cash_to_MarketCap_Ratio"}.isdisjoint(res.row))
 
     def test_scores_and_recommendation(self):
         rules = [FakeRule(True, {"PSR": 1.0})]

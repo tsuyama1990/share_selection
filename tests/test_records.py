@@ -1,20 +1,23 @@
 import datetime
 import json
+import sys
 from unittest import mock
 
 import duckdb
 import pandas as pd
 import pytest
+import yaml
 
 import main
 from src import records
 from src.cache import StockCache
-from src.config import CFG
+from src.config import load_config
 from src.records import NO_CACHE, RecordStore, evaluate
 from src.screener import Screener
 from src.yahoo import YahooClient
 from tests.test_regression import load_sample
 
+CFG = load_config()
 INFO = {
     "issue": "2026-10",
     "git_sha": "abc",
@@ -87,7 +90,7 @@ def test_analyze_records_every_ticker(tmp_path, monkeypatch):
     (tmp_path / CFG["system"]["input_csv"]).write_text("code\n", encoding="utf-8")
     with StockCache(str(tmp_path / "c.duckdb"), CFG["system"]["market_timezone"]) as cache:
         tickers = [*load_sample(cache), "9999.T"]
-        main.run_analyze(tickers, cache, Screener.from_config(CFG), "2026-10")
+        main.run_analyze(CFG, tickers, cache, Screener.from_config(CFG), "2026-10")
     rec = CFG["records"]
     with duckdb.connect(str(tmp_path / rec["db_file"])) as con:
         rows = con.execute(
@@ -169,3 +172,27 @@ def test_adjusted_close_uses_adjusted_naive_dates():
         series = YahooClient(0.0, "1y", "max").adjusted_close("1.T", datetime.date(2025, 1, 1))
     ticker.history.assert_called_once_with(start=datetime.date(2025, 1, 1), auto_adjust=True)
     assert series.index.tz is None and list(series.index.strftime("%Y-%m-%d")) == ["2025-01-06", "2025-01-07"]
+
+
+def test_config_option_redirects_thresholds_and_outputs(tmp_path, monkeypatch):
+    alt = {
+        **CFG,
+        "gatekeeper": {**CFG["gatekeeper"], "psr_cap": 99.0},
+        "output": {**CFG["output"], "dir": "alt_out"},
+        "system": {**CFG["system"], "db_file": "alt_cache.duckdb"},
+        "records": {**CFG["records"], "db_file": "alt_records.duckdb", "export_dir": "alt_records"},
+    }
+    cfg_path = tmp_path / "alt.yaml"
+    cfg_path.write_text(yaml.safe_dump(alt), encoding="utf-8")
+    monkeypatch.setattr(main, "ROOT", tmp_path)
+    with StockCache(str(tmp_path / "alt_cache.duckdb"), CFG["system"]["market_timezone"]) as cache:
+        tickers = load_sample(cache)
+    (tmp_path / CFG["system"]["input_csv"]).write_text("\n".join(["code", *tickers]), encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["main.py", "--config", str(cfg_path), "analyze"])
+    main.main()
+    with duckdb.connect(str(tmp_path / "alt_records.duckdb")) as con:
+        (stored,) = con.execute("SELECT config FROM runs").fetchone()
+    assert json.loads(stored)["gatekeeper"]["psr_cap"] == 99.0
+    assert (tmp_path / "alt_records").is_dir()
+    assert list((tmp_path / "alt_out").glob("*.csv"))
+    assert not (tmp_path / CFG["output"]["dir"]).exists()

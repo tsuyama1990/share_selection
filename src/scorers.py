@@ -64,7 +64,9 @@ class PsrScorer:
     fair_points: int
 
     def score(self, data: StockData, metrics: dict[str, Any]) -> ScoreResult:
-        psr = metrics.get("Real_PSR", metrics["PSR"])
+        psr = metrics.get("Real_PSR", metrics.get("PSR"))
+        if psr is None:
+            return ScoreResult("Value", 0, {})
         if psr <= self.super_cheap:
             pts = self.super_cheap_points
         elif psr <= self.cheap:
@@ -84,8 +86,8 @@ class CashRatioScorer:
     def score(self, data: StockData, metrics: dict[str, Any]) -> ScoreResult:
         latest_bs = _latest_balance_sheet(data)
         cash = None if latest_bs is None else first_valid(latest_bs, CASH_KEYS)
-        mcap = metrics["Market_Cap"]
-        if cash is None or mcap <= 0:
+        mcap = metrics.get("Market_Cap")
+        if cash is None or mcap is None or mcap <= 0:
             return ScoreResult("Value", 0, {})
         ratio = cash / mcap
         out = {"Cash_to_MarketCap_Ratio": round(ratio, 2)}
@@ -111,8 +113,9 @@ class NetCashScorer:
         fin = data.financials
         i = latest_valid_period(fin, ("Total Revenue",))
         sales = None if i is None else to_num(fin.loc["Total Revenue"].iloc[i])
-        if sales is not None and sales > 0:
-            out["Real_PSR"] = round((metrics["Market_Cap"] - net_cash) / sales, 2)
+        mcap = metrics.get("Market_Cap")
+        if sales is not None and sales > 0 and mcap is not None:
+            out["Real_PSR"] = round((mcap - net_cash) / sales, 2)
         return ScoreResult("Value", self.points if net_cash > 0 else 0, out)
 
 
@@ -128,8 +131,9 @@ class PbrScorer:
         latest_bs = _latest_balance_sheet(data)
         if pbr is None and latest_bs is not None:
             equity = first_valid(latest_bs, EQUITY_KEYS)
-            if equity is not None and equity > 0:
-                pbr = metrics["Market_Cap"] / equity
+            mcap = metrics.get("Market_Cap")
+            if equity is not None and equity > 0 and mcap is not None:
+                pbr = mcap / equity
         if pbr is None:
             return ScoreResult("Value", 0, {})
         return ScoreResult("Value", self.points if pbr < self.cheap else 0, {"PBR": round(pbr, 2)})

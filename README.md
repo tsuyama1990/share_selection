@@ -89,7 +89,9 @@ uv run python main.py analyze
 ### 5. Output
 Results are saved to `results/emin_screening_result_YYYY-MM-DD.csv` (directory and file name set by `output` in `config.yaml`; `results/` is git-ignored) sorted by `Priority_Rank`; the `Stage2_Candidate` rows are displayed in the console.
 
-Every `analyze` also records the run (all tickers, including those that failed the gatekeeper with the failing rule, and tickers without cache as `no_cache`) in `records.duckdb` and exports it to `records/<run_id>/{runs,screen_results}.parquet`. Commit the `records/` Parquet files as the backup; `records.duckdb` is git-ignored. Optional `--issue YYYY-MM` labels the run with the Shikiho issue used.
+Every `analyze` also records the run (all tickers, including those that failed the gatekeeper with the failing rule, and tickers without cache as `no_cache`) in `records.duckdb` and exports it to `records/<run_id>/{runs,screen_results}.parquet`. Commit the `records/` Parquet files as the backup; `records.duckdb` is git-ignored. Optional `--issue YYYY-MM` labels the run with the Shikiho issue used. Every recorded ticker carries all metrics computable from its cached data (rules and scorers run for gatekeeper failures too, skipping what lacks inputs), so a run can be replayed under other thresholds.
+
+Global option `--config PATH` (before the subcommand, e.g. `uv run python main.py --config experiments/a.yaml analyze`) uses another config file instead of `config.yaml`. Relative paths in any config file stay relative to the repo root. Experiment configs should set their own `output.dir`, `records.db_file` and `records.export_dir` so they do not mix with the main records and results.
 
 **Key Output Columns:**
 *   **Recommendation_Type**: `Quality Growth`, `Quality Value`, `NET-NET`, or `Watch`.
@@ -145,7 +147,7 @@ The same checks run in CI (`.github/workflows/ci.yml`) and, except pytest, in pr
 *   `src/records.py`: `RecordStore` (runs, screen_results, outcomes in `records.duckdb`, exported to Parquet) and `evaluate`.
 *   `src/tickers.py`: Builds the ticker CSV from the JPX listed company workbook.
 *   `src/report.py`: `write_report` writes the dated CSV (location and columns passed in from `output`), `prioritize` adds `Priority_Rank` / `Stage2_Candidate`, and the candidates are printed.
-*   `src/config.py`: Loads `config.yaml` once into `CFG`. Only `config.py` and `main.py` touch it; everything else receives values through `build_*` / `from_config` / dataclass fields.
+*   `src/config.py`: `load_config(path)` reads a config file (default `config.yaml`; `main.py --config` overrides). Only `config.py` and `main.py` touch it; everything else receives values through `build_*` / `from_config` / dataclass fields.
 
 ## Design documents (`docs/`, Japanese)
 
