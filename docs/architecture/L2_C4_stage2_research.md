@@ -24,7 +24,7 @@
 ```
 入力：最新の実行の二次候補（screen_results / 結果 CSV）
  1. 業種の文脈（sector.py）：同じ実行の全銘柄の指標から、業種ごとの中央値（実質PSR、PBR、改善の大きさ）→ 候補ごとの同業比較
- 2. 文書の用意（C2）：最新の有価証券報告書の節（EDINET）／Web 検索（llm.GeminiSearch）→ 出典の本文（webfetch）→ 文書ストア
+ 2. 文書の読み出し：文書ストアから候補の文書（`docs` コマンドが事前に取得。L2 C2 2.1 節）
  3. 調査（research.py）：T1 改善の源泉、T2 一時的な損益、T3 資本の使い方、T4 忘れられている理由 → T5 総合
  4. 照合（verify.py）：各主張の引用が、渡した文書の本文に含まれるか
  5. 記録（records.py `reviews`）と調査メモ（memo.py）
@@ -65,13 +65,13 @@
 
 ## 6. 記録（`reviews`、`docs/record_design.md` の設計に沿う）
 
-主キー（run_id, ticker）。列：status（完了／失敗の種類）、suggestion、source_type、reason_forgotten、answers（T1〜T5 の JSON）、evidence（照合できた主張の JSON）、verified_ratio、needs_attention、sector_comparison（JSON）、doc_ids、llm_providers、prompt_version、searched（検索の有無）、reviewed_at。人の判断の記録は、調査メモを使い始めてから設計する（先送り）。
+主キー（run_id, ticker）。列：status（完了／失敗の種類）、suggestion、source_type、reason_forgotten、answers（T1〜T5 の JSON）、evidence（照合できた主張の JSON）、verified_ratio、needs_attention、sector_comparison（JSON）、doc_ids、llm_providers、prompt_version、reviewed_at。人の判断の記録は、調査メモを使い始めてから設計する（先送り）。
 
 Parquet の書き出し先は `review.export_dir`（git 対象外）。**リポジトリは公開のため、`reviews` と調査メモはコミットしない**（Web 記事の逐語引用と銘柄ごとの提案を含むため。2026-10-15 決定）。バックアップは公開リポジトリ以外に取る。
 
 ## 7. 設定（`config.yaml` に追加する節）
 
-`llm:`（✅ 実装済み）、`review:`（対象の上限件数、照合率の下限、検索の有無、プロンプトの版、1 文書の文字数の上限、書き出し先）、`sector:`（比較に使う指標）。
+`llm:`（✅ 実装済み）、`review:`（対象の上限件数、照合率の下限、プロンプトの版、1 文書の文字数の上限、書き出し先）、`sector:`（比較に使う指標）。
 
 ## 8. 結合テスト計画
 
@@ -94,3 +94,4 @@ E2E（L1 E6）は、複数銘柄で `review` を通しで実行し、調査メ�
 ## 10. 訂正履歴
 
 - 2026-10-15（L3 の設計で変更、承認済み）：claims に `field` を追加。`reviews` から `human_decision`・`decided_at` を外し（先送り）、`needs_attention`・`reviewed_at` を追加。`review` の呼び出し上限を外し、1 文書の文字数の上限を追加。`reviews` と調査メモはコミットしない（公開リポジトリのため）。
+- 2026-10-15（承認済み）：文書の取得と検索を `docs` コマンド（C2）に移し、`review` は文書ストアを読むだけにした。検索の有無の設定は `docs.search` へ。`reviews.searched` は doc_ids（`web:` で始まるもの）から分かるため外した。

@@ -27,6 +27,10 @@
 | `webfetch.py` | URL の取得（リダイレクト追従）と本文の抽出（HTML・PDF） | 🆕 |
 | `docstore.py` | 文書ストア：取得した文書の本文と出典の保存・検索 | 🆕 |
 
+## 2.1 `docs` コマンド（2026-10-15 追加）
+
+最新の実行（または `--run`）の二次候補ごとに、EDINET の索引を更新して最新の有価証券報告書の節を保存し、Gemini 検索の出典を取得して保存する（`docs.search` が真のとき）。検索の回答文は LLM の生成なので保存しない（出典の本文だけ）。銘柄・文書の失敗は `fetch_errors` に残して次へ進む。C4 の `review` は文書ストアだけを読む。
+
 ## 3. EDINET（`edinet.py`）
 
 ### 3.1 事実（[データ：2026-10-14 実測]）
@@ -70,7 +74,7 @@ C4 への約束（L1 5 章「C2 → C4 文書ストア」）：C4 は `documents
 
 ## 6. 設定（`config.yaml` に追加する節）
 
-`edinet:`（base_url、key_env、index_days、sections、request_interval_s）、`webfetch:`（timeout_s、max_bytes、user_agent、request_interval_s）、`docstore:`（db_file）。
+`edinet:`（base_url、key_env、index_days、doc_type_code、sections、request_interval_s）、`webfetch:`（timeout_s、max_bytes、user_agent、request_interval_s）、`docstore:`（db_file）、`docs:`（search、search_prompt、max_sources）。
 
 ## 7. 結合テスト計画
 
@@ -91,4 +95,4 @@ C4 への約束（L1 5 章「C2 → C4 文書ストア」）：C4 は `documents
 
 ## 9. 訂正履歴
 
-（なし）
+- 2026-10-15（承認済み）：文書の取得を `docs` コマンドとして `review` から分けた（2.1 節、L1 4 章・E7）。

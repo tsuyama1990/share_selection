@@ -25,7 +25,7 @@
 | `research.py` | `ReplyError`、`TaskResult`、`load_prompts`、`build_messages`、`parse_reply`、`run_task`、`review_ticker` | T1〜T5 の実行（プロンプトの組み立て、JSON の検証と 1 回の再依頼、照合）と 1 銘柄分の結果の行 | 🆕 |
 | `memo.py` | `render_memo` | 1 銘柄の調査メモ（Markdown の文字列） | 🆕 |
 
-`records.py`（✅）には `reviews` テーブル、`candidates(run_id)`、`run_metrics(run_id)`、`reviewed(run_id)`、`record_review(run_id, row)` を足す。`main.py`（✅）には `review [--run RUN_ID]` と `run_review` を足す。
+`records.py`（✅）には `reviews` テーブル、`candidates(run_id)`、`run_metrics(run_id)`、`reviewed(run_id)`、`record_review(run_id, row)` を足す。`main.py`（✅）には `docs [--run RUN_ID]`・`run_docs` と `review [--run RUN_ID]`・`run_review` を足す。
 
 ## 3. クラス・関数
 
@@ -137,7 +137,8 @@ def render_memo(ticker: str, name: str, review: dict, sector_comparison: dict, s
 
 - `reviews`：主キー（run_id, ticker）。列は L2 C4 §6 から `human_decision`・`decided_at` を除き（5 章の変更 2）、`needs_attention`、`reviewed_at` を足す。書くたびに Parquet を git 対象外の `review.export_dir` に書き出す（公開リポジトリに引用と提案を載せない。`.gitignore` への追加は `feat/review-command` で設定と一緒に行う）。調査メモは `results/` の下（既に git 対象外）。
 - `candidates(run_id)`：`Stage2_Candidate` が真の銘柄の (ticker, metrics)。`run_metrics(run_id)`：全銘柄の metrics（業種の中央値の母集団）。`reviewed(run_id)`：status が `ok` の ticker（再実行のとき飛ばす。失敗した銘柄は取り直して上書き）。
-- `main.run_review`：実行の選択（既定は最新）→ 業種の中央値 → EDINET の索引の更新 → 候補ごとに（有価証券報告書の取得、検索 → 出典の取得、文書の読み出し、`review_ticker`、`record_review`、`render_memo` の書き出し）。検索の回答文そのものは LLM の生成なので根拠の文書にしない（出典の本文だけを使う）。
+- `main.run_docs`：実行の選択（既定は最新）→ EDINET の索引の更新 → 候補ごとに（有価証券報告書の取得、`docs.search` が真なら検索 → 出典 `docs.max_sources` 件の取得）。検索の回答文そのものは LLM の生成なので保存しない（出典の本文だけ）。
+- `main.run_review`：実行の選択 → 業種の中央値 → 候補ごとに（`DocStore.documents` で文書の読み出し、`review_ticker`、`record_review`、`render_memo` の書き出し）。
 
 ## 4. 単体テスト計画
 
@@ -173,25 +174,26 @@ def render_memo(ticker: str, name: str, review: dict, sector_comparison: dict, s
 | 節 | キー |
 |---|---|
 | `edinet` | base_url、key_env、index_days、doc_type_code（`"120"`）、sections、request_interval_s |
-| `webfetch` | timeout_s、max_bytes、user_agent、request_interval_s、max_sources（1 銘柄で取る出典の数） |
+| `webfetch` | timeout_s、max_bytes、user_agent、request_interval_s |
+| `docs` | search、search_prompt、max_sources（1 銘柄で取る出典の数） |
 | `docstore` | db_file |
 | `sector` | metrics（`Real_PSR`、`PBR`、`Improvement_Yield(%)`）、min_peers |
-| `review` | max_tickers、min_verified_ratio、search、search_prompt、prompt_dir（`prompts/v1`）、prompt_version、max_doc_chars、tasks（タスクごとの項目名）、export_dir |
+| `review` | max_tickers、min_verified_ratio、prompt_dir（`prompts/v1`）、prompt_version、max_doc_chars、tasks（タスクごとの項目名）、export_dir |
 | `memo` | dir（`results/` の下）、filename |
 
 ## 7. 実装の順番（1 ブランチ＝1 まとまり。各ブランチで単体テスト → 実装 → 結合テストの仮置きを本物に → bonsai）
 
 | 順 | ブランチ | 中身 | 結合・E2E |
 |---|---|---|---|
-| 1 | `feat/docstore` | `docstore.py` | I-C2-5 |
-| 2 | `feat/edinet` | `edinet.py`、`RateLimiter` の共有 | I-C2-3、ライブで 1 社 |
-| 3 | `feat/webfetch` | `webfetch.py`、`pypdf` | I-C2-4 |
-| 4 | `feat/verify-sector` | `verify.py`、`sector.py` | I-C4-2 |
-| 5 | `feat/research` | `research.py`、`prompts/v1/` | I-C4-3 |
-| 6 | `feat/review-command` | `records.py` の `reviews`、`memo.py`、`main.py review` | I-C4-4、E6、ライブで 2〜3 社 |
+| 1 | `feat/docs-edinet` | `docstore.py`、`edinet.py`、`RateLimiter` の共有、`records.candidates`、`main.py docs`（EDINET のみ） | I-C2-5、I-C2-3、E7（EDINET 分）、ライブで 1 社 |
+| 2 | `feat/docs-web` | `webfetch.py`、`pypdf`、`docs` に検索と出典の取得 | I-C2-4、E7 の検索分 |
+| 3 | `feat/review-command` | `verify.py`、`research.py`、`prompts/v1/`、`records.py` の `reviews`、`DocStore.documents`、`main.py review` | I-C4-3、I-C4-4、E6 |
+| 4 | `feat/review-sector-memo` | `sector.py`、`memo.py`、`run_review` に同業比較と調査メモ | I-C4-2、E6 の調査メモ分、ライブで 2〜3 社 |
+
+各ブランチは、足すコードの呼び出し元（`main.py` のコマンド）を同じブランチに含める。未使用コードの関門（vulture は `src/` と `main.py` だけを見る）を通すためで、クラスのメソッドも最初の呼び出し元と同じブランチで足す。
 
 コード予算の増え方の見込みは合計で約 450 行（docstore 60、edinet 80、webfetch 55、verify 30、sector 30、research 90、memo 35、records 30、main 40）[推論]。各ブランチで `Budget-Increase:` に理由を書き、実際の行数に合わせる。
 
 ## 8. 訂正履歴
 
-（なし）
+- 2026-10-15（承認済み）：文書の取得を `docs` コマンドに分け、実装の順番を 6 ブランチから 4 ブランチ（それぞれ呼び出し元のコマンドを含む）に変えた。理由：呼び出し元のないモジュールは vulture で落ち、単独でマージできない。

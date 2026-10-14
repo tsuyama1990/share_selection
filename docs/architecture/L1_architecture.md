@@ -80,8 +80,8 @@
 ## 4. 処理の流れ（コマンド）
 
 ```
-tickers ─▶ fetch ─▶ calendar ─▶ analyze ─▶ review 🆕 ─▶ （人の判断）
-   C1        C2        C2         C3+C5+C6     C4+C5+C6
+tickers ─▶ fetch ─▶ calendar ─▶ analyze ─▶ docs 🆕 ─▶ review 🆕 ─▶ （人の判断）
+   C1        C2        C2         C3+C5+C6     C2         C4+C5+C6
                                      │
                          evaluate（判定日から 6・12 か月後）C5
 ```
@@ -92,7 +92,8 @@ tickers ─▶ fetch ─▶ calendar ─▶ analyze ─▶ review 🆕 ─▶ �
 | `fetch` | 銘柄一覧、Yahoo | キャッシュ、取得失敗 CSV | 四半期（四季報）＋決算シーズン後 |
 | `calendar` | JPX 決算発表予定日 | `earnings_calendar.csv` | `analyze` の前 |
 | `analyze` | キャッシュ、決算日 | 結果 CSV、記録（`runs`・`screen_results`・Parquet） | 同上 |
-| `review` 🆕 | 二次候補、EDINET、Web 検索、LLM | 記録（`reviews`）、調査メモ | `analyze` の後 |
+| `docs` 🆕 | 二次候補、EDINET、Web 検索 | 文書ストア（本文と出典）、取得の失敗 | `analyze` の後 |
+| `review` 🆕 | 二次候補、文書ストア、LLM | 記録（`reviews`）、調査メモ | `docs` の後 |
 | `evaluate` | 記録、Yahoo の価格履歴 | 記録（`outcomes`） | 随時 |
 | `llm-check` | LLM、検索 | 疎通の結果 | 任意（ライブ確認。CI では実行しない） |
 
@@ -129,7 +130,8 @@ E2E テストは、この表の形式が守られることを確かめる。
 | E3 | Yahoo をモックした `fetch`（一部失敗） | 成功した銘柄はキャッシュに、失敗は取得失敗 CSV に。全体は止まらない | N6 | 部分的にある |
 | E4 | 記録＋モックの価格で `evaluate` | 期間を過ぎた実行だけ `outcomes` が計算される | R6 | 部分的にある |
 | E5 | `--config` で別の設定 | 閾値が変わり、出力と記録が別の場所に書かれる | R7 | ある |
-| E6 | 二次候補で `review`（EDINET・検索・LLM をモック） | `reviews` に記録され、照合できない引用の主張は捨てられ、調査メモが出る。キーが出力に現れない | R5・N2・N3・N4 | 🆕 |
+| E6 | 文書ストアにある二次候補で `review`（LLM をモック） | `reviews` に記録され、照合できない引用の主張は捨てられ、調査メモが出る。キーが出力に現れない | R5・N2・N3・N4 | 🆕 |
+| E7 | 二次候補で `docs`（EDINET・検索・Web をモック、一部失敗） | 候補ごとの文書が文書ストアに入り、失敗は記録されて全体は止まらない。キーが出力に現れない | R5・N2・N6 | 🆕 |
 
 ## 8. 追跡表（要件 → コンポーネント → E2E）
 
@@ -139,15 +141,15 @@ E2E テストは、この表の形式が守られることを確かめる。
 | R2 | C3 | E1 |
 | R3 | C2、C3 | E2 |
 | R4 | C3 | E1 |
-| R5 | C2、C4、C5、C6 | E6 |
+| R5 | C2、C4、C5、C6 | E6、E7 |
 | R6 | C5 | E1、E4 |
 | R7 | C7、C8 | E5 |
 | N1 | C5 | E1 |
-| N2 | C4、C7 | E6 |
+| N2 | C2、C4、C7 | E6、E7 |
 | N3 | C4 | E6 |
 | N4 | C4 | E6 |
 | N5 | C7 | ゲート（設計の関門 `tests/unit/test_design_docs.py`、`tests/unit/test_architecture.py`、コード予算） |
-| N6 | C2 | E3 |
+| N6 | C2 | E3、E7 |
 
 ## 9. 機械的な強制（この設計を守らせる仕組み）
 
@@ -168,3 +170,5 @@ E2E テストは、この表の形式が守られることを確かめる。
 - 2026-10-14：3 章に、追加予定のモジュール名（L2 で決定）を記載
 
 - 2026-10-14：追跡表に N5 が抜けていた。E2E ではなく関門（設計の関門・アーキテクチャテスト・コード予算）で守る要件として追加
+
+- 2026-10-15（承認済み）：文書の取得を `review` から `docs` コマンドに分けた（E7 を追加）。理由：文書の取得だけを LLM の費用なしにやり直せる。また L2 C2 のモジュールを `review` より前に呼び出し元つきでマージでき、未使用コードの関門（vulture）を通せる
