@@ -12,7 +12,7 @@
 |---|---|---|
 | 株価・財務 | Yahoo Finance → キャッシュ（DuckDB `stock_cache`） | ✅ |
 | 決算発表予定日 | JPX → `earnings_calendar.csv` | ✅ |
-| 有価証券報告書 | EDINET → 文書ストア（必要な節の本文） | 🆕 |
+| 有価証券報告書 | EDINET → 文書ストア（必要な節の本文） | ✅ |
 | Web 文書 | Gemini 検索の出典 URL・決算短信 → 文書ストア（本文） | 🆕 |
 
 ## 2. モジュール
@@ -23,9 +23,9 @@
 | `cache.py` | キャッシュの読み書き、鮮度、取得失敗の扱い | ✅ |
 | `stock_data.py` | 1 銘柄の生データの型（形を知る唯一の場所） | ✅ |
 | `earnings_calendar.py` | JPX の決算発表予定日の取得・解析・統合 | ✅ |
-| `edinet.py` | EDINET API v2：書類一覧の走査と索引、有価証券報告書の取得、必要な節の抽出 | 🆕 |
+| `edinet.py` | EDINET API v2：書類一覧の走査と索引、有価証券報告書の取得、必要な節の抽出 | ✅ |
 | `webfetch.py` | URL の取得（リダイレクト追従）と本文の抽出（HTML・PDF） | 🆕 |
-| `docstore.py` | 文書ストア：取得した文書の本文と出典の保存・検索 | 🆕 |
+| `docstore.py` | 文書ストア：取得した文書の本文と出典の保存・検索 | ✅ |
 
 ## 2.1 `docs` コマンド（2026-10-15 追加）
 
@@ -84,9 +84,9 @@ C4 への約束（L1 5 章「C2 → C4 文書ストア」）：C4 は `documents
 |---|---|---|---|
 | I-C2-1 | Yahoo 取得 → キャッシュ | 取得・鮮度・四半期損益の往復、失敗の扱い | ✅（`tests/integration/test_cache.py` など） |
 | I-C2-2 | JPX 予定日の取得・統合 | 複数ファイルの統合、未定・過去日の扱い | ✅（`tests/integration/test_earnings_calendar.py`） |
-| I-C2-3 | EDINET 索引 → 最新の有価証券報告書 → 節の抽出 → 文書ストア | 索引の差分更新、120 の最新の選択、ZIP の本文 CSV から指定節だけ保存、同じ docID は取り直さない、失敗の記録 | 🆕 |
+| I-C2-3 | EDINET 索引 → 最新の有価証券報告書 → 節の抽出 → 文書ストア | 索引の差分更新、120 の最新の選択、ZIP の本文 CSV から指定節だけ保存、同じ docID は取り直さない、失敗の記録 | ✅（`tests/integration/test_i_c2_3_edinet.py`） |
 | I-C2-4 | Web 取得 → 文書ストア | リダイレクト追従、HTML・PDF の本文抽出、サイズ上限、失敗の記録 | 🆕 |
-| I-C2-5 | 文書ストア | 保存・取得、本文を書き換えない（同じ doc_id への上書きを拒否） | 🆕 |
+| I-C2-5 | 文書ストア | 保存・取得、本文を書き換えない（同じ doc_id への上書きを拒否） | ✅（`tests/integration/test_i_c2_5_docstore.py`） |
 
 ## 8. 先送り（2026-10-14 承認）
 

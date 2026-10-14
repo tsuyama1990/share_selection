@@ -107,6 +107,14 @@ class RecordStore:
         sql = "SELECT ticker FROM screen_results WHERE run_id = ? AND stage1_fail_rule IS DISTINCT FROM ?"
         return [t for (t,) in self.con.execute(sql, [run_id, NO_CACHE]).fetchall()]
 
+    def candidates(self, run_id: str) -> list[tuple[str, dict[str, Any]]]:
+        """(ticker, metrics) of the run's stage 2 candidates."""
+        sql = (
+            "SELECT ticker, metrics FROM screen_results"
+            " WHERE run_id = ? AND CAST(json_extract(metrics, '$.Stage2_Candidate') AS BOOLEAN) ORDER BY ticker"
+        )
+        return [(t, json.loads(m)) for t, m in self.con.execute(sql, [run_id]).fetchall()]
+
     def has_outcomes(self, run_id: str, horizon_months: int) -> bool:
         sql = "SELECT 1 FROM outcomes WHERE run_id = ? AND horizon_months = ? LIMIT 1"
         return self.con.execute(sql, [run_id, horizon_months]).fetchone() is not None

@@ -17,8 +17,8 @@
 
 | モジュール | 公開する名前 | 責務 | 状態 |
 |---|---|---|---|
-| `docstore.py` | `Document`、`DocStore`、`DocumentRewriteError` | 文書・EDINET の索引・取得の失敗の保存と検索。同じ doc_id への別の本文の保存を拒む | 🆕 |
-| `edinet.py` | `EdinetClient`、`parse_index`、`extract_sections`、`sec_code`、`update_index`、`fetch_annual_report` | EDINET API v2 の呼び出し、書類一覧の解析、ZIP の本文 CSV からの節の抽出、索引の差分更新、最新の有価証券報告書の保存 | 🆕 |
+| `docstore.py` | `Document`、`DocStore`、`DocumentRewriteError` | 文書・EDINET の索引・取得の失敗の保存と検索。同じ doc_id への別の本文の保存を拒む | ✅ |
+| `edinet.py` | `EdinetClient`、`parse_index`、`extract_sections`、`sec_code`、`update_index`、`fetch_annual_report` | EDINET API v2 の呼び出し、書類一覧の解析、ZIP の本文 CSV からの節の抽出、索引の差分更新、最新の有価証券報告書の保存 | ✅ |
 | `webfetch.py` | `extract_text`、`web_doc_id`、`fetch_document` | URL の取得（リダイレクト追従・サイズ上限）、HTML・PDF の本文抽出、保存 | 🆕 |
 | `verify.py` | `normalize`、`check_claims` | 引用の照合と照合率、支えのない項目の unknown への置き換え | 🆕 |
 | `sector.py` | `sector_medians`、`compare` | 業種ごとの中央値と、候補の同業比較 | 🆕 |
@@ -68,8 +68,10 @@ def fetch_annual_report(client, store, ticker: str, doc_type_code: str, elements
 ```
 
 - `update_index`：`store.index_last_date()` の翌日（無ければ `today - index_days`）から `today` まで 1 日ずつ。
+- `parse_index` は `edinet_index` の列名の辞書を返す。secCode のある書類はすべて索引に入れる（種類で絞らない）。
+- `update_index` は失敗した日で走査を止め、失敗を記録する（次回は最後に索引に入った提出日の翌日から。抜けを作らない）。
 - `fetch_annual_report`：索引から最新の docID。既に `edinet:{docID}:*` があれば取り直さない。失敗（HTTP、ZIP 不正、節が無い）は `record_error` して空のリストを返す。
-- 英字を含む証券コード（`130A` など、銘柄一覧に 181 件 [データ：2026-10-14 `japan_tickers.csv`]）の secCode が「コード＋0」かは未確認 [推論]。実装の後、ライブで 1 件確かめる。
+- 英字を含む証券コード（`130A` など、銘柄一覧に 181 件 [データ：2026-10-14 `japan_tickers.csv`]）の secCode も「コード＋0」（例 `250A0`）と確認した [データ：2026-10-15 EDINET 書類一覧 2026-06-25 提出分]。
 
 ### 3.3 `webfetch.py`
 
@@ -173,7 +175,7 @@ def render_memo(ticker: str, name: str, review: dict, sector_comparison: dict, s
 
 | 節 | キー |
 |---|---|
-| `edinet` | base_url、key_env、index_days、doc_type_code（`"120"`）、sections、request_interval_s |
+| `edinet` | base_url、key_env、index_days、doc_type_code（`"120"`）、sections、request_interval_s、timeout_s |
 | `webfetch` | timeout_s、max_bytes、user_agent、request_interval_s |
 | `docs` | search、search_prompt、max_sources（1 銘柄で取る出典の数） |
 | `docstore` | db_file |
@@ -195,5 +197,7 @@ def render_memo(ticker: str, name: str, review: dict, sector_comparison: dict, s
 コード予算の増え方の見込みは合計で約 450 行（docstore 60、edinet 80、webfetch 55、verify 30、sector 30、research 90、memo 35、records 30、main 40）[推論]。各ブランチで `Budget-Increase:` に理由を書き、実際の行数に合わせる。
 
 ## 8. 訂正履歴
+
+- 2026-10-15（`feat/docs-edinet` の実装で確定）：`edinet.timeout_s` を追加。`parse_index` の戻り値の形と `update_index` の失敗時の動きを明記。ライブ確認 [データ：2026-10-15、二次候補 50 社]：50 社すべて最新の有価証券報告書を取得、191 節、失敗 0。セグメント情報が無い 9 社は単一セグメント。節の長さの最大は約 3 万字。
 
 - 2026-10-15（承認済み）：文書の取得を `docs` コマンドに分け、実装の順番を 6 ブランチから 4 ブランチ（それぞれ呼び出し元のコマンドを含む）に変えた。理由：呼び出し元のないモジュールは vulture で落ち、単独でマージできない。

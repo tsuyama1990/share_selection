@@ -69,7 +69,7 @@
 | ID | コンポーネント | 責務 | モジュール（現状） | 状態 |
 |---|---|---|---|---|
 | C1 | 銘柄一覧 | JPX の一覧から対象銘柄 CSV を作る | `tickers.py` | ✅ |
-| C2 | データ取得 | 外部システムからの取得と保存（キャッシュ・文書） | `yahoo.py`、`cache.py`、`stock_data.py`、`earnings_calendar.py`、`edinet.py` 🆕、`webfetch.py` 🆕、`docstore.py` 🆕（詳細は `L2_C2_data_acquisition.md`） | ✅／🆕 |
+| C2 | データ取得 | 外部システムからの取得と保存（キャッシュ・文書） | `yahoo.py`、`cache.py`、`stock_data.py`、`earnings_calendar.py`、`edinet.py`、`webfetch.py` 🆕、`docstore.py`（詳細は `L2_C2_data_acquisition.md`） | ✅／🆕 |
 | C3 | 一次スクリーニング | 足切り（R1）、指標、改善の兆し（R2）、質の旗（R4）、順位と二次候補 | `rules.py`、`indicators.py`、`improvement.py`、`quality.py`、`metrics.py`、`screener.py`、`report.py` | ✅ |
 | C4 | 二次調査 | 業種の文脈、LLM による企業分析、引用の照合、調査メモ（R5） | `llm.py`、`sector.py` 🆕、`research.py` 🆕、`verify.py` 🆕（詳細は `L2_C4_stage2_research.md`） | ✅／🆕 |
 | C5 | 記録と答え合わせ | 実行・全銘柄の判定・二次の調査結果の記録、結果の計算（R6） | `records.py`（`reviews` テーブル 🆕） | ✅／🆕 |
@@ -80,7 +80,7 @@
 ## 4. 処理の流れ（コマンド）
 
 ```
-tickers ─▶ fetch ─▶ calendar ─▶ analyze ─▶ docs 🆕 ─▶ review 🆕 ─▶ （人の判断）
+tickers ─▶ fetch ─▶ calendar ─▶ analyze ─▶ docs ─▶ review 🆕 ─▶ （人の判断）
    C1        C2        C2         C3+C5+C6     C2         C4+C5+C6
                                      │
                          evaluate（判定日から 6・12 か月後）C5
@@ -92,7 +92,7 @@ tickers ─▶ fetch ─▶ calendar ─▶ analyze ─▶ docs 🆕 ─▶ revi
 | `fetch` | 銘柄一覧、Yahoo | キャッシュ、取得失敗 CSV | 四半期（四季報）＋決算シーズン後 |
 | `calendar` | JPX 決算発表予定日 | `earnings_calendar.csv` | `analyze` の前 |
 | `analyze` | キャッシュ、決算日 | 結果 CSV、記録（`runs`・`screen_results`・Parquet） | 同上 |
-| `docs` 🆕 | 二次候補、EDINET、Web 検索 | 文書ストア（本文と出典）、取得の失敗 | `analyze` の後 |
+| `docs` | 二次候補、EDINET、Web 検索 | 文書ストア（本文と出典）、取得の失敗 | `analyze` の後 |
 | `review` 🆕 | 二次候補、文書ストア、LLM | 記録（`reviews`）、調査メモ | `docs` の後 |
 | `evaluate` | 記録、Yahoo の価格履歴 | 記録（`outcomes`） | 随時 |
 | `llm-check` | LLM、検索 | 疎通の結果 | 任意（ライブ確認。CI では実行しない） |
@@ -131,7 +131,7 @@ E2E テストは、この表の形式が守られることを確かめる。
 | E4 | 記録＋モックの価格で `evaluate` | 期間を過ぎた実行だけ `outcomes` が計算される | R6 | 部分的にある |
 | E5 | `--config` で別の設定 | 閾値が変わり、出力と記録が別の場所に書かれる | R7 | ある |
 | E6 | 文書ストアにある二次候補で `review`（LLM をモック） | `reviews` に記録され、照合できない引用の主張は捨てられ、調査メモが出る。キーが出力に現れない | R5・N2・N3・N4 | 🆕 |
-| E7 | 二次候補で `docs`（EDINET・検索・Web をモック、一部失敗） | 候補ごとの文書が文書ストアに入り、失敗は記録されて全体は止まらない。キーが出力に現れない | R5・N2・N6 | 🆕 |
+| E7 | 二次候補で `docs`（EDINET・検索・Web をモック、一部失敗） | 候補ごとの文書が文書ストアに入り、失敗は記録されて全体は止まらない。キーが出力に現れない | R5・N2・N6 | ある（EDINET 分。検索分は feat/docs-web） |
 
 ## 8. 追跡表（要件 → コンポーネント → E2E）
 
