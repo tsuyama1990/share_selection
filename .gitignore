@@ -37,3 +37,6 @@ results/
 
 # Claude Code agent worktrees
 .claude/worktrees/
+
+# Local secrets (API keys)
+.env
