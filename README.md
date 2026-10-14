@@ -37,16 +37,16 @@ uv run pre-commit install    # optional: run the checks on every commit
 Edit `config.yaml` to adjust criteria. Every tunable parameter, path and file name lives there, grouped in sections:
 
 *   `gatekeeper`: pass/fail filters (equity ratio, margin, PSR cap, cash flow, market cap, `turnover_min` / `turnover_days`).
-*   `indicators`: metric parameters (Sales CAGR span, moving averages, `shock_lows` crash windows).
+*   `indicators`: metric parameters (Sales CAGR span, moving averages `ma_short` / `ma_long` that also name the `MA<n>` columns, `shock_lows` crash windows).
 *   `improvement`: stage 2 signs of improvement: `clear_threshold` (0.40), `same_quarter_tolerance_days` (20, window around 365 days for the same quarter a year earlier) and `max_quarter_age_days` (200: quarterly EPS older than this vs the price data end is ignored).
 *   `quality`: `max_quarter_share_of_annual` (0.5): latest quarterly EPS at or above this share of the latest annual Diluted EPS (> 0) raises `quarter_spike`.
 *   `selection`: `candidates_n` (50), the number of top-ranked unflagged `clear` stocks flagged `Stage2_Candidate`.
 *   `output`: report `dir`, `filename` and `failures_filename` (`{date}` = YYYY-MM-DD) and the CSV `columns`.
-*   `tickers`: `jpx_url` and the `markets` kept by the `tickers` command.
-*   `calendar`: `page_url`, `link_pattern` (regex for the workbook links), `user_agent`, `out_csv` of the `calendar` command.
+*   `tickers`: `jpx_url`, the `markets` kept by the `tickers` command, and `timeout_s` of the download.
+*   `calendar`: `page_url`, `link_pattern` (regex for the workbook links), `user_agent`, `timeout_s`, `out_csv` of the `calendar` command.
 *   `edinet`: `base_url`, `key_env` (environment variable holding the EDINET API key), `index_days` (first-run index window), `doc_type_code`, `sections` (text blocks stored), `request_interval_s`, `timeout_s` of the `docs` command.
 *   `docstore`: `db_file` of the document store.
-*   `records`: `db_file`, `export_dir` (Parquet backup per run), `shikiho_issue_months` / `shikiho_release_day` (default `--issue`), `horizons_months`, `benchmark_ticker`.
+*   `records`: `db_file`, `export_dir` (Parquet backup per run), `shikiho_issue_months` / `shikiho_release_day` (default `--issue`), `horizons_months`, `benchmark_ticker`, `price_lookback_days` (history fetched before the earliest run by `evaluate`).
 *   `system`: `input_csv`, `db_file`, `sleep_time`, `cache_days`, `market_timezone` (timezone of the history timestamps, `Asia/Tokyo`), `daily_history_period`, `monthly_history_period`.
 
 ```yaml
@@ -67,7 +67,7 @@ Generate it from the JPX listed company list (Prime / Standard / Growth domestic
 uv run python main.py tickers
 ```
 
-This writes the CSV given by `input_csv` (default `japan_tickers.csv`). A custom CSV also works if it has a `code`, `Code`, `ticker` or `Ticker` column. There is no demo list; a missing or invalid file is an error.
+This writes the CSV given by `input_csv` (default `japan_tickers.csv`). A custom CSV also works if it has a `code` column (codes without the `.T` suffix). There is no demo list; a missing or invalid file is an error.
 
 ### 2b. Earnings Calendar (optional)
 Downloads the JPX earnings announcement schedule (one workbook per quarter-end month, linked from the `calendar.page_url` page) and merges it into `calendar.out_csv` (default `earnings_calendar.csv`, git-ignored; columns `code, announce_date, period_en, fiscal_year_end`). A code in several workbooks keeps its earliest announcement date from today on; `announce_date` is empty while undecided. Re-run it before `analyze` (JPX updates the files as companies announce).
@@ -135,7 +135,7 @@ uv run python main.py llm-check
 ```
 Smoke test: sends one prompt through the provider fallback chain and one Gemini grounded-search query, and prints which provider/model answered, the answer length and the number of sources (never keys).
 
-The `llm:` section of `config.yaml` holds the ordered `providers` (name, base_url, model, `key_env`), `timeout_s`, `temperature`, `max_calls_per_minute` and `search`. A provider whose `key_env` variable is empty is skipped; on HTTP errors (e.g. 429, 5xx), timeouts or connection errors the next provider is tried. API keys are never put in the config: they come from environment variables, optionally loaded at startup from a git-ignored `.env` in the repo root (`KEY=value` lines; variables already set in the shell win over `.env`).
+The `llm:` section of `config.yaml` holds the ordered `providers` (name, base_url, model, `key_env`), `timeout_s`, `temperature`, `max_calls_per_minute`, `search` and `check` (the two prompts of `llm-check`). A provider whose `key_env` variable is empty is skipped; on HTTP errors (e.g. 429, 5xx), timeouts or connection errors the next provider is tried. API keys are never put in the config: they come from environment variables, optionally loaded at startup from a git-ignored `.env` in the repo root (`KEY=value` lines; variables already set in the shell win over `.env`).
 
 ## Testing and quality gates
 

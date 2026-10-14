@@ -20,32 +20,18 @@ from src.llm import GeminiSearch, LLMClient, Provider, RateLimiter
 from src.records import NO_CACHE, RecordStore, evaluate, git_sha, latest_issue
 from src.report import prioritize, write_report
 from src.screener import Screener, ScreenResult
-from src.tickers import update_ticker_csv
+from src.tickers import TICKER_SUFFIX, update_ticker_csv
 from src.yahoo import YahooClient
 
 
 def get_japan_tickers(cfg: dict[str, Any]) -> list[str]:
-    """Tickers from ``system.input_csv`` (".T" appended if missing); exits with status 1 if unusable."""
+    """Tickers (code + suffix) from the ``code`` column of ``system.input_csv``; exits with status 1 if missing."""
     csv_path = ROOT / cfg["system"]["input_csv"]
-
     if not csv_path.exists():
-        print(f"Error: ticker CSV not found: {csv_path}")
+        print(f"Error: ticker CSV not found: {csv_path} (run `tickers`)")
         sys.exit(1)
-
     print(f"Reading tickers from {csv_path}...")
-    df = pd.read_csv(csv_path)
-    col = next((c for c in ["code", "Code", "ticker", "Ticker"] if c in df.columns), None)
-    if col is None:
-        print(f"Error: {csv_path} needs a 'code', 'Code', 'ticker' or 'Ticker' column.")
-        sys.exit(1)
-
-    tickers = []
-    for t in df[col].astype(str):
-        t = t.strip()
-        if not t.endswith(".T"):
-            t += ".T"
-        tickers.append(t)
-    return tickers
+    return [code.strip() + TICKER_SUFFIX for code in pd.read_csv(csv_path, dtype=str)["code"]]
 
 
 def run_fetch(cfg: dict[str, Any], tickers: list[str], cache: StockCache, client: YahooClient):
@@ -108,15 +94,11 @@ def run_analyze(cfg: dict[str, Any], tickers: list[str], cache: StockCache, scre
     write_report(results, ROOT / output_cfg["dir"], output_cfg["filename"], output_cfg["columns"])
 
 
-# Days of history fetched before the earliest run, so a close "on or before t0" exists across holidays.
-LOOKBACK_DAYS = 14
-
-
 def run_evaluate(cfg: dict[str, Any], client: YahooClient):
     rec = cfg["records"]
     with RecordStore(ROOT / rec["db_file"], ROOT / rec["export_dir"]) as store:
         earliest = min((at for _, at in store.runs()), default=datetime.datetime.now())
-        start = (earliest - datetime.timedelta(days=LOOKBACK_DAYS)).date()
+        start = (earliest - datetime.timedelta(days=rec["price_lookback_days"])).date()
         history = partial(client.adjusted_close, start=start)
         added = evaluate(store, history, rec["horizons_months"], rec["benchmark_ticker"], datetime.datetime.now())
     print(f"Added {added} outcome rows.")
@@ -148,8 +130,6 @@ def run_docs(cfg: dict[str, Any], run_id: str | None):
 
 
 SECONDS_PER_MINUTE = 60
-CHECK_CHAT_PROMPT = "Reply with the single word: ok"
-CHECK_SEARCH_PROMPT = "What is the Tokyo Stock Exchange's Prime Market? Answer in one sentence."
 
 
 def run_llm_check(cfg: dict[str, Any]):
@@ -162,11 +142,11 @@ def run_llm_check(cfg: dict[str, Any]):
     with httpx.Client(timeout=llm["timeout_s"]) as http:
         limiter = RateLimiter(llm["max_calls_per_minute"], SECONDS_PER_MINUTE)
         reply = LLMClient(providers, http, llm["temperature"], limiter).chat(
-            [{"role": "user", "content": CHECK_CHAT_PROMPT}]
+            [{"role": "user", "content": llm["check"]["chat_prompt"]}]
         )
         print(f"chat: {reply.provider} / {reply.model}, answer {len(reply.text)} chars")
         key = os.environ.get(search["key_env"], "")
-        answer = GeminiSearch(search["base_url"], search["model"], key, http).search(CHECK_SEARCH_PROMPT)
+        answer = GeminiSearch(search["base_url"], search["model"], key, http).search(llm["check"]["search_prompt"])
         print(f"search: answer {len(answer.text)} chars, {len(answer.sources)} sources, {len(answer.queries)} queries")
 
 
@@ -212,15 +192,15 @@ def main():
 
     if args.command == "tickers":
         out_csv = ROOT / cfg["system"]["input_csv"]
-        count = update_ticker_csv(out_csv, cfg["tickers"]["jpx_url"], cfg["tickers"]["markets"])
+        tk = cfg["tickers"]
+        count = update_ticker_csv(out_csv, tk["jpx_url"], tk["markets"], tk["timeout_s"])
         print(f"Saved {count} tickers to {out_csv}")
         return
 
     if args.command == "calendar":
         out_csv = ROOT / cfg["calendar"]["out_csv"]
-        count = update_calendar_csv(
-            out_csv, cfg["calendar"]["page_url"], cfg["calendar"]["link_pattern"], cfg["calendar"]["user_agent"]
-        )
+        cal = cfg["calendar"]
+        count = update_calendar_csv(out_csv, cal["page_url"], cal["link_pattern"], cal["user_agent"], cal["timeout_s"])
         print(f"Saved {count} announcement dates to {out_csv}")
         return
 

@@ -12,7 +12,7 @@ from src.rules import (
     PsrRule,
     build_rules,
 )
-from src.stock_data import StockData
+from tests.fixtures.stock import make_stock
 
 
 def gatekeeper(turnover_min=0):
@@ -46,7 +46,7 @@ def make(**overrides):
         "cashflow": pd.DataFrame({"2023-03-31": {"Operating Cash Flow": 100}}),
     }
     d.update(overrides)
-    return StockData.from_dict("T.T", d)
+    return make_stock("T.T", d)
 
 
 class TestRules(unittest.TestCase):

@@ -25,7 +25,7 @@ def test_update_downloads_every_linked_workbook(tmp_path):
         "https://x/a/k09.xlsx": workbook([row(datetime.datetime(2099, 1, 4), 1111), row("未定", 2222)]),
     }
     out = tmp_path / "cal.csv"
-    with mock.patch("src.earnings_calendar._download", side_effect=lambda url, _ua: files[url]):
-        count = update_calendar_csv(out, "https://x/index.html", r'href="([^"]+\.xlsx)"', "UA")
+    with mock.patch("src.earnings_calendar._download", side_effect=lambda url, *_: files[url]):
+        count = update_calendar_csv(out, "https://x/index.html", r'href="([^"]+\.xlsx)"', "UA", 1)
     assert count == 2
     assert load_calendar(out)["1111.T"][0] == "2099-01-04"

@@ -2,14 +2,14 @@ import pandas as pd
 import pytest
 
 from src.quality import EpsQualityFlags
-from src.stock_data import StockData
+from tests.fixtures.stock import make_stock
 
 QUALITY = EpsQualityFlags(max_quarter_share_of_annual=0.5)
 
 
 def flags(annual_eps=100.0, **overrides):
     financials = None if annual_eps is None else pd.DataFrame({"2025": {"Diluted EPS": annual_eps}})
-    data = StockData.from_dict("1.T", {"financials": financials})
+    data = make_stock("1.T", {"financials": financials})
     metrics = {
         "Improvement_Class": "clear",
         "Improvement_Source": "quarterly",
@@ -59,7 +59,7 @@ def test_loss_year_ago_turnaround_is_quarter_decided():
 
 
 def test_annual_eps_uses_latest_non_nan_column():
-    data = StockData.from_dict(
+    data = make_stock(
         "1.T", {"financials": pd.DataFrame({"2025": {"Diluted EPS": float("nan")}, "2024": {"Diluted EPS": 100.0}})}
     )
     metrics = {

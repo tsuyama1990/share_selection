@@ -77,9 +77,9 @@ class EquityRatioRule:
     min_ratio: float
 
     def evaluate(self, data: StockData, metrics: dict[str, Any]) -> RuleResult:
-        if data.balance_sheet.empty:
+        latest = data.latest_balance_sheet
+        if latest is None:
             return _FAIL
-        latest = data.balance_sheet.iloc[:, 0]
         assets = to_num(latest.get("Total Assets"))
         equity = first_valid(latest, EQUITY_KEYS)
         if assets is None or assets <= 0 or equity is None:
@@ -124,9 +124,9 @@ class OperatingCashFlowRule:
     min_ocf: float
 
     def evaluate(self, data: StockData, metrics: dict[str, Any]) -> RuleResult:
-        if data.cashflow.empty:
+        latest = data.latest_cashflow
+        if latest is None:
             return _FAIL
-        latest = data.cashflow.iloc[:, 0]
         ocf = first_valid(latest, OCF_KEYS)
         return RuleResult(
             ocf is not None and ocf > self.min_ocf,

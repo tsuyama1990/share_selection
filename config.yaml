@@ -22,8 +22,8 @@ gatekeeper:
 indicators:
   sales_cagr_years_back: 4     # Max look-back span (years) for the Sales CAGR
   sales_cagr_min_years: 3      # Min span (years) required; shorter history = no CAGR
-  ma_short: 12                 # 12-Month Moving Average
-  ma_long: 24                  # 24-Month Moving Average
+  ma_short: 12                 # Months of the short moving average (output column MA<n>; keep output.columns in sync)
+  ma_long: 24                  # Months of the long moving average (output column MA<n>)
 
   # Crash lows: name -> [start, end]
   # Output column: Downside_to_{Name}_Low(%)
@@ -97,6 +97,7 @@ output:
 # ------------------------------------------
 tickers:
   jpx_url: "https://www.jpx.co.jp/markets/statistics-equities/misc/tvdivq0000001vg2-att/data_j.xlsx"  # Updated monthly
+  timeout_s: 60                # Download timeout (seconds)
   markets:                     # Domestic common stocks only (excludes ETF/REIT/PRO Market/foreign stocks)
     - "プライム（内国株式）"
     - "スタンダード（内国株式）"
@@ -124,6 +125,7 @@ records:
   shikiho_release_day: 15               # Day of the month an issue is treated as released
   horizons_months: [6, 12]       # Outcome horizons measured from the run date
   benchmark_ticker: "1306.T"     # TOPIX ETF; excess return is relative to it
+  price_lookback_days: 14        # History fetched before the earliest run, so a close "on or before t0" exists across holidays
 
 # ------------------------------------------
 # 8. calendar: JPX earnings announcement schedule (`main.py calendar` writes, `analyze` reads)
@@ -132,6 +134,7 @@ calendar:
   page_url: "https://www.jpx.co.jp/listing/event-schedules/financial-announcement/index.html"
   link_pattern: 'href="([^"]+\.xlsx)"'   # regex; group 1 = workbook link (one workbook per quarter-end month)
   user_agent: "Mozilla/5.0"              # JPX answers 403 to plain clients
+  timeout_s: 60                          # Download timeout (seconds)
   out_csv: "earnings_calendar.csv"       # Merged calendar (git-ignored)
 
 # ------------------------------------------
@@ -149,6 +152,9 @@ llm:
     base_url: "https://generativelanguage.googleapis.com/v1beta"
     model: "gemini-2.5-flash"
     key_env: GEMINI_API_KEY
+  check:                         # Prompts of `main.py llm-check`
+    chat_prompt: "Reply with the single word: ok"
+    search_prompt: "What is the Tokyo Stock Exchange's Prime Market? Answer in one sentence."
 
 # ------------------------------------------
 # 10. edinet: annual securities reports from EDINET API v2 (`main.py docs`). The key comes from the environment / .env

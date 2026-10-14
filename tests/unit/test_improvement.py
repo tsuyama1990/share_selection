@@ -2,7 +2,7 @@ import pandas as pd
 import pytest
 
 from src.improvement import ImprovementSignal
-from src.stock_data import StockData
+from tests.fixtures.stock import make_stock
 
 SIGNAL = ImprovementSignal(clear_threshold=0.40, same_quarter_tolerance_days=20, max_quarter_age_days=200)
 
@@ -21,7 +21,7 @@ def annual(oi: float, oi_prev: float, rev: float = 100.0, rev_prev: float = 100.
 
 
 def evaluate(quarterly_income=None, financials=None):
-    data = StockData.from_dict("1.T", {"quarterly_income": quarterly_income, "financials": financials})
+    data = make_stock("1.T", {"quarterly_income": quarterly_income, "financials": financials})
     return SIGNAL.evaluate(data)
 
 
@@ -125,7 +125,7 @@ def test_margin_change_needs_both_revenues():
 
 
 def with_price(quarterly_income=None, financials=None, price=None, mcap=None):
-    data = StockData.from_dict(
+    data = make_stock(
         "1.T",
         {
             "quarterly_income": quarterly_income,
@@ -164,7 +164,7 @@ def test_loss_quarter_is_decided_by_quarterly_eps_not_annual(latest, prev, expec
 
 def test_stale_latest_quarter_falls_back_to_annual():
     daily = pd.DataFrame({"Close": [1.0]}, index=pd.DatetimeIndex(["2026-10-01"]))
-    data = StockData.from_dict(
+    data = make_stock(
         "1.T",
         {"quarterly_income": q(30.0, 10.0), "financials": annual(oi=9.0, oi_prev=10.0), "history": daily},
     )  # latest quarter 2025-12-31 is 274 days before the price data end

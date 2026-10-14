@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pandas as pd
 
+# Yahoo Finance suffix of Tokyo Stock Exchange tickers: ticker = code + suffix ("130A" -> "130A.T")
+TICKER_SUFFIX = ".T"
 # Output schema (not a parameter): JPX column -> CSV column
 COLUMNS = {
     "コード": "code",
@@ -22,9 +24,9 @@ def build_ticker_list(xlsx: bytes, markets: Sequence[str]) -> pd.DataFrame:
     return df[list(COLUMNS)].rename(columns=COLUMNS).reset_index(drop=True)
 
 
-def update_ticker_csv(out_csv: Path, url: str, markets: Sequence[str]) -> int:
+def update_ticker_csv(out_csv: Path, url: str, markets: Sequence[str], timeout_s: float) -> int:
     """Download the JPX list, write the ticker CSV, return the number of tickers."""
-    with urllib.request.urlopen(url, timeout=60) as res:
+    with urllib.request.urlopen(url, timeout=timeout_s) as res:
         tickers = build_ticker_list(res.read(), markets)
     tickers.to_csv(out_csv, index=False, encoding="utf-8")
     return len(tickers)

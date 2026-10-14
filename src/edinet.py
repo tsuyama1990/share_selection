@@ -13,6 +13,7 @@ import httpx
 
 from src.docstore import DocStore, Document
 from src.llm import RateLimiter
+from src.tickers import TICKER_SUFFIX
 
 BODY_CSV = "XBRL_TO_CSV/jpcrp*asr*.csv"
 BODY_ENCODING = "utf-16"
@@ -47,7 +48,7 @@ class EdinetClient:
 
 def sec_code(ticker: str) -> str:
     """EDINET's 5 character code: the ticker code plus ``0`` (``"130A.T"`` -> ``"130A0"``)."""
-    return ticker.removesuffix(".T") + "0"
+    return ticker.removesuffix(TICKER_SUFFIX) + "0"
 
 
 def parse_index(listing: dict, submit_date: datetime.date) -> list[dict]:

@@ -34,7 +34,6 @@ class StockCache:
                 quarterly_income JSON
             )
         """)
-        self.con.execute("ALTER TABLE stock_cache ADD COLUMN IF NOT EXISTS quarterly_income JSON")
 
     def __enter__(self) -> "StockCache":
         return self
@@ -62,7 +61,7 @@ class StockCache:
                     df.index = pd.to_datetime(df.index, utc=True)
                 d[key] = df
             return StockData.from_dict(ticker, d, self.market_timezone)
-        except Exception as e:
+        except (ValueError, TypeError) as e:
             print(f"Cache Corrupt for {ticker}: {e}")
             return None
 
@@ -88,7 +87,7 @@ class StockCache:
         limit = datetime.datetime.now() - datetime.timedelta(days=max_age_days)
         return (
             self.con.execute(
-                "SELECT 1 FROM stock_cache WHERE ticker = ? AND updated_at > ? AND quarterly_income IS NOT NULL",
+                "SELECT 1 FROM stock_cache WHERE ticker = ? AND updated_at > ?",
                 [ticker, limit],
             ).fetchone()
             is not None
@@ -96,7 +95,7 @@ class StockCache:
 
     def fetched_range(self) -> tuple[datetime.datetime | None, datetime.datetime | None]:
         """Oldest and newest ``updated_at`` in the cache."""
-        return self.con.execute("SELECT min(updated_at), max(updated_at) FROM stock_cache").fetchone()  # type: ignore[return-value]
+        return self.con.execute("SELECT min(updated_at), max(updated_at) FROM stock_cache").fetchall()[0]
 
     def close(self) -> None:
         self.con.close()

@@ -6,7 +6,7 @@ from src.improvement import ImprovementSignal
 from src.quality import EpsQualityFlags
 from src.rules import RuleResult
 from src.screener import Screener
-from src.stock_data import StockData
+from tests.fixtures.stock import make_stock
 
 
 class FakeRule:
@@ -28,7 +28,7 @@ class FakeIndicator:
 
 NO_IMPROVEMENT = ImprovementSignal(0.4, 20, 200)
 NO_QUALITY = EpsQualityFlags(0.5)
-DATA = StockData.from_dict("1234.T", {"info": {"longName": "Foo"}})
+DATA = make_stock("1234.T", {"info": {"longName": "Foo"}})
 
 
 class TestScreener(unittest.TestCase):
@@ -67,7 +67,7 @@ class TestScreener(unittest.TestCase):
         self.assertEqual(res.row["Improvement_Class"], "unknown")
 
     def test_first_rule_failure_keeps_later_rule_and_indicator_metrics(self):
-        data = StockData.from_dict(
+        data = make_stock(
             "1234.T",
             {
                 "fast_info": {"market_cap": 5e7, "last_price": 1000},  # below market_cap_min
@@ -86,7 +86,7 @@ class TestScreener(unittest.TestCase):
         )
 
     def test_missing_market_cap_skips_dependent_metrics_without_raising(self):
-        data = StockData.from_dict(
+        data = make_stock(
             "1234.T",
             {
                 "balance_sheet": pd.DataFrame(
@@ -123,7 +123,7 @@ class TestScreener(unittest.TestCase):
 
     def test_from_config_end_to_end(self):
         cfg = self.CFG
-        data = StockData.from_dict(
+        data = make_stock(
             "1234.T",
             {
                 "fast_info": {"market_cap": 2e9, "last_price": 1000},
@@ -137,7 +137,7 @@ class TestScreener(unittest.TestCase):
         self.assertEqual(res["PBR"], 40000000.0)
 
     def test_improvement_metrics_present_for_gate_failing_ticker(self):
-        data = StockData.from_dict(
+        data = make_stock(
             "1234.T",
             {
                 "quarterly_income": pd.DataFrame(
