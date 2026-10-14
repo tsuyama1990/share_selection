@@ -25,8 +25,14 @@ class TestReport(unittest.TestCase):
             self.assertEqual(df["Ticker"].tolist(), ["B.T", "A.T"])  # sorted by rank
 
 
-def row(ticker, cls, yld=None, psr=1.0):
-    return {"Ticker": ticker, "Improvement_Class": cls, "Improvement_Yield(%)": yld, "Real_PSR": psr}
+def row(ticker, cls, yld=None, psr=1.0, flags=""):
+    return {
+        "Ticker": ticker,
+        "Improvement_Class": cls,
+        "Improvement_Yield(%)": yld,
+        "Real_PSR": psr,
+        "Quality_Flags": flags,
+    }
 
 
 class TestPrioritize(unittest.TestCase):
@@ -52,3 +58,15 @@ class TestPrioritize(unittest.TestCase):
         rows = [row("a", "clear", yld=5.0), row("b", "signal", yld=5.0)]
         prioritize(rows, 5)
         self.assertEqual([r["Stage2_Candidate"] for r in rows], [True, False])
+
+    def test_flagged_rows_keep_rank_but_are_skipped_and_slots_refilled(self):
+        rows = [
+            row("flagged", "clear", yld=9.0, flags="quarter_spike"),
+            row("a", "clear", yld=5.0),
+            row("b", "clear", yld=4.0),
+            row("c", "clear", yld=3.0),
+        ]
+        prioritize(rows, 2)
+        ranked = sorted(rows, key=lambda r: r["Priority_Rank"])
+        self.assertEqual([r["Ticker"] for r in ranked], ["flagged", "a", "b", "c"])
+        self.assertEqual([r["Stage2_Candidate"] for r in ranked], [False, True, True, False])

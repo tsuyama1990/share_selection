@@ -21,10 +21,12 @@ def _priority_key(row: dict[str, Any]) -> tuple[int, float, float]:
 
 
 def prioritize(rows: list[dict[str, Any]], candidates_n: int) -> None:
-    """Add Priority_Rank (1..n) and Stage2_Candidate (rank <= ``candidates_n`` and class clear) to each row."""
+    """Add Priority_Rank (1..n) and Stage2_Candidate (first ``candidates_n`` clear rows without Quality_Flags)."""
+    open_slots = candidates_n
     for rank, row in enumerate(sorted(rows, key=_priority_key), start=1):
         row["Priority_Rank"] = rank
-        row["Stage2_Candidate"] = rank <= candidates_n and row["Improvement_Class"] == "clear"
+        row["Stage2_Candidate"] = open_slots > 0 and row["Improvement_Class"] == "clear" and not row["Quality_Flags"]
+        open_slots -= row["Stage2_Candidate"]
 
 
 def write_report(results: list[dict[str, Any]], out_dir: Path, filename: str, columns: Sequence[str]) -> Path:
