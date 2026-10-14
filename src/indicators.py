@@ -111,7 +111,7 @@ class Trend:
         close = hist["Close"]
         ma_s = close.rolling(self.ma_short).mean().iloc[-1]
         ma_l = close.rolling(self.ma_long).mean().iloc[-1]
-        out = {"MA12": round(ma_s, 1), "MA24": round(ma_l, 1)}
+        out = {f"MA{self.ma_short}": round(ma_s, 1), f"MA{self.ma_long}": round(ma_l, 1)}
         price = metrics.get("Current_Price")
         if price is None:
             return out

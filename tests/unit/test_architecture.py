@@ -17,7 +17,7 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 CODE_FILES = sorted((ROOT / "src").glob("*.py")) + [ROOT / "main.py"]
 CFG_ALLOWED = {ROOT / "src" / "config.py", ROOT / "main.py"}
-CONFIG_NAMES = {"cfg", "CFG", "sc", "gk", "rec", "output_cfg", "imp", "qual", "llm", "search", "p"}
+CONFIG_NAMES = {"cfg", "CFG", "sc", "gk", "rec", "output_cfg", "imp", "qual", "llm", "search", "p", "tk", "cal"}
 DYNAMIC_PARENTS = {"shock_lows"}
 
 

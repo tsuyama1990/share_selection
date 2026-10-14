@@ -19,7 +19,7 @@ def run_calendar(project, codes: list[int]) -> None:
         CFG["calendar"]["page_url"]: b'<a href="/a/k08.xlsx"></a>',
         WORKBOOK_URL: workbook([row(DATE, c) for c in codes]),
     }
-    with mock.patch("src.earnings_calendar._download", side_effect=lambda url, _ua: files[url]):
+    with mock.patch("src.earnings_calendar._download", side_effect=lambda url, *_: files[url]):
         project.run("calendar")
 
 

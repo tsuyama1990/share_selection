@@ -38,17 +38,19 @@ def merge_calendars(frames: Sequence[pd.DataFrame], today: datetime.date) -> pd.
     return df.sort_values(["code", "announce_date"], na_position="last").drop_duplicates("code").reset_index(drop=True)
 
 
-def _download(url: str, user_agent: str) -> bytes:
+def _download(url: str, user_agent: str, timeout_s: float) -> bytes:
     request = urllib.request.Request(url, headers={"User-Agent": user_agent})
-    with urllib.request.urlopen(request, timeout=60) as res:
+    with urllib.request.urlopen(request, timeout=timeout_s) as res:
         return res.read()
 
 
-def update_calendar_csv(out_csv: Path, page_url: str, link_pattern: str, user_agent: str) -> int:
+def update_calendar_csv(out_csv: Path, page_url: str, link_pattern: str, user_agent: str, timeout_s: float) -> int:
     """Download every workbook linked on the JPX page, write the merged CSV, return the number of codes."""
-    page = _download(page_url, user_agent).decode("utf-8", errors="replace")
+    page = _download(page_url, user_agent, timeout_s).decode("utf-8", errors="replace")
     links = sorted({urljoin(page_url, href) for href in re.findall(link_pattern, page)})
-    merged = merge_calendars([parse_calendar(_download(link, user_agent)) for link in links], datetime.date.today())
+    merged = merge_calendars(
+        [parse_calendar(_download(link, user_agent, timeout_s)) for link in links], datetime.date.today()
+    )
     merged[CSV_COLUMNS].to_csv(out_csv, index=False, encoding="utf-8", date_format="%Y-%m-%d")
     return len(merged)
 
