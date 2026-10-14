@@ -56,3 +56,11 @@ def test_old_schema_is_migrated(tmp_path):
         cols = [r[0] for r in cache.con.execute("DESCRIBE stock_cache").fetchall()]
         assert "quarterly_income" in cols
         assert not cache.is_fresh("OLD.T", 1)
+
+
+def test_fetched_range(tmp_path):
+    with StockCache(str(tmp_path / "c.duckdb"), "Asia/Tokyo") as cache:
+        assert cache.fetched_range() == (None, None)
+        cache.put("1.T", {})
+        lo, hi = cache.fetched_range()
+        assert lo == hi and lo is not None

@@ -9,12 +9,15 @@ Japanese stock screener (Emin Yurumazu's theory). Python 3.12, managed with `uv`
 
 ## Config rule
 - Every tunable value, path and file name lives in `config.yaml`.
-- Config is loaded with `load_config(path)` (`--config PATH`, default `config.yaml`); only `src/config.py` and `main.py` may reference `load_config`; other modules get values via `build_*` / `from_config` / dataclass fields. `tests/test_architecture.py` enforces this and that config keys and code reads match.
+- Config is loaded with `load_config(path)` (`--config PATH`, default `config.yaml`); only `src/config.py` and `main.py` may reference `load_config`; other modules get values via `build_*` / `from_config` / dataclass fields. `tests/unit/test_architecture.py` enforces this and that config keys and code reads match.
 - Add a config key and the code that reads it together (an unused key fails the tests).
 - Timestamps: histories are exposed as naive Asia/Tokyo dates (`system.market_timezone`); the cache stores UTC.
 
 ## Code style
 - NumPy-style docstrings only on public module-level functions/classes whose behavior is not obvious from name and signature. Everywhere else at most a one-line docstring; never restate names or types. Ruff line length 120, no magic numbers in comparisons (PLR2004).
+
+## Test levels
+- `tests/unit/`, `tests/integration/`, `tests/e2e/` (marker added from the directory by `tests/conftest.py`; `--strict-markers`). A test module directly under `tests/` fails the run. unit = one class/function, no DB/files/network; integration = component with real collaborators; e2e = CLI flows through `main.py` (L1 §7).
 
 ## Commands
 - `uv sync`; `uv run python main.py [--config PATH] {tickers|fetch|analyze|evaluate}`
@@ -23,7 +26,7 @@ Japanese stock screener (Emin Yurumazu's theory). Python 3.12, managed with `uv`
 - Pre-commit hooks: `uv run pre-commit install`.
 
 ## Code budget and deletion first
-- `[tool.code_budget] max_source_lines` in `pyproject.toml` caps non-blank, non-comment lines of `src/` + `main.py`; `tests/test_code_budget.py` fails when over budget and when the budget is more than 10 lines stale (lower it to the actual count after deleting).
+- `[tool.code_budget] max_source_lines` in `pyproject.toml` caps non-blank, non-comment lines of `src/` + `main.py`; `tests/unit/test_code_budget.py` fails when over budget and when the budget is more than 10 lines stale (lower it to the actual count after deleting).
 - Raising the budget requires a `Budget-Increase: <reason>` line in a commit message of the branch (`scripts/check_budget_increase.sh`, run in CI).
 - Prefer deleting to adding: remove what vulture reports instead of whitelisting, inline abstractions with one caller/implementation, drop unused parameters, fields and keys, and do not add docstrings or comments that restate names or types.
 - Complexity limits (ruff C901 <= 10, PLR0912/0913/0915) are fixed by simplifying, not by `noqa`.
@@ -36,8 +39,8 @@ Japanese stock screener (Emin Yurumazu's theory). Python 3.12, managed with `uv`
 - This repo provides `scripts/gate.sh`; keep it identical to the CI steps.
 
 ## Golden regression
-- `tests/test_regression.py` compares screener output on `tests/fixtures/sample_cache.json.gz` to `tests/fixtures/golden_screening.csv`.
-- After an intended change of behavior or `config.yaml` values: `UPDATE_GOLDEN=1 uv run pytest tests/test_regression.py`, review the diff, commit it with the change.
+- `tests/e2e/test_e1_analyze.py` compares screener output on `tests/fixtures/sample_cache.json.gz` to `tests/fixtures/golden_screening.csv`.
+- After an intended change of behavior or `config.yaml` values: `UPDATE_GOLDEN=1 uv run pytest tests/e2e/test_e1_analyze.py`, review the diff, commit it with the change.
 
 ## Workflow and definition of done
 1. **Start**: branch from `main` as `<type>/<topic>` (feat, fix, refactor, chore, docs) before touching files.

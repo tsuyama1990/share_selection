@@ -30,7 +30,12 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
-addopts = "--cov=src --cov-report=term-missing"
+addopts = "--cov=src --cov-report=term-missing --strict-markers"
+markers = [
+    "unit: one class or function, no DB, files or network",
+    "integration: a component with real collaborators (temp DuckDB, temp files, mocked HTTP)",
+    "e2e: CLI command flows through main.py",
+]
 
 [tool.coverage.report]
 fail_under = 85
