@@ -73,6 +73,6 @@ Japanese stock screener (Emin Yurumazu's theory). Python 3.12, managed with `uv`
 - Before saying data "cannot be obtained", exhaust the retrieval paths (all yfinance accessors, official public data such as JPX) and state exactly what was tried.
 
 ## Development process (`docs/architecture/process.md`)
-- Gated modified waterfall: design (L1 `docs/architecture/L1_architecture.md`, L2 `L2_*.md`) -> tests of the same level (E2E / integration / unit) -> implementation -> bonsai. Each step has a blocking gate; do not proceed past a failing one.
+- Gated modified waterfall: design (L1 `docs/architecture/L1_architecture.md`, L2 `L2_*.md`, L3 `L3_*.md`) -> tests of the same level (E2E / integration / unit) -> implementation -> bonsai. Each step has a blocking gate; do not proceed past a failing one.
 - Change top-down: design doc first, then tests, then code. A `src/` module not listed in L1 section 3 fails `tests/unit/test_design_docs.py`.
 - Tests live in `tests/unit`, `tests/integration`, `tests/e2e` (marker from directory, `--strict-markers`); shared helpers go in `tests/fixtures/` (cross-level imports fail).

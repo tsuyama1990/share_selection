@@ -2,6 +2,8 @@
 
 L2 documents (docs/architecture/L2_*.md) are checked as well: module table state vs src/, integration plan vs
 tests/integration/.
+L3 documents (L3_*.md): module states agree with L2, public names of built modules match src/, and every
+unit test plan target of a built module appears in tests/unit/test_<module>.py.
 
 Rules (L1 section 9): modules listed in section 3 match src/ one to one; every requirement is traced to an E2E or a
 gate in section 8; every E2E in section 7 has a test file (a not-yet-implemented one must be strict xfail);
@@ -180,3 +182,56 @@ def test_l2_integration_plan_matches_tests():
         else:
             problems.append(f"{doc.name} {i_id} has state {status[:10]!r}; only ✅ or 🆕 are allowed")
     assert not problems, "L2 integration plans vs tests/integration: " + "; ".join(problems)
+
+
+L3_DOCS = sorted((ROOT / "docs" / "architecture").glob("L3_*.md"))
+UNIT_ID = re.compile(r"U-(\w+)-\d+")
+
+
+def l3_api(doc: Path) -> dict[str, tuple[str, set[str]]]:
+    """Module name -> (state mark, public names) from the L3 module table."""
+    api = {}
+    for row in l2_table(doc, "モジュール"):
+        match = re.match(r"`(\w+\.py)`", row[0])
+        if match:
+            api[match.group(1)] = (row[-1][:1], set(re.findall(r"`(\w+)`", row[1])))
+    return api
+
+
+def public_names(path: Path) -> set[str]:
+    body = ast.parse(path.read_text(encoding="utf-8")).body
+    defs = (ast.FunctionDef, ast.ClassDef)
+    return {node.name for node in body if isinstance(node, defs) and not node.name.startswith("_")}
+
+
+def test_l3_modules_match_l2_and_src():
+    l2_states = {name: state for doc in L2_DOCS for name, state in l2_modules(doc).items()}
+    problems = []
+    for doc in L3_DOCS:
+        for name, (state, names) in l3_api(doc).items():
+            src = ROOT / "src" / name
+            if l2_states.get(name) != state:
+                problems.append(f"{name}: L3 state {state!r} differs from L2 {l2_states.get(name)!r}")
+            if state == "✅" and src.exists() and public_names(src) != names:
+                problems.append(f"{name}: public names {sorted(public_names(src))} differ from L3 {sorted(names)}")
+    assert not problems, "L3 module tables: " + "; ".join(problems)
+
+
+def test_l3_unit_plan_targets_are_tested():
+    problems = []
+    for doc in L3_DOCS:
+        modules = l3_api(doc)
+        for row in l2_table(doc, "単体テスト計画"):
+            match = UNIT_ID.fullmatch(row[0])
+            if not match:
+                continue
+            module = f"{match.group(1)}.py"
+            if module not in modules:
+                problems.append(f"{row[0]}: {module} is not in the L3 module table")
+            elif (ROOT / "src" / module).exists():
+                test_file = ROOT / "tests" / "unit" / f"test_{match.group(1)}.py"
+                text = test_file.read_text(encoding="utf-8") if test_file.exists() else ""
+                missing = [n for n in re.findall(r"`(\w+)`", row[1]) if n not in text]
+                if missing:
+                    problems.append(f"{row[0]}: {test_file.name} does not test {missing}")
+    assert not problems, "L3 unit test plan: " + "; ".join(problems)
