@@ -108,8 +108,8 @@ E2E テストは、この表の形式が守られることを確かめる。
 | C3 → C6 | 結果 CSV | `output.columns` の列（順位、二次候補、改善区分、質の旗、指標、次回決算日） | ✅ |
 | C3 → C5 | `screen_results` | 全銘柄の通過・落ちた条件・改善区分・旗・次回決算日・全指標（JSON） | ✅ |
 | C2 → C4 | 文書ストア 🆕 | 文書 ID、出典（URL・EDINET の書類 ID）、取得日時、本文 | 🆕 |
-| C4 → C5 | `reviews` 🆕 | 調査結果、照合できた根拠、照合率、モデル・プロンプトの版、人の判断 | 🆕 |
-| C5 → C8 | 記録（Parquet） | `runs`・`screen_results`・`outcomes`・`reviews` | ✅／🆕 |
+| C4 → C5 | `reviews` 🆕 | 調査結果、照合できた根拠、照合率、モデル・プロンプトの版（git 対象外：公開リポジトリに引用を載せない） | 🆕 |
+| C5 → C8 | 記録（Parquet） | `runs`・`screen_results`・`outcomes`（`records/`、コミット）、`reviews`（`review.export_dir`、git 対象外） | ✅／🆕 |
 
 ## 6. 横断的な決まり
 
