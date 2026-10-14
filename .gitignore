@@ -10,7 +10,6 @@ env/
 
 # Database
 stocks_cache.duckdb
-documents.duckdb
 *.duckdb
 *.db
 *.sqlite3

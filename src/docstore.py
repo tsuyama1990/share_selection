@@ -78,7 +78,7 @@ class DocStore:
         )
 
     def index_last_date(self) -> datetime.date | None:
-        return self.con.execute("SELECT max(submit_date) FROM edinet_index").fetchone()[0]  # type: ignore[index]
+        return self.con.execute("SELECT max(submit_date) FROM edinet_index").fetchall()[0][0]
 
     def latest_annual_report(self, sec_code: str, doc_type_code: str) -> str | None:
         sql = (
