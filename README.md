@@ -150,6 +150,7 @@ The same checks run in CI (`.github/workflows/ci.yml`) and, except pytest, in pr
 *   `screening_criteria.md`: current first-screen criteria vs. the original book, decisions and corrections.
 *   `hypothesis_map.md`: why-why hypothesis map of what makes prices jump, validated against past cases.
 *   `selection_flow.md`: target selection flow (downside safety -> signs of improvement -> catalyst within 6-12 months); open decisions.
+*   `selection_tuning.md`: 2026-10-14 tuning of the gate (op margin 5%, PSR 1.2), improvement rule (quarterly-first, 40%), stage-2 ranking by improvement yield, review fixes, with the data behind each decision.
 *   `entry_types_design.md`: entry types A-G (to be reorganized under `selection_flow.md` stage 3).
 
 Claims in these documents carry source labels ([原著]/[一次]/[報道]/[データ]/[推論]); numbers are recomputed before each commit.
