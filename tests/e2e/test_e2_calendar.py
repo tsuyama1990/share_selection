@@ -1,43 +1,52 @@
-import datetime
+"""E2: `calendar` then `analyze` puts announcement dates into the result CSV and the records."""
 
-import duckdb
+import datetime
+from pathlib import Path
+from unittest import mock
+
 import pandas as pd
 
-import main
-from src.cache import StockCache
-from src.config import load_config
-from src.screener import Screener
-from tests.fixtures.sample import load_sample
+from tests.e2e.conftest import CFG
+from tests.unit.test_earnings_calendar import row, workbook
 
-CFG = load_config()
+GOLDEN = Path(__file__).parent.parent / "fixtures" / "golden_screening.csv"
+DATE = datetime.datetime(2099, 1, 5)
+WORKBOOK_URL = "https://www.jpx.co.jp/a/k08.xlsx"
 
 
-def test_analyze_fills_earnings_columns_from_calendar(tmp_path, monkeypatch):
-    monkeypatch.setattr(main, "ROOT", tmp_path)
-    (tmp_path / CFG["system"]["input_csv"]).write_text("code\n", encoding="utf-8")
-    with StockCache(str(tmp_path / "c.duckdb"), CFG["system"]["market_timezone"]) as cache:
-        tickers = load_sample(cache)
-        code = tickers[0].removesuffix(".T")
-        cal = f"code,announce_date,period_en,fiscal_year_end\n{code},2026-11-05,Second quarter,2027-03-31\n"
-        (tmp_path / CFG["calendar"]["out_csv"]).write_text(cal, encoding="utf-8")
-        main.run_analyze(CFG, tickers, cache, Screener.from_config(CFG), None)
-    with duckdb.connect(str(tmp_path / CFG["records"]["db_file"])) as con:
-        dates = dict(con.execute("SELECT ticker, next_earnings_date FROM screen_results").fetchall())
-    assert dates[tickers[0]] == datetime.date(2026, 11, 5)
-    assert [t for t, d in dates.items() if d is not None] == [tickers[0]]
-    (out,) = (tmp_path / CFG["output"]["dir"]).glob("*.csv")
+def run_calendar(project, codes: list[int]) -> None:
+    files = {
+        CFG["calendar"]["page_url"]: b'<a href="/a/k08.xlsx"></a>',
+        WORKBOOK_URL: workbook([row(DATE, c) for c in codes]),
+    }
+    with mock.patch("src.earnings_calendar._download", side_effect=lambda url, _ua: files[url]):
+        project.run("calendar")
+
+
+def test_calendar_dates_reach_csv_and_records(project):
+    tickers = project.seed_sample()
+    dated = pd.read_csv(GOLDEN)["Ticker"].iloc[0]  # a ticker that passes the gatekeeper, so it is in the CSV
+    run_calendar(project, [int(dated.removesuffix(".T"))])
+    project.run("analyze")
+
+    dates = dict(project.query("SELECT ticker, next_earnings_date FROM screen_results"))
+    assert set(dates) == set(tickers)
+    assert dates[dated] == DATE.date()
+    assert [t for t, d in dates.items() if d is not None] == [dated]
+    (out,) = (project.root / CFG["output"]["dir"]).glob("*.csv")
     report = pd.read_csv(out, dtype=str).set_index("Ticker")
-    if tickers[0] in report.index:
-        assert report.loc[tickers[0], "Next_Earnings_Date"] == "2026-11-05"
-        assert report.loc[tickers[0], "Earnings_Period"] == "Second quarter"
-    assert report.drop(index=tickers[0], errors="ignore")["Next_Earnings_Date"].isna().all()
+    assert report.loc[dated, "Next_Earnings_Date"] == "2099-01-05"
+    assert report.loc[dated, "Earnings_Period"] == "Second quarter"
+    assert report.drop(index=dated)["Next_Earnings_Date"].isna().all()
 
 
-def test_analyze_warns_once_without_calendar(tmp_path, monkeypatch, capsys):
-    monkeypatch.setattr(main, "ROOT", tmp_path)
-    (tmp_path / CFG["system"]["input_csv"]).write_text("code\n", encoding="utf-8")
-    with StockCache(str(tmp_path / "c.duckdb"), CFG["system"]["market_timezone"]) as cache:
-        main.run_analyze(CFG, load_sample(cache), cache, Screener.from_config(CFG), None)
+def test_dates_are_empty_without_calendar_entry(project, capsys):
+    project.seed_sample()
+    project.run("analyze")
+
     assert capsys.readouterr().out.count("earnings calendar not found") == 1
-    (out,) = (tmp_path / CFG["output"]["dir"]).glob("*.csv")
-    assert pd.read_csv(out)["Next_Earnings_Date"].isna().all()
+    (out,) = (project.root / CFG["output"]["dir"]).glob("*.csv")
+    report = pd.read_csv(out)
+    assert report["Next_Earnings_Date"].isna().all()
+    assert report["Earnings_Period"].isna().all()
+    assert all(d is None for _, d in project.query("SELECT ticker, next_earnings_date FROM screen_results"))
