@@ -27,7 +27,7 @@ class FakeScorer:
         return self.result
 
 
-NO_IMPROVEMENT = ImprovementSignal(0.2, 20)
+NO_IMPROVEMENT = ImprovementSignal(0.4, 20, 200)
 DATA = StockData.from_dict("1234.T", {"info": {"longName": "Foo"}})
 
 
@@ -69,7 +69,7 @@ class TestScreener(unittest.TestCase):
             "shock_lows": {"lehman": ["2008-09-01", "2009-03-31"]},
         },
         "recommendation": {"quality_growth_min_growth_score": 3, "quality_value_min_value_score": 4},
-        "improvement": {"clear_threshold": 0.2, "same_quarter_tolerance_days": 20},
+        "improvement": {"clear_threshold": 0.4, "same_quarter_tolerance_days": 20, "max_quarter_age_days": 200},
     }
 
     def test_failing_rule_short_circuits(self):
@@ -130,7 +130,7 @@ class TestScreener(unittest.TestCase):
     def test_from_config_reads_recommendation_section(self):
         cfg = dict(self.CFG, recommendation={"quality_growth_min_growth_score": 7, "quality_value_min_value_score": 9})
         screener = Screener.from_config(cfg)
-        self.assertEqual(screener.improvement, ImprovementSignal(0.2, 20))
+        self.assertEqual(screener.improvement, ImprovementSignal(0.4, 20, 200))
         self.assertEqual(screener.quality_growth_min_growth_score, 7)
         self.assertEqual(screener.quality_value_min_value_score, 9)
 
@@ -150,6 +150,21 @@ class TestScreener(unittest.TestCase):
         self.assertEqual(res["PBR"], 40000000.0)
         self.assertEqual(res["Total_Score"], 1)
         self.assertEqual(res["Recommendation_Type"], "Watch")
+
+    def test_improvement_metrics_present_for_gate_failing_ticker(self):
+        data = StockData.from_dict(
+            "1234.T",
+            {
+                "quarterly_income": pd.DataFrame(
+                    {"2025-12-31": {"Diluted EPS": 12.0}, "2024-12-31": {"Diluted EPS": 10.0}}
+                )
+            },
+        )
+        res = Screener.from_config(self.CFG).screen(data)  # no market cap -> fails the first rule
+        self.assertFalse(res.passed)
+        self.assertEqual(
+            (res.row["EPS_Q_YoY(%)"], res.row["Improvement_Class"]), (20.0, "signal")
+        )  # 20% < clear_threshold 40%
 
 
 class FakeClient:
@@ -206,20 +221,3 @@ class TestStockCache(unittest.TestCase):
         self.assertEqual(list(data.history_monthly.index), list(monthly.index.tz_localize(None)))
         self.assertEqual(list(data.history.index), list(daily.index.tz_localize(None)))
         self.assertEqual(data.history_monthly.loc["2008-10-01", "Low"], 2.0)
-
-
-if __name__ == "__main__":
-    unittest.main()
-
-    def test_improvement_metrics_present_for_gate_failing_ticker(self):
-        data = StockData.from_dict(
-            "1234.T",
-            {
-                "quarterly_income": pd.DataFrame(
-                    {"2025-12-31": {"Diluted EPS": 12.0}, "2024-12-31": {"Diluted EPS": 10.0}}
-                )
-            },
-        )
-        res = Screener.from_config(self.CFG).screen(data)  # no market cap -> fails the first rule
-        self.assertFalse(res.passed)
-        self.assertEqual((res.row["EPS_Q_YoY(%)"], res.row["Improvement_Class"]), (20.0, "clear"))

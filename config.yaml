@@ -9,10 +9,10 @@
 # to quickly exclude unqualified stocks.
 gatekeeper:
   equity_ratio_min: 0.50       # Minimum Equity Ratio (0.50 = 50%)
-  operating_margin_min: 0.07   # Minimum Operating Margin (0.07 = 7%)
-  psr_cap: 2.0                 # Exclude stocks with PSR > 2.0
+  operating_margin_min: 0.05   # Minimum Operating Margin (0.05 = 5%)
+  psr_cap: 1.2                 # Exclude stocks with PSR > 1.2
   operating_cash_flow_min: 0   # Operating Cash Flow > 0 (Positive)
-  market_cap_min: 100000000    # Minimum Market Cap (JPY)
+  market_cap_min: 3000000000   # Minimum Market Cap (JPY): 3B JPY
   turnover_min: 30000000       # Minimum avg daily trading value (JPY): 30M JPY/day; order size of a few hundred thousand to a few million JPY
   turnover_days: 60            # Window (trading sessions) for the average daily trading value
 
@@ -72,8 +72,15 @@ recommendation:
 # 3b. improvement: stage 2 signs of improvement (computed for every ticker, also those failing the gatekeeper)
 # ------------------------------------------
 improvement:
-  clear_threshold: 0.20             # Quarterly EPS or annual operating income YoY >= 20% (or EPS turnaround) -> "clear"
+  clear_threshold: 0.40             # YoY >= 40% (or EPS turnaround) -> "clear"; quarterly EPS decides, annual operating income only if EPS is unavailable
   same_quarter_tolerance_days: 20   # Same quarter a year earlier = 365 +- this many days before the latest quarter
+  max_quarter_age_days: 200         # Ignore quarterly EPS when the latest quarter is older than this vs the price data end (newer quarters missing)
+
+# ------------------------------------------
+# 3c. selection: stage 2 priority ranking
+# ------------------------------------------
+selection:
+  candidates_n: 50                  # Top N by Priority_Rank with Improvement_Class "clear" are Stage2_Candidate
 
 # ------------------------------------------
 # 4. output: CSV report
@@ -81,15 +88,17 @@ improvement:
 output:
   dir: "results"                                   # Relative to the repo root (created if missing)
   filename: "emin_screening_result_{date}.csv"     # {date} = YYYY-MM-DD
-  top_n: 10                                        # Rows printed to the console
   columns:                                         # CSV columns, in order
     - Ticker
+    - Priority_Rank
+    - Stage2_Candidate
     - Name
     - Total_Score
     - EPS_Q_YoY(%)
     - OI_YoY(%)
     - Op_Margin_Change(pt)
     - Improvement_Class
+    - Improvement_Yield(%)
     - Recommendation_Type
     - Current_Price
     - PSR

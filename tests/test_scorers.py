@@ -260,7 +260,3 @@ class TestScorers(unittest.TestCase):
         names = [type(x).__name__ for x in build_scorers(cfg)]
         self.assertEqual(len(names), 10)
         self.assertLess(names.index("NetCashScorer"), names.index("PsrScorer"))
-
-
-if __name__ == "__main__":
-    unittest.main()

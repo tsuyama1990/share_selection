@@ -67,7 +67,3 @@ class TestMetrics(unittest.TestCase):
         self.assertEqual(avg_turnover(hist, 60), 2e7)
         self.assertIsNone(avg_turnover(None, 60))
         self.assertIsNone(avg_turnover(pd.DataFrame(), 60))
-
-
-if __name__ == "__main__":
-    unittest.main()

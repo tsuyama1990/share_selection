@@ -20,6 +20,7 @@ import pytest
 
 from src.cache import FRAME_KEYS, StockCache
 from src.config import CFG
+from src.report import prioritize
 from src.screener import Screener
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -48,6 +49,7 @@ def screen_sample(tmp_path: Path) -> pd.DataFrame:
         screener = Screener.from_config(CFG)
         screened = [screener.screen(d) for t in tickers if (d := cache.get(t)) is not None]
         results = [r.row for r in screened if r.passed]
+    prioritize(results, CFG["selection"]["candidates_n"])
     df = pd.DataFrame(results).sort_values("Ticker").reset_index(drop=True)
     return df[[c for c in CFG["output"]["columns"] if c in df.columns]]
 

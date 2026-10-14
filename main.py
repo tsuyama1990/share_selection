@@ -9,7 +9,7 @@ from tqdm import tqdm
 from src.cache import StockCache, refresh
 from src.config import CFG, ROOT
 from src.records import NO_CACHE, RecordStore, evaluate, git_sha
-from src.report import write_report
+from src.report import prioritize, write_report
 from src.screener import Screener, ScreenResult
 from src.tickers import update_ticker_csv
 from src.yahoo import YahooClient
@@ -63,6 +63,7 @@ def run_analyze(tickers: list[str], cache: StockCache, screener: Screener, issue
             }
         )
     results = [r["metrics"] for r in screened if r["stage1_pass"]]
+    prioritize(results, CFG["selection"]["candidates_n"])
     no_cache = sum(r["stage1_fail_rule"] == NO_CACHE for r in screened)
 
     fetched_min, fetched_max = cache.fetched_range()
@@ -81,7 +82,7 @@ def run_analyze(tickers: list[str], cache: StockCache, screener: Screener, issue
     if not results:
         print("No stocks passed the Gatekeeper.")
         return
-    write_report(results, ROOT / output_cfg["dir"], output_cfg["filename"], output_cfg["columns"], output_cfg["top_n"])
+    write_report(results, ROOT / output_cfg["dir"], output_cfg["filename"], output_cfg["columns"])
 
 
 # Days of history fetched before the earliest run, so a close "on or before t0" exists across holidays.
