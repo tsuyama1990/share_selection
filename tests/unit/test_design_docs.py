@@ -14,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 DOC = ROOT / "docs" / "architecture" / "L1_architecture.md"
-NOT_BUILT = ("🆕", "⏸")
+NOT_BUILT = "🆕"
 OPEN_DECISIONS_TITLE = "決めていただきたいこと"
 
 
@@ -44,11 +44,9 @@ def test_section3_modules_match_src():
     absent = [
         f"{name} (row: {row[:40]}...)"
         for name, row in listed.items()
-        if not (ROOT / "src" / name).exists()
-        and not (ROOT / name).exists()
-        and not any(mark in row for mark in NOT_BUILT)
+        if not (ROOT / "src" / name).exists() and not (ROOT / name).exists() and NOT_BUILT not in row
     ]
-    assert not absent, f"L1 section 3 lists modules that do not exist and are not marked 🆕 or ⏸: {absent}"
+    assert not absent, f"L1 section 3 lists modules that do not exist and are not marked 🆕: {absent}"
 
 
 def requirement_ids() -> list[str]:

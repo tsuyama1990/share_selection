@@ -42,6 +42,6 @@ L1 全体設計 ─▶ L2 詳細設計 ─▶ L3 クラス設計 ─▶ 実装
 | 工程 | 状態 |
 |---|---|
 | L1 設計・QA | 完了（設計の関門 `tests/unit/test_design_docs.py`、E2E E1〜E5、E6 は strict xfail） |
-| L2 詳細設計（C2 データ取得、C4 二次調査） | 承認（2026-10-14）。`L2_C2_data_acquisition.md`、`L2_C4_stage2_research.md` |
-| L2 の QA（結合テストの用意、設計の関門を L2 へ拡張） | 次の作業 |
+| L2 詳細設計・QA（C2 データ取得、C4 二次調査） | 完了（承認 2026-10-14。設計の関門を L2 のモジュール表・結合テスト計画へ拡張、未実装の結合テスト I-C2-3〜5・I-C4-2〜4 は strict xfail） |
+| L3 クラス設計（C2 の edinet・webfetch・docstore、C4 の sector・research・verify・memo、`reviews`） | 次の作業 |
 | `feat/llm-client` | マージ済み（L2 の QA で結合テストの階層へ移した） |
