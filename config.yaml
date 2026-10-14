@@ -57,10 +57,13 @@ selection:
 output:
   dir: "results"                                   # Relative to the repo root (created if missing)
   filename: "emin_screening_result_{date}.csv"     # {date} = YYYY-MM-DD
+  failures_filename: "fetch_failures_{date}.csv"   # Tickers `fetch` could not download, with the error (written to dir)
   columns:                                         # CSV columns, in order
     - Ticker
     - Priority_Rank
     - Stage2_Candidate
+    - Next_Earnings_Date
+    - Earnings_Period
     - Name
     - EPS_Q_YoY(%)
     - OI_YoY(%)
@@ -117,5 +120,16 @@ system:
 records:
   db_file: "records.duckdb"      # Record database (separate from the cache; git-ignored)
   export_dir: "records"          # Parquet export per run: records/<run_id>/*.parquet (committed as the backup)
+  shikiho_issue_months: [3, 6, 9, 12]  # Months with a Shikiho issue; the default --issue is the latest released one
+  shikiho_release_day: 15               # Day of the month an issue is treated as released
   horizons_months: [6, 12]       # Outcome horizons measured from the run date
   benchmark_ticker: "1306.T"     # TOPIX ETF; excess return is relative to it
+
+# ------------------------------------------
+# 8. calendar: JPX earnings announcement schedule (`main.py calendar` writes, `analyze` reads)
+# ------------------------------------------
+calendar:
+  page_url: "https://www.jpx.co.jp/listing/event-schedules/financial-announcement/index.html"
+  link_pattern: 'href="([^"]+\.xlsx)"'   # regex; group 1 = workbook link (one workbook per quarter-end month)
+  user_agent: "Mozilla/5.0"              # JPX answers 403 to plain clients
+  out_csv: "earnings_calendar.csv"       # Merged calendar (git-ignored)

@@ -32,6 +32,7 @@ ROWS = [
         "stage1_pass": True,
         "stage1_fail_rule": None,
         "improvement_class": "clear",
+        "next_earnings_date": "2026-11-05",
         "quality_flags": ["quarter_spike", "oi_divergence"],
         "metrics": {"PSR": 1.5, "Name": "x"},
     },
@@ -40,6 +41,7 @@ ROWS = [
         "stage1_pass": False,
         "stage1_fail_rule": "PsrCap",
         "improvement_class": "none",
+        "next_earnings_date": None,
         "quality_flags": [],
         "metrics": {"PSR": float("nan")},
     },
@@ -48,6 +50,7 @@ ROWS = [
         "stage1_pass": False,
         "stage1_fail_rule": NO_CACHE,
         "improvement_class": None,
+        "next_earnings_date": None,
         "quality_flags": None,
         "metrics": {},
     },
@@ -78,6 +81,41 @@ def test_record_run_round_trip_and_parquet(tmp_path):
     out = tmp_path / "rec" / run_id
     assert parquet(out, "runs")["git_sha"].tolist() == ["abc"]
     assert parquet(out, "screen_results")["ticker"].tolist() == ["1.T", "2.T", "3.T"]
+
+
+def test_next_earnings_date_is_stored(tmp_path):
+    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec") as store:
+        store.record_run(INFO, ROWS)
+        dates = store.con.execute("SELECT next_earnings_date FROM screen_results ORDER BY ticker").fetchall()
+    assert [d for (d,) in dates] == [datetime.date(2026, 11, 5), None, None]
+
+
+@pytest.mark.parametrize(
+    ("today", "issue"),
+    [
+        (datetime.date(2026, 10, 14), "2026-09"),
+        (datetime.date(2026, 9, 14), "2026-06"),
+        (datetime.date(2026, 9, 15), "2026-09"),
+        (datetime.date(2026, 12, 15), "2026-12"),
+        (datetime.date(2027, 1, 1), "2026-12"),
+        (datetime.date(2027, 3, 14), "2026-12"),
+        (datetime.date(2027, 3, 15), "2027-03"),
+    ],
+)
+def test_latest_issue_boundaries(today, issue):
+    rec = CFG["records"]
+    assert records.latest_issue(today, rec["shikiho_issue_months"], rec["shikiho_release_day"]) == issue
+
+
+def test_fetch_writes_failures_csv(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(main, "ROOT", tmp_path)
+    client = mock.Mock()
+    client.download.side_effect = lambda t: {} if t == "1.T" else (_ for _ in ()).throw(RuntimeError("boom"))
+    with StockCache(str(tmp_path / "c.duckdb"), CFG["system"]["market_timezone"]) as cache:
+        main.run_fetch(CFG, ["1.T", "2.T"], cache, client)
+    (path,) = (tmp_path / CFG["output"]["dir"]).glob("fetch_failures_*.csv")
+    assert pd.read_csv(path).to_dict("records") == [{"ticker": "2.T", "error": "boom"}]
+    assert "1 fetch failures saved" in capsys.readouterr().out
 
 
 def test_head_commit_none_when_unavailable():
@@ -196,3 +234,48 @@ def test_config_option_redirects_thresholds_and_outputs(tmp_path, monkeypatch):
     assert (tmp_path / "alt_records").is_dir()
     assert list((tmp_path / "alt_out").glob("*.csv"))
     assert not (tmp_path / CFG["output"]["dir"]).exists()
+
+
+def test_analyze_fills_earnings_columns_from_calendar(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "ROOT", tmp_path)
+    (tmp_path / CFG["system"]["input_csv"]).write_text("code\n", encoding="utf-8")
+    with StockCache(str(tmp_path / "c.duckdb"), CFG["system"]["market_timezone"]) as cache:
+        tickers = load_sample(cache)
+        code = tickers[0].removesuffix(".T")
+        cal = f"code,announce_date,period_en,fiscal_year_end\n{code},2026-11-05,Second quarter,2027-03-31\n"
+        (tmp_path / CFG["calendar"]["out_csv"]).write_text(cal, encoding="utf-8")
+        main.run_analyze(CFG, tickers, cache, Screener.from_config(CFG), None)
+    with duckdb.connect(str(tmp_path / CFG["records"]["db_file"])) as con:
+        dates = dict(con.execute("SELECT ticker, next_earnings_date FROM screen_results").fetchall())
+    assert dates[tickers[0]] == datetime.date(2026, 11, 5)
+    assert [t for t, d in dates.items() if d is not None] == [tickers[0]]
+    (out,) = (tmp_path / CFG["output"]["dir"]).glob("*.csv")
+    report = pd.read_csv(out, dtype=str).set_index("Ticker")
+    if tickers[0] in report.index:
+        assert report.loc[tickers[0], "Next_Earnings_Date"] == "2026-11-05"
+        assert report.loc[tickers[0], "Earnings_Period"] == "Second quarter"
+    assert report.drop(index=tickers[0], errors="ignore")["Next_Earnings_Date"].isna().all()
+
+
+def test_analyze_issue_defaults_to_latest_shikiho_issue(tmp_path, monkeypatch):
+    monkeypatch.setattr(main, "ROOT", tmp_path)
+    (tmp_path / CFG["system"]["input_csv"]).write_text("code\n1.T\n", encoding="utf-8")
+    cfg_path = tmp_path / "c.yaml"
+    cfg_path.write_text(yaml.safe_dump(CFG), encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(main, "run_analyze", lambda *a: calls.append(a[-1]))
+    monkeypatch.setattr(main, "default_issue", lambda cfg: "2099-03")
+    for argv, expected in ((["analyze"], "2099-03"), (["analyze", "--issue", "2020-06"], "2020-06")):
+        monkeypatch.setattr(sys, "argv", ["main.py", "--config", str(cfg_path), *argv])
+        main.main()
+        assert calls[-1] == expected
+
+
+def test_analyze_warns_once_without_calendar(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(main, "ROOT", tmp_path)
+    (tmp_path / CFG["system"]["input_csv"]).write_text("code\n", encoding="utf-8")
+    with StockCache(str(tmp_path / "c.duckdb"), CFG["system"]["market_timezone"]) as cache:
+        main.run_analyze(CFG, load_sample(cache), cache, Screener.from_config(CFG), None)
+    assert capsys.readouterr().out.count("earnings calendar not found") == 1
+    (out,) = (tmp_path / CFG["output"]["dir"]).glob("*.csv")
+    assert pd.read_csv(out)["Next_Earnings_Date"].isna().all()

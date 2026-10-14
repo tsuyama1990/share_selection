@@ -176,7 +176,7 @@ class TestStockCache(unittest.TestCase):
         ):
             self.assertIsNone(cache.get("1234.T"))
             self.assertFalse(cache.is_fresh("1234.T", 3))
-            self.assertTrue(refresh(cache, FakeClient(), "1234.T", 3))
+            self.assertIsNone(refresh(cache, FakeClient(), "1234.T", 3))
             self.assertTrue(cache.is_fresh("1234.T", 3))
             data = cache.get("1234.T")
             self.assertEqual(data.info["longName"], "Foo")

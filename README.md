@@ -41,9 +41,10 @@ Edit `config.yaml` to adjust criteria. Every tunable parameter, path and file na
 *   `improvement`: stage 2 signs of improvement: `clear_threshold` (0.40), `same_quarter_tolerance_days` (20, window around 365 days for the same quarter a year earlier) and `max_quarter_age_days` (200: quarterly EPS older than this vs the price data end is ignored).
 *   `quality`: `max_quarter_share_of_annual` (0.5): latest quarterly EPS at or above this share of the latest annual Diluted EPS (> 0) raises `quarter_spike`.
 *   `selection`: `candidates_n` (50), the number of top-ranked unflagged `clear` stocks flagged `Stage2_Candidate`.
-*   `output`: report `dir`, `filename` (`{date}` = YYYY-MM-DD) and the CSV `columns`.
+*   `output`: report `dir`, `filename` and `failures_filename` (`{date}` = YYYY-MM-DD) and the CSV `columns`.
 *   `tickers`: `jpx_url` and the `markets` kept by the `tickers` command.
-*   `records`: `db_file`, `export_dir` (Parquet backup per run), `horizons_months`, `benchmark_ticker`.
+*   `calendar`: `page_url`, `link_pattern` (regex for the workbook links), `user_agent`, `out_csv` of the `calendar` command.
+*   `records`: `db_file`, `export_dir` (Parquet backup per run), `shikiho_issue_months` / `shikiho_release_day` (default `--issue`), `horizons_months`, `benchmark_ticker`.
 *   `system`: `input_csv`, `db_file`, `sleep_time`, `cache_days`, `market_timezone` (timezone of the history timestamps, `Asia/Tokyo`), `daily_history_period`, `monthly_history_period`.
 
 ```yaml
@@ -66,6 +67,13 @@ uv run python main.py tickers
 
 This writes the CSV given by `input_csv` (default `japan_tickers.csv`). A custom CSV also works if it has a `code`, `Code`, `ticker` or `Ticker` column. There is no demo list; a missing or invalid file is an error.
 
+### 2b. Earnings Calendar (optional)
+Downloads the JPX earnings announcement schedule (one workbook per quarter-end month, linked from the `calendar.page_url` page) and merges it into `calendar.out_csv` (default `earnings_calendar.csv`, git-ignored; columns `code, announce_date, period_en, fiscal_year_end`). A code in several workbooks keeps its earliest announcement date from today on; `announce_date` is empty while undecided. Re-run it before `analyze` (JPX updates the files as companies announce).
+
+```bash
+uv run python main.py calendar
+```
+
 ### 3. Fetch Data (Accumulation)
 This command downloads data for tickers whose cache is older than `cache_days` (or missing) and updates the DuckDB cache.
 *Run this periodically (e.g., weekly).*
@@ -73,6 +81,7 @@ This command downloads data for tickers whose cache is older than `cache_days` (
 ```bash
 uv run python main.py fetch
 ```
+Tickers that fail to download are listed with their error in `output.dir`/`output.failures_filename` (default `results/fetch_failures_YYYY-MM-DD.csv`); the path and count are printed. Only a run with failures writes the file.
 
 ### 4. Analyze Data (Screening)
 This command runs the screening logic using **only the local cache** (it never calls the API, even for stale entries; tickers without a cache are skipped and counted). It is instant.
@@ -85,11 +94,12 @@ uv run python main.py analyze
 ### 5. Output
 Results are saved to `results/emin_screening_result_YYYY-MM-DD.csv` (directory and file name set by `output` in `config.yaml`; `results/` is git-ignored) sorted by `Priority_Rank`; the `Stage2_Candidate` rows are displayed in the console.
 
-Every `analyze` also records the run (all tickers, including those that failed the gatekeeper with the failing rule, and tickers without cache as `no_cache`) in `records.duckdb` and exports it to `records/<run_id>/{runs,screen_results}.parquet`. Commit the `records/` Parquet files as the backup; `records.duckdb` is git-ignored. Optional `--issue YYYY-MM` labels the run with the Shikiho issue used. Every recorded ticker carries all metrics computable from its cached data (rules and indicators run for gatekeeper failures too, skipping what lacks inputs), so a run can be replayed under other thresholds.
+Every `analyze` also records the run (all tickers, including those that failed the gatekeeper with the failing rule, and tickers without cache as `no_cache`) in `records.duckdb` and exports it to `records/<run_id>/{runs,screen_results}.parquet`. Commit the `records/` Parquet files as the backup; `records.duckdb` is git-ignored. `--issue YYYY-MM` labels the run with the Shikiho issue used; without it, the latest issue released on or before today is used (issues in `records.shikiho_issue_months`, out on day `records.shikiho_release_day`). Every recorded ticker carries all metrics computable from its cached data (rules and indicators run for gatekeeper failures too, skipping what lacks inputs), so a run can be replayed under other thresholds.
 
 Global option `--config PATH` (before the subcommand, e.g. `uv run python main.py --config experiments/a.yaml analyze`) uses another config file instead of `config.yaml`. Relative paths in any config file stay relative to the repo root. Experiment configs should set their own `output.dir`, `records.db_file` and `records.export_dir` so they do not mix with the main records and results.
 
 **Key Output Columns:**
+*   **Next_Earnings_Date**, **Earnings_Period**: next announcement date (`YYYY-MM-DD`, empty if undecided or not listed) and its period (e.g. `Second quarter`) from the calendar CSV; also stored in `screen_results.next_earnings_date` for every ticker. If the calendar file is missing, `analyze` prints one warning and leaves them empty.
 *   **EPS_Q_YoY(%)**, **OI_YoY(%)**, **Op_Margin_Change(pt)**: Latest quarter's Diluted EPS vs the same quarter a year earlier (only if that one is positive), latest annual operating income vs the previous year (only if that one is positive), and the change of the annual operating margin in points.
 *   **Improvement_Class**: decided by quarterly EPS alone when a fresh year-ago pair is available (YoY; with a loss a year earlier: turnaround to > 0 = `clear`, narrower loss = `signal`, else `none`), otherwise by annual operating income YoY: `clear` (>= `clear_threshold`), `signal` (>= 0), `none` (negative), `unknown` (neither available). Computed for every ticker, including those failing the gatekeeper; recorded in `screen_results.improvement_class` (raw quarterly EPS stays in the metrics JSON).
 *   **Improvement_Yield(%)**: size of the improvement relative to the price: annualized quarterly EPS change / price (when quarterly EPS decides), else operating income change / market cap. Unlike growth %, a tiny base does not inflate it.
