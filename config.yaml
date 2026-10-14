@@ -74,6 +74,7 @@ recommendation:
 improvement:
   clear_threshold: 0.40             # YoY >= 40% (or EPS turnaround) -> "clear"; quarterly EPS decides, annual operating income only if EPS is unavailable
   same_quarter_tolerance_days: 20   # Same quarter a year earlier = 365 +- this many days before the latest quarter
+  max_quarter_age_days: 200         # Ignore quarterly EPS when the latest quarter is older than this vs the price data end (newer quarters missing)
 
 # ------------------------------------------
 # 3c. selection: stage 2 priority ranking

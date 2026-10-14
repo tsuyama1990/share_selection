@@ -37,7 +37,7 @@ class Screener:
     def from_config(cls, cfg: dict[str, Any]) -> "Screener":
         rec, imp = cfg["recommendation"], cfg["improvement"]
         return cls(
-            ImprovementSignal(imp["clear_threshold"], imp["same_quarter_tolerance_days"]),
+            ImprovementSignal(imp["clear_threshold"], imp["same_quarter_tolerance_days"], imp["max_quarter_age_days"]),
             build_rules(cfg),
             build_scorers(cfg),
             rec["quality_growth_min_growth_score"],

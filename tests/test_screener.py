@@ -27,7 +27,7 @@ class FakeScorer:
         return self.result
 
 
-NO_IMPROVEMENT = ImprovementSignal(0.4, 20)
+NO_IMPROVEMENT = ImprovementSignal(0.4, 20, 200)
 DATA = StockData.from_dict("1234.T", {"info": {"longName": "Foo"}})
 
 
@@ -69,7 +69,7 @@ class TestScreener(unittest.TestCase):
             "shock_lows": {"lehman": ["2008-09-01", "2009-03-31"]},
         },
         "recommendation": {"quality_growth_min_growth_score": 3, "quality_value_min_value_score": 4},
-        "improvement": {"clear_threshold": 0.4, "same_quarter_tolerance_days": 20},
+        "improvement": {"clear_threshold": 0.4, "same_quarter_tolerance_days": 20, "max_quarter_age_days": 200},
     }
 
     def test_failing_rule_short_circuits(self):
@@ -130,7 +130,7 @@ class TestScreener(unittest.TestCase):
     def test_from_config_reads_recommendation_section(self):
         cfg = dict(self.CFG, recommendation={"quality_growth_min_growth_score": 7, "quality_value_min_value_score": 9})
         screener = Screener.from_config(cfg)
-        self.assertEqual(screener.improvement, ImprovementSignal(0.4, 20))
+        self.assertEqual(screener.improvement, ImprovementSignal(0.4, 20, 200))
         self.assertEqual(screener.quality_growth_min_growth_score, 7)
         self.assertEqual(screener.quality_value_min_value_score, 9)
 

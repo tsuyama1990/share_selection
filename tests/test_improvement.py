@@ -4,7 +4,7 @@ import pytest
 from src.improvement import ImprovementSignal
 from src.stock_data import StockData
 
-SIGNAL = ImprovementSignal(clear_threshold=0.40, same_quarter_tolerance_days=20)
+SIGNAL = ImprovementSignal(clear_threshold=0.40, same_quarter_tolerance_days=20, max_quarter_age_days=200)
 
 
 def quarterly(**eps: float | None) -> pd.DataFrame:
@@ -160,3 +160,14 @@ def test_small_base_growth_does_not_inflate_yield():
 def test_loss_quarter_is_decided_by_quarterly_eps_not_annual(latest, prev, expected):
     out = with_price(quarterly_income=q(latest, prev), financials=annual(oi=30.0, oi_prev=10.0), price=100.0)
     assert out["Improvement_Class"] == expected
+
+
+def test_stale_latest_quarter_falls_back_to_annual():
+    daily = pd.DataFrame({"Close": [1.0]}, index=pd.DatetimeIndex(["2026-10-01"]))
+    data = StockData.from_dict(
+        "1.T",
+        {"quarterly_income": q(30.0, 10.0), "financials": annual(oi=9.0, oi_prev=10.0), "history": daily},
+    )  # latest quarter 2025-12-31 is 274 days before the price data end
+    out = SIGNAL.evaluate(data)
+    assert out["Improvement_Class"] == "none" and out["EPS_Q_YoY(%)"] is None
+    assert out["EPS_Q_Latest"] == 30.0  # raw value still recorded for the history

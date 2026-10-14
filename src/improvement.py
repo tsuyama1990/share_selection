@@ -18,17 +18,21 @@ class ImprovementSignal:
 
     clear_threshold: float
     same_quarter_tolerance_days: int
+    max_quarter_age_days: int
 
     def evaluate(self, data: StockData) -> dict[str, Any]:
         out: dict[str, Any] = {}
         eps_yoy = eps_delta = None
         pair = quarterly_eps_pair(data.quarterly_income, self.same_quarter_tolerance_days)
+        # A latest quarter far older than the price data means newer quarters are missing: do not judge on it.
+        as_of = None if data.history.empty else data.history.index.max()
+        fresh = pair is not None and (as_of is None or (as_of - pair[1]).days <= self.max_quarter_age_days)
         if pair is not None:
             latest, date, prev = pair
             out.update(
                 {"EPS_Q_Latest": latest, "EPS_Q_Latest_Date": date.strftime("%Y-%m-%d"), "EPS_Q_Prev_Year": prev}
             )
-            if prev is not None:
+            if prev is not None and fresh:
                 eps_delta = latest - prev
                 eps_yoy = round(latest / prev - 1, YOY_DECIMALS) if prev > 0 else None
         oi_yoy, margin_change, oi_delta = annual_operating_change(data.financials)
@@ -36,7 +40,7 @@ class ImprovementSignal:
         out["EPS_Q_YoY(%)"] = None if eps_yoy is None else round(eps_yoy * 100, 1)
         out["OI_YoY(%)"] = None if oi_yoy is None else round(oi_yoy * 100, 1)
         out["Op_Margin_Change(pt)"] = None if margin_change is None else round(margin_change, 1)
-        if pair is not None and pair[2] is not None:
+        if fresh and pair is not None and pair[2] is not None:
             out["Improvement_Class"] = self._classify_quarter(pair[0], pair[2], eps_yoy)
             price = to_num(data.fast_info.get("last_price"))
             yield_ = eps_delta * QUARTERS_PER_YEAR / price if eps_delta is not None and price else None
