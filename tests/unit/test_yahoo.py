@@ -1,3 +1,4 @@
+import datetime
 from types import SimpleNamespace
 from unittest import mock
 
@@ -51,3 +52,13 @@ def test_download_sleeps_before_requesting():
     with mock.patch("src.yahoo.yf.Ticker", return_value=fake_ticker()), mock.patch("src.yahoo.time.sleep") as sleep:
         YahooClient(0.5, "1y", "max").download("1234.T")
     sleep.assert_called_once_with(0.5)
+
+
+def test_adjusted_close_uses_adjusted_naive_dates():
+    index = pd.DatetimeIndex(["2025-01-06", "2025-01-07"], tz="Asia/Tokyo")
+    ticker = mock.MagicMock()
+    ticker.history.return_value = pd.DataFrame({"Close": [1.0, 2.0]}, index=index)
+    with mock.patch("src.yahoo.yf.Ticker", return_value=ticker):
+        series = YahooClient(0.0, "1y", "max").adjusted_close("1.T", datetime.date(2025, 1, 1))
+    ticker.history.assert_called_once_with(start=datetime.date(2025, 1, 1), auto_adjust=True)
+    assert series.index.tz is None and list(series.index.strftime("%Y-%m-%d")) == ["2025-01-06", "2025-01-07"]
