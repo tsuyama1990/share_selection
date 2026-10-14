@@ -3,8 +3,6 @@
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-import pandas as pd
-
 from .metrics import (
     CASH_KEYS,
     DEBT_KEYS,
@@ -37,15 +35,11 @@ class SalesCagr:
         return {"Sales_CAGR(%)": round(cagr * 100, 2), "Sales_Growth_Years": years}
 
 
-def _latest_balance_sheet(data: StockData) -> pd.Series | None:
-    return None if data.balance_sheet.empty else data.balance_sheet.iloc[:, 0]
-
-
 class CashRatio:
     """Cash / market cap."""
 
     def compute(self, data: StockData, metrics: dict[str, Any]) -> dict[str, Any]:
-        latest_bs = _latest_balance_sheet(data)
+        latest_bs = data.latest_balance_sheet
         cash = None if latest_bs is None else first_valid(latest_bs, CASH_KEYS)
         mcap = metrics.get("Market_Cap")
         if cash is None or mcap is None or mcap <= 0:
@@ -57,7 +51,7 @@ class NetCash:
     """Net cash and Real_PSR = (Market_Cap - net cash) / sales. Missing debt counts as 0."""
 
     def compute(self, data: StockData, metrics: dict[str, Any]) -> dict[str, Any]:
-        latest_bs = _latest_balance_sheet(data)
+        latest_bs = data.latest_balance_sheet
         cash = None if latest_bs is None else first_valid(latest_bs, CASH_KEYS)
         if latest_bs is None or cash is None:
             return {}
@@ -78,7 +72,7 @@ class Pbr:
 
     def compute(self, data: StockData, metrics: dict[str, Any]) -> dict[str, Any]:
         pbr = to_num(data.info.get("priceToBook"))
-        latest_bs = _latest_balance_sheet(data)
+        latest_bs = data.latest_balance_sheet
         if pbr is None and latest_bs is not None:
             equity = first_valid(latest_bs, EQUITY_KEYS)
             mcap = metrics.get("Market_Cap")
