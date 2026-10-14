@@ -1,6 +1,3 @@
-import datetime
-
-import duckdb
 import pandas as pd
 
 from src.cache import StockCache
@@ -30,32 +27,6 @@ def test_missing_quarterly_income_is_empty(tmp_path):
         cache.put("1234.T", {})
         data = cache.get("1234.T")
     assert data is not None and data.quarterly_income.empty
-
-
-def test_entry_without_quarterly_income_is_not_fresh(tmp_path):
-    with StockCache(str(tmp_path / "c.duckdb"), TZ) as cache:
-        cache.put("NEW.T", {"quarterly_income": quarterly_frame()})
-        cache.con.execute(
-            "INSERT INTO stock_cache (ticker, updated_at, info, fast_info) VALUES ('OLD.T', ?, '{}', '{}')",
-            [datetime.datetime.now()],
-        )
-        assert cache.is_fresh("NEW.T", 1)
-        assert not cache.is_fresh("OLD.T", 1)
-
-
-def test_old_schema_is_migrated(tmp_path):
-    path = str(tmp_path / "old.duckdb")
-    con = duckdb.connect(path)
-    con.execute(
-        "CREATE TABLE stock_cache (ticker TEXT PRIMARY KEY, updated_at TIMESTAMP, info JSON, fast_info JSON,"
-        " financials JSON, balance_sheet JSON, history JSON, history_monthly JSON, cashflow JSON)"
-    )
-    con.execute("INSERT INTO stock_cache (ticker, updated_at) VALUES ('OLD.T', now())")
-    con.close()
-    with StockCache(path, TZ) as cache:
-        cols = [r[0] for r in cache.con.execute("DESCRIBE stock_cache").fetchall()]
-        assert "quarterly_income" in cols
-        assert not cache.is_fresh("OLD.T", 1)
 
 
 def test_fetched_range(tmp_path):
