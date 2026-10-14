@@ -149,3 +149,25 @@ llm:
     base_url: "https://generativelanguage.googleapis.com/v1beta"
     model: "gemini-2.5-flash"
     key_env: GEMINI_API_KEY
+
+# ------------------------------------------
+# 10. edinet: annual securities reports from EDINET API v2 (`main.py docs`). The key comes from the environment / .env
+# ------------------------------------------
+edinet:
+  base_url: "https://api.edinet-fsa.go.jp/api/v2"
+  key_env: EDINET_API_KEY        # Sent as the Subscription-Key query parameter (the API accepts no header)
+  index_days: 450                # First run: filings of the last N days are indexed; later runs add the new days
+  doc_type_code: "120"           # 120 = annual securities report (yuho)
+  sections:                      # Text blocks stored per report (element names without the jpcrp_cor: prefix)
+    - DescriptionOfBusinessTextBlock
+    - BusinessPolicyBusinessEnvironmentIssuesToAddressEtcTextBlock
+    - BusinessRisksTextBlock
+    - NotesSegmentInformationEtcConsolidatedFinancialStatementsTextBlock
+  request_interval_s: 0.5        # Minimum time between requests (seconds)
+  timeout_s: 60                  # Per-request timeout (seconds)
+
+# ------------------------------------------
+# 11. docstore: fetched documents for stage 2 research (`docs` writes)
+# ------------------------------------------
+docstore:
+  db_file: "documents.duckdb"    # Documents, EDINET index and fetch errors (git-ignored; slow to rebuild, so kept)

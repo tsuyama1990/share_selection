@@ -13,7 +13,9 @@ from tqdm import tqdm
 
 from src.cache import StockCache, refresh
 from src.config import CONFIG_FILE, ROOT, load_config
+from src.docstore import DocStore
 from src.earnings_calendar import load_calendar, update_calendar_csv
+from src.edinet import EdinetClient, fetch_annual_report, update_index
 from src.llm import GeminiSearch, LLMClient, Provider, RateLimiter
 from src.records import NO_CACHE, RecordStore, evaluate, git_sha, latest_issue
 from src.report import prioritize, write_report
@@ -120,6 +122,31 @@ def run_evaluate(cfg: dict[str, Any], client: YahooClient):
     print(f"Added {added} outcome rows.")
 
 
+def run_docs(cfg: dict[str, Any], run_id: str | None):
+    key = os.environ.get(cfg["edinet"]["key_env"], "")
+    if not key:
+        print(f"Error: set {cfg['edinet']['key_env']} (environment or .env).")
+        sys.exit(1)
+    rec = cfg["records"]
+    with RecordStore(ROOT / rec["db_file"], ROOT / rec["export_dir"]) as records:
+        run_id = run_id or records.runs()[-1][0]
+        tickers = [t for t, _ in records.candidates(run_id)]
+    print(f"Collecting documents of {len(tickers)} candidates of run {run_id}...")
+    with (
+        httpx.Client(timeout=cfg["edinet"]["timeout_s"]) as http,
+        DocStore(ROOT / cfg["docstore"]["db_file"]) as store,
+    ):
+        limiter = RateLimiter(1, cfg["edinet"]["request_interval_s"])
+        client = EdinetClient(cfg["edinet"]["base_url"], key, http, limiter)
+        update_index(client, store, datetime.date.today(), cfg["edinet"]["index_days"])
+        stored = [
+            fetch_annual_report(client, store, t, cfg["edinet"]["doc_type_code"], cfg["edinet"]["sections"])
+            for t in tqdm(tickers)
+        ]
+    failed = sum(not ids for ids in stored)
+    print(f"{sum(map(len, stored))} documents stored for {len(tickers) - failed} tickers; {failed} tickers failed.")
+
+
 SECONDS_PER_MINUTE = 60
 CHECK_CHAT_PROMPT = "Reply with the single word: ok"
 CHECK_SEARCH_PROMPT = "What is the Tokyo Stock Exchange's Prime Market? Answer in one sentence."
@@ -166,6 +193,9 @@ def main():
 
     subparsers.add_parser("calendar", help="Update the earnings calendar CSV from the JPX announcement schedule")
 
+    docs = subparsers.add_parser("docs", help="Collect EDINET annual report sections of a run's stage 2 candidates")
+    docs.add_argument("--run", help="Run id (default: the latest run)")
+
     subparsers.add_parser("llm-check", help="Smoke-test the LLM fallback chain and Gemini search")
 
     args = parser.parse_args()
@@ -174,6 +204,10 @@ def main():
 
     if args.command == "llm-check":
         run_llm_check(cfg)
+        return
+
+    if args.command == "docs":
+        run_docs(cfg, args.run)
         return
 
     if args.command == "tickers":

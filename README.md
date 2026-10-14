@@ -44,6 +44,8 @@ Edit `config.yaml` to adjust criteria. Every tunable parameter, path and file na
 *   `output`: report `dir`, `filename` and `failures_filename` (`{date}` = YYYY-MM-DD) and the CSV `columns`.
 *   `tickers`: `jpx_url` and the `markets` kept by the `tickers` command.
 *   `calendar`: `page_url`, `link_pattern` (regex for the workbook links), `user_agent`, `out_csv` of the `calendar` command.
+*   `edinet`: `base_url`, `key_env` (environment variable holding the EDINET API key), `index_days` (first-run index window), `doc_type_code`, `sections` (text blocks stored), `request_interval_s`, `timeout_s` of the `docs` command.
+*   `docstore`: `db_file` of the document store.
 *   `records`: `db_file`, `export_dir` (Parquet backup per run), `shikiho_issue_months` / `shikiho_release_day` (default `--issue`), `horizons_months`, `benchmark_ticker`.
 *   `system`: `input_csv`, `db_file`, `sleep_time`, `cache_days`, `market_timezone` (timezone of the history timestamps, `Asia/Tokyo`), `daily_history_period`, `monthly_history_period`.
 
@@ -72,6 +74,13 @@ Downloads the JPX earnings announcement schedule (one workbook per quarter-end m
 
 ```bash
 uv run python main.py calendar
+```
+
+### 2c. Collect Documents (optional)
+Stores the text sections listed in `edinet.sections` of each stage 2 candidate's latest annual securities report (EDINET) in the document store (`docstore.db_file`, default `documents.duckdb`, ignored by version control). The EDINET API key is read from the `edinet.key_env` variable (`EDINET_API_KEY`, environment or `.env`). Run it after `analyze`; `--run RUN_ID` picks another run (default: the latest). The first run indexes the last `edinet.index_days` days of filings (one request of `request_interval_s` per day); later runs add only new days. A report already stored is not fetched again; failures are kept in the `fetch_errors` table and the command goes on.
+
+```bash
+uv run python main.py docs [--run RUN_ID]
 ```
 
 ### 3. Fetch Data (Accumulation)
@@ -149,7 +158,7 @@ The same checks run in CI (`.github/workflows/ci.yml`) and, except pytest, in pr
 
 ## Architecture
 
-*   `main.py`: CLI entry point (`tickers` / `fetch` / `analyze` / `evaluate`).
+*   `main.py`: CLI entry point (`tickers` / `fetch` / `analyze` / `evaluate` / `calendar` / `docs`).
 *   `src/stock_data.py`: `StockData`, the typed raw data of one ticker (normalizes histories to naive market-local dates).
 *   `src/metrics.py`: Pure helpers (`to_num`, `sales_cagr`, `avg_turnover`, ...).
 *   `src/rules.py`: Gatekeeper rules (one dataclass each) and `build_rules`.
@@ -158,6 +167,8 @@ The same checks run in CI (`.github/workflows/ci.yml`) and, except pytest, in pr
 *   `src/cache.py`: `StockCache` (DuckDB) and `refresh` (download if stale).
 *   `src/yahoo.py`: `YahooClient` downloads raw data from Yahoo Finance.
 *   `src/records.py`: `RecordStore` (runs, screen_results, outcomes in `records.duckdb`, exported to Parquet) and `evaluate`.
+*   `src/edinet.py`: `EdinetClient` (EDINET API v2), the filing index update and `fetch_annual_report` (text sections of the latest annual securities report).
+*   `src/docstore.py`: `DocStore` (`documents.duckdb`: documents, EDINET index, fetch errors); a stored text is never rewritten.
 *   `src/tickers.py`: Builds the ticker CSV from the JPX listed company workbook.
 *   `src/report.py`: `write_report` writes the dated CSV (location and columns passed in from `output`), `prioritize` adds `Priority_Rank` / `Stage2_Candidate`, and the candidates are printed.
 *   `src/config.py`: `load_config(path)` reads a config file (default `config.yaml`; `main.py --config` overrides). Only `config.py` and `main.py` touch it; everything else receives values through `build_*` / `from_config` / dataclass fields.
