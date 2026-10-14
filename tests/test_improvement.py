@@ -170,4 +170,5 @@ def test_stale_latest_quarter_falls_back_to_annual():
     )  # latest quarter 2025-12-31 is 274 days before the price data end
     out = SIGNAL.evaluate(data)
     assert out["Improvement_Class"] == "none" and out["EPS_Q_YoY(%)"] is None
+    assert out["Improvement_Source"] == "annual"
     assert out["EPS_Q_Latest"] == 30.0  # raw value still recorded for the history

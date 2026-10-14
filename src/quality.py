@@ -14,16 +14,15 @@ class EpsQualityFlags:
     max_quarter_share_of_annual: float
 
     def evaluate(self, data: StockData, metrics: dict[str, Any]) -> list[str]:
-        prev, latest = to_num(metrics.get("EPS_Q_Prev_Year")), to_num(metrics.get("EPS_Q_Latest"))
-        decided_by_quarter = to_num(metrics.get("EPS_Q_YoY(%)")) is not None or (prev is not None and prev <= 0)
-        if metrics["Improvement_Class"] != "clear" or latest is None or not decided_by_quarter:
+        # Only quarterly-decided clears: then EPS_Q_Latest is always present.
+        if metrics["Improvement_Class"] != "clear" or metrics.get("Improvement_Source") != "quarterly":
             return []
         flags = []
         oi_yoy = to_num(metrics.get("OI_YoY(%)"))
         if oi_yoy is not None and oi_yoy < 0:
             flags.append("oi_divergence")
         annual = self._annual_eps(data)
-        if annual is not None and annual > 0 and latest >= self.max_quarter_share_of_annual * annual:
+        if annual is not None and annual > 0 and metrics["EPS_Q_Latest"] >= self.max_quarter_share_of_annual * annual:
             flags.append("quarter_spike")
         return flags
 

@@ -12,6 +12,7 @@ def flags(annual_eps=100.0, **overrides):
     data = StockData.from_dict("1.T", {"financials": financials})
     metrics = {
         "Improvement_Class": "clear",
+        "Improvement_Source": "quarterly",
         "EPS_Q_Latest": 10.0,
         "EPS_Q_Prev_Year": 5.0,
         "EPS_Q_YoY(%)": 100.0,
@@ -49,7 +50,8 @@ def test_non_clear_never_flagged(cls):
 
 
 def test_annual_decided_clear_never_flagged():
-    assert flags(**{"EPS_Q_YoY(%)": None}, EPS_Q_Prev_Year=None, EPS_Q_Latest=90.0, **{"OI_YoY(%)": -50.0}) == []
+    # e.g. a stale latest quarter: improvement fell back to annual even though raw quarterly EPS is recorded
+    assert flags(Improvement_Source="annual", EPS_Q_Latest=90.0, **{"OI_YoY(%)": -50.0}) == []
 
 
 def test_loss_year_ago_turnaround_is_quarter_decided():
@@ -60,5 +62,11 @@ def test_annual_eps_uses_latest_non_nan_column():
     data = StockData.from_dict(
         "1.T", {"financials": pd.DataFrame({"2025": {"Diluted EPS": float("nan")}, "2024": {"Diluted EPS": 100.0}})}
     )
-    metrics = {"Improvement_Class": "clear", "EPS_Q_Latest": 50.0, "EPS_Q_Prev_Year": 1.0, "EPS_Q_YoY(%)": 9.0}
+    metrics = {
+        "Improvement_Class": "clear",
+        "Improvement_Source": "quarterly",
+        "EPS_Q_Latest": 50.0,
+        "EPS_Q_Prev_Year": 1.0,
+        "EPS_Q_YoY(%)": 9.0,
+    }
     assert QUALITY.evaluate(data, metrics) == ["quarter_spike"]
