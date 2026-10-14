@@ -17,56 +17,19 @@ gatekeeper:
   turnover_days: 60            # Window (trading sessions) for the average daily trading value
 
 # ------------------------------------------
-# 2. scoring: Detailed Analysis
+# 2. indicators: Reported metrics
 # ------------------------------------------
-# Points are awarded based on these criteria.
-scoring:
-  # Growth
-  sales_cagr_threshold: 0.189  # Sales CAGR >= 18.9% (= 2x over 4 years). Span is 3-4 years depending on data
+indicators:
   sales_cagr_years_back: 4     # Max look-back span (years) for the Sales CAGR
   sales_cagr_min_years: 3      # Min span (years) required; shorter history = no CAGR
-  sales_growth_points: 3
-
-  # Value
-  psr_super_cheap: 0.5         # Real_PSR (PSR if unavailable) <= 0.5
-  psr_super_cheap_points: 3
-  psr_cheap: 1.0               # Real_PSR <= 1.0
-  psr_cheap_points: 2
-  psr_fair_points: 1           # Otherwise (already passed the gatekeeper PSR cap)
-  net_net_ratio: 1.0           # NET-NET if Cash / Market Cap >= this ratio
-  net_net_bonus: 5             # Bonus if Cash >= Market Cap (x net_net_ratio)
-  net_cash_points: 1           # Net cash (cash - debt) > 0
-  pbr_cheap: 1.0               # PBR < 1.0
-  pbr_points: 1
-
-  # Valuation (New)
-  dividend_yield_target: 0.03  # Forward dividend yield (fallback: trailing) >= 3%
-  dividend_points: 1
-  per_growth_points: 2         # Forward PE < Trailing PE
-
-  # Safety
-  equity_ratio_ideal: 0.70     # Equity Ratio >= 70%
-  equity_ideal_points: 1
-
-  # Technicals (New)
   ma_short: 12                 # 12-Month Moving Average
   ma_long: 24                  # 24-Month Moving Average
-  technical_points: 2          # Bonus for Strong Bull Trend
-  bull_points: 1               # Bonus for Bull Trend (price > 12M MA only)
 
-  # Crash lows (reported only, no points): name -> [start, end]
+  # Crash lows: name -> [start, end]
   # Output column: Downside_to_{Name}_Low(%)
   shock_lows:
     lehman: ['2008-09-01', '2009-03-31']
     corona: ['2020-02-01', '2020-04-30']
-
-# ------------------------------------------
-# 3. recommendation: Recommendation_Type thresholds
-# (NET-NET always takes precedence)
-# ------------------------------------------
-recommendation:
-  quality_growth_min_growth_score: 3  # Growth score >= 3 -> Quality Growth
-  quality_value_min_value_score: 4    # Value score >= 4 -> Quality Value (otherwise Watch)
 
 # ------------------------------------------
 # 3b. improvement: stage 2 signs of improvement (computed for every ticker, also those failing the gatekeeper)
@@ -99,14 +62,12 @@ output:
     - Priority_Rank
     - Stage2_Candidate
     - Name
-    - Total_Score
     - EPS_Q_YoY(%)
     - OI_YoY(%)
     - Op_Margin_Change(pt)
     - Improvement_Class
     - Improvement_Yield(%)
     - Quality_Flags
-    - Recommendation_Type
     - Current_Price
     - PSR
     - Real_PSR

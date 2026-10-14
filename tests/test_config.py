@@ -2,7 +2,7 @@ import pytest
 
 from src import config
 
-SECTIONS = {"gatekeeper", "scoring", "recommendation", "output", "tickers", "system", "records"}
+SECTIONS = {"gatekeeper", "indicators", "output", "tickers", "system", "records"}
 
 
 def test_default_config_is_repo_config_with_all_sections():

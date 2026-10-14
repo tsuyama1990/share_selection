@@ -1,11 +1,11 @@
-"""Screener: runs gatekeeper rules, then scorers, and assembles the result row."""
+"""Screener: runs gatekeeper rules, then indicators, and assembles the result row."""
 
 from typing import Any, NamedTuple
 
 from .improvement import ImprovementSignal
+from .indicators import Indicator, build_indicators
 from .quality import EpsQualityFlags
 from .rules import Rule, build_rules
-from .scorers import Scorer, build_scorers
 from .stock_data import StockData
 
 
@@ -18,35 +18,32 @@ class ScreenResult(NamedTuple):
 
 
 class Screener:
-    """Evaluate stocks with injected rules and scorers."""
+    """Evaluate stocks with injected rules and indicators."""
 
     def __init__(
         self,
         improvement: ImprovementSignal,
         quality: EpsQualityFlags,
         rules: list[Rule],
-        scorers: list[Scorer],
-        min_scores: tuple[int, int],
+        indicators: list[Indicator],
     ):
         self.improvement = improvement
         self.quality = quality
         self.rules = rules
-        self.scorers = scorers
-        self.min_growth_score, self.min_value_score = min_scores
+        self.indicators = indicators
 
     @classmethod
     def from_config(cls, cfg: dict[str, Any]) -> "Screener":
-        rec, imp, qual = cfg["recommendation"], cfg["improvement"], cfg["quality"]
+        imp, qual = cfg["improvement"], cfg["quality"]
         return cls(
             ImprovementSignal(imp["clear_threshold"], imp["same_quarter_tolerance_days"], imp["max_quarter_age_days"]),
             EpsQualityFlags(qual["max_quarter_share_of_annual"]),
             build_rules(cfg),
-            build_scorers(cfg),
-            (rec["quality_growth_min_growth_score"], rec["quality_value_min_value_score"]),
+            build_indicators(cfg),
         )
 
     def screen(self, data: StockData) -> ScreenResult:
-        """Compute improvement signals, run all rules (``fail_rule`` is the first failure), then the scorers."""
+        """Compute improvement signals, run all rules (``fail_rule`` is the first failure), then the indicators."""
         metrics: dict[str, Any] = self.improvement.evaluate(data)
         metrics["Quality_Flags"] = ",".join(self.quality.evaluate(data, metrics))
         fail_rule = None
@@ -56,32 +53,15 @@ class Screener:
                 fail_rule = type(rule).__name__
             metrics.update(res.metrics)
 
-        scores = {"Growth": 0, "Value": 0, "Safety": 0}
-        net_net = False
-        for scorer in self.scorers:
-            score = scorer.score(data, metrics)
-            scores[score.category] += score.points
-            metrics.update(score.metrics)
-            net_net = net_net or score.recommendation == "NET-NET"
+        for indicator in self.indicators:
+            metrics.update(indicator.compute(data, metrics))
 
         if fail_rule is not None:
             return ScreenResult(False, fail_rule, metrics)
 
-        growth, value, safety = scores["Growth"], scores["Value"], scores["Safety"]
-        if net_net:
-            rec = "NET-NET"
-        elif growth >= self.min_growth_score:
-            rec = "Quality Growth"
-        elif value >= self.min_value_score:
-            rec = "Quality Value"
-        else:
-            rec = "Watch"
-
         row = {
             "Ticker": data.ticker,
             "Name": data.info.get("longName", data.ticker),
-            "Total_Score": growth + value + safety,
-            "Recommendation_Type": rec,
             **metrics,
         }
         return ScreenResult(True, None, row)

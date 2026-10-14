@@ -5,8 +5,8 @@
 (b) ``config.yaml`` and the code agree: every key in the file is read somewhere, and every key the
     code reads exists. Reads are found statically: string-literal subscripts (``x["key"]``) whose
     base is one of ``CONFIG_NAMES`` (the config or an alias of one of its sections, e.g.
-    ``sc = cfg["scoring"]``). Matching is by key name, not by full path. Keys under
-    ``scoring.shock_lows`` are user-chosen crash names, read dynamically, and are exempt.
+    ``sc = cfg["indicators"]``). Matching is by key name, not by full path. Keys under
+    ``indicators.shock_lows`` are user-chosen crash names, read dynamically, and are exempt.
 """
 
 import ast
