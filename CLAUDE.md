@@ -4,12 +4,12 @@ Japanese stock screener (Emin Yurumazu's theory). Python 3.12, managed with `uv`
 
 ## Architecture
 - `main.py` CLI: `tickers` (JPX list -> CSV), `fetch` (Yahoo -> DuckDB cache), `analyze` (cache -> `results/` CSV, and a run record), `evaluate` (outcomes of recorded runs).
-- `src/`: `stock_data` (typed raw data), `metrics` (pure helpers), `improvement` (stage 2 signs of improvement, computed for every cached ticker), `rules` (gatekeeper), `scorers`, `screener`, `cache`, `yahoo`, `records` (run records in `records.duckdb` + Parquet export in `records/`, committed), `tickers`, `report`, `config`.
+- `src/`: `stock_data` (typed raw data), `metrics` (pure helpers), `improvement` (stage 2 signs of improvement), `quality` (stage 5 one-off EPS flags), `rules` (gatekeeper), `scorers`, `screener`, `cache`, `yahoo`, `records` (run records in `records.duckdb` + Parquet export in `records/`, committed), `tickers`, `report`, `config`.
 - Rules and scorers are dataclasses with injected thresholds, created by `build_rules` / `build_scorers`; `Screener.from_config` wires them.
 
 ## Config rule
 - Every tunable value, path and file name lives in `config.yaml`.
-- Only `src/config.py` and `main.py` may reference `CFG`; other modules get values via `build_*` / `from_config` / dataclass fields. `tests/test_architecture.py` enforces this and that config keys and code reads match.
+- Config is loaded with `load_config(path)` (`--config PATH`, default `config.yaml`); only `src/config.py` and `main.py` may reference `load_config`; other modules get values via `build_*` / `from_config` / dataclass fields. `tests/test_architecture.py` enforces this and that config keys and code reads match.
 - Add a config key and the code that reads it together (an unused key fails the tests).
 - Timestamps: histories are exposed as naive Asia/Tokyo dates (`system.market_timezone`); the cache stores UTC.
 
@@ -17,7 +17,8 @@ Japanese stock screener (Emin Yurumazu's theory). Python 3.12, managed with `uv`
 - NumPy-style docstrings only on public module-level functions/classes whose behavior is not obvious from name and signature. Everywhere else at most a one-line docstring; never restate names or types. Ruff line length 120, no magic numbers in comparisons (PLR2004).
 
 ## Commands
-- `uv sync`; `uv run python main.py {tickers|fetch|analyze}`
+- `uv sync`; `uv run python main.py [--config PATH] {tickers|fetch|analyze|evaluate}`
+- Every rule and scorer runs for every ticker (fail_rule = first failure), so records hold all metrics for replay experiments. Experiment configs must set their own `output.dir`, `records.db_file`, `records.export_dir`.
 - Quality gates (all must pass, `scripts/gate.sh` runs them): `uv run ruff check`, `uv run ruff format --check`, `uv run mypy src main.py`, `uv run vulture`, `uv run deptry .`, `uv run pytest` (coverage fail_under = 85).
 - Pre-commit hooks: `uv run pre-commit install`.
 

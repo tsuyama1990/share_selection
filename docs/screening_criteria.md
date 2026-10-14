@@ -62,7 +62,8 @@
 | `Op_Margin_Change(pt)` | 年次営業利益率の前年差 |
 | `Improvement_Class` | **四半期優先**：前年同期と比較できる新しい四半期 EPS があればそれだけで判定（≥ `improvement.clear_threshold` 40% → clear、≥ 0 → signal、それ以外 → none。前年同期が赤字なら、黒字転換 → clear、赤字縮小 → signal）。なければ年次営業利益で同じ判定。どちらもなければ unknown |
 | `Improvement_Yield(%)` | 改善の大きさ÷株価：四半期 EPS の変化×4÷株価（四半期で判定した場合）、または営業利益の変化÷時価総額。伸び率と違い、小さな基準値で膨らまない |
-| `Priority_Rank`・`Stage2_Candidate` | 区分 → Improvement_Yield の大きさ → 実質PSR の低さの順位。上位 `selection.candidates_n` 件の clear が二次の候補 |
+| `Priority_Rank`・`Stage2_Candidate` | 区分 → Improvement_Yield の大きさ → 実質PSR の低さの順位。旗（`Quality_Flags`）のない clear を順位の上から `selection.candidates_n` 件、二次の候補にする |
+| `Quality_Flags` | 四半期 EPS で clear になった銘柄の一時的損益の疑い：`oi_divergence`（年次営業利益が減少）、`quarter_spike`（四半期 EPS ≥ 年度 EPS × `quality.max_quarter_share_of_annual` 0.5）。旗のある銘柄は二次候補から外す |
 
 足切りで落ちた銘柄も含め、キャッシュのある全銘柄について計算し、実行記録（`screen_results`）に残す。最新四半期が株価データの最終日より `improvement.max_quarter_age_days`（200 日）以上古い場合は、それ以降の四半期が欠けているとみなし、四半期 EPS では判定しない。
 
