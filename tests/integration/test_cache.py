@@ -35,3 +35,10 @@ def test_fetched_range(tmp_path):
         cache.put("1.T", {})
         lo, hi = cache.fetched_range()
         assert lo == hi and lo is not None
+
+
+def test_corrupt_entry_reads_as_missing(tmp_path):
+    with StockCache(str(tmp_path / "c.duckdb"), TZ) as cache:
+        cache.put("1.T", {})
+        cache.con.execute("UPDATE stock_cache SET financials = '\"not a frame\"' WHERE ticker = '1.T'")
+        assert cache.get("1.T") is None

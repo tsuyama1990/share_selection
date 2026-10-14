@@ -61,7 +61,7 @@ class StockCache:
                     df.index = pd.to_datetime(df.index, utc=True)
                 d[key] = df
             return StockData.from_dict(ticker, d, self.market_timezone)
-        except Exception as e:
+        except (ValueError, TypeError) as e:
             print(f"Cache Corrupt for {ticker}: {e}")
             return None
 
