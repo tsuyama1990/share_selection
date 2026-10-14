@@ -61,6 +61,8 @@ output:
     - Ticker
     - Priority_Rank
     - Stage2_Candidate
+    - Next_Earnings_Date
+    - Earnings_Period
     - Name
     - EPS_Q_YoY(%)
     - OI_YoY(%)
@@ -119,3 +121,12 @@ records:
   export_dir: "records"          # Parquet export per run: records/<run_id>/*.parquet (committed as the backup)
   horizons_months: [6, 12]       # Outcome horizons measured from the run date
   benchmark_ticker: "1306.T"     # TOPIX ETF; excess return is relative to it
+
+# ------------------------------------------
+# 8. calendar: JPX earnings announcement schedule (`main.py calendar` writes, `analyze` reads)
+# ------------------------------------------
+calendar:
+  page_url: "https://www.jpx.co.jp/listing/event-schedules/financial-announcement/index.html"
+  link_pattern: 'href="([^"]+\.xlsx)"'   # regex; group 1 = workbook link (one workbook per quarter-end month)
+  user_agent: "Mozilla/5.0"              # JPX answers 403 to plain clients
+  out_csv: "earnings_calendar.csv"       # Merged calendar (git-ignored)

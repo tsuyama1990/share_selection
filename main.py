@@ -10,6 +10,7 @@ from tqdm import tqdm
 
 from src.cache import StockCache, refresh
 from src.config import CONFIG_FILE, ROOT, load_config
+from src.earnings_calendar import load_calendar, update_calendar_csv
 from src.records import NO_CACHE, RecordStore, evaluate, git_sha
 from src.report import prioritize, write_report
 from src.screener import Screener, ScreenResult
@@ -51,10 +52,13 @@ def run_fetch(cfg: dict[str, Any], tickers: list[str], cache: StockCache, client
 def run_analyze(cfg: dict[str, Any], tickers: list[str], cache: StockCache, screener: Screener, issue: str | None):
     print(f"Starting Analysis for {len(tickers)} stocks (using cache)...")
     output_cfg, rec = cfg["output"], cfg["records"]
+    calendar = load_calendar(ROOT / cfg["calendar"]["out_csv"])
     screened = []
     for ticker in tqdm(tickers):
         data = cache.get(ticker)
         res = screener.screen(data) if data is not None else ScreenResult(False, NO_CACHE, {})
+        next_date, period = calendar.get(ticker, (None, None))
+        res.row["Next_Earnings_Date"], res.row["Earnings_Period"] = next_date, period
         flags = res.row.get("Quality_Flags")
         screened.append(
             {
@@ -62,6 +66,7 @@ def run_analyze(cfg: dict[str, Any], tickers: list[str], cache: StockCache, scre
                 "stage1_pass": res.passed,
                 "stage1_fail_rule": res.fail_rule,
                 "improvement_class": res.row.get("Improvement_Class"),
+                "next_earnings_date": next_date,
                 "quality_flags": None if flags is None else [f for f in flags.split(",") if f],
                 "metrics": res.row,
             }
@@ -117,6 +122,8 @@ def main():
 
     subparsers.add_parser("tickers", help="Update the ticker CSV from the JPX listed company list")
 
+    subparsers.add_parser("calendar", help="Update the earnings calendar CSV from the JPX announcement schedule")
+
     args = parser.parse_args()
     cfg = load_config(args.config)
 
@@ -124,6 +131,14 @@ def main():
         out_csv = ROOT / cfg["system"]["input_csv"]
         count = update_ticker_csv(out_csv, cfg["tickers"]["jpx_url"], cfg["tickers"]["markets"])
         print(f"Saved {count} tickers to {out_csv}")
+        return
+
+    if args.command == "calendar":
+        out_csv = ROOT / cfg["calendar"]["out_csv"]
+        count = update_calendar_csv(
+            out_csv, cfg["calendar"]["page_url"], cfg["calendar"]["link_pattern"], cfg["calendar"]["user_agent"]
+        )
+        print(f"Saved {count} announcement dates to {out_csv}")
         return
 
     sc = cfg["system"]
