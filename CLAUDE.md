@@ -71,3 +71,8 @@ Japanese stock screener (Emin Yurumazu's theory). Python 3.12, managed with `uv`
 - `selection_flow.md` is the target design; `hypothesis_map.md` holds the evidence; `entry_types_design.md` is to be reorganized under it; `screening_criteria.md` describes what is implemented now; `selection_tuning.md` records threshold decisions and their evidence.
 - Label every factual claim ([原著]/[一次]/[報道]/[データ: date]/[推論]); recompute numbers with current config and data before committing; check cited examples satisfy the definition; log corrections at the end of the doc.
 - Before saying data "cannot be obtained", exhaust the retrieval paths (all yfinance accessors, official public data such as JPX) and state exactly what was tried.
+
+## Development process (`docs/architecture/process.md`)
+- Gated modified waterfall: design (L1 `docs/architecture/L1_architecture.md`, L2 `L2_*.md`) -> tests of the same level (E2E / integration / unit) -> implementation -> bonsai. Each step has a blocking gate; do not proceed past a failing one.
+- Change top-down: design doc first, then tests, then code. A `src/` module not listed in L1 section 3 fails `tests/unit/test_design_docs.py`.
+- Tests live in `tests/unit`, `tests/integration`, `tests/e2e` (marker from directory, `--strict-markers`); shared helpers go in `tests/fixtures/` (cross-level imports fail).
