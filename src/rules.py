@@ -4,6 +4,17 @@ that cannot be computed fails its rule."""
 from dataclasses import dataclass
 from typing import Any, NamedTuple, Protocol
 
+from .fields import (
+    AVG_TURNOVER,
+    CURRENT_PRICE,
+    EQUITY_RATIO,
+    FINANCING_CASH_FLOW,
+    INVESTING_CASH_FLOW,
+    MARKET_CAP,
+    OPERATING_CASH_FLOW,
+    OPERATING_MARGIN,
+    PSR,
+)
 from .metrics import (
     EQUITY_KEYS,
     FCF_KEYS,
@@ -50,9 +61,9 @@ class MarketCapRule:
 
     def evaluate(self, data: StockData, metrics: dict[str, Any]) -> RuleResult:
         mcap = to_num(data.fast_info.get("market_cap"))
-        out = {"Current_Price": to_num(data.fast_info.get("last_price"))}
+        out = {CURRENT_PRICE: to_num(data.fast_info.get("last_price"))}
         if mcap is not None:
-            out["Market_Cap"] = mcap
+            out[MARKET_CAP] = mcap
         return RuleResult(mcap is not None and mcap >= self.min_cap, out)
 
 
@@ -65,7 +76,7 @@ class LiquidityRule:
 
     def evaluate(self, data: StockData, metrics: dict[str, Any]) -> RuleResult:
         turnover = avg_turnover(data.history, self.days)
-        out = {"Avg_Turnover(M JPY)": round(turnover / 1e6, 1) if turnover is not None else None}
+        out = {AVG_TURNOVER: round(turnover / 1e6, 1) if turnover is not None else None}
         too_thin = self.min_turnover > 0 and (turnover is None or turnover < self.min_turnover)
         return RuleResult(not too_thin, out)
 
@@ -85,7 +96,7 @@ class EquityRatioRule:
         if assets is None or assets <= 0 or equity is None:
             return _FAIL
         ratio = equity / assets
-        return RuleResult(ratio >= self.min_ratio, {"Equity_Ratio": round(ratio * 100, 2)})
+        return RuleResult(ratio >= self.min_ratio, {EQUITY_RATIO: round(ratio * 100, 2)})
 
 
 @dataclass
@@ -99,7 +110,7 @@ class OperatingMarginRule:
         if found is None or found[0] <= 0:
             return _FAIL
         margin = found[1] / found[0]
-        return RuleResult(margin >= self.min_margin, {"Operating_Margin(%)": round(margin * 100, 2)})
+        return RuleResult(margin >= self.min_margin, {OPERATING_MARGIN: round(margin * 100, 2)})
 
 
 @dataclass
@@ -110,11 +121,11 @@ class PsrRule:
 
     def evaluate(self, data: StockData, metrics: dict[str, Any]) -> RuleResult:
         found = _sales_and_income(data)
-        mcap = metrics.get("Market_Cap")
+        mcap = metrics.get(MARKET_CAP)
         if found is None or found[0] <= 0 or mcap is None:
             return _FAIL
         psr = mcap / found[0]
-        return RuleResult(psr <= self.cap, {"PSR": round(psr, 2)})
+        return RuleResult(psr <= self.cap, {PSR: round(psr, 2)})
 
 
 @dataclass
@@ -131,9 +142,9 @@ class OperatingCashFlowRule:
         return RuleResult(
             ocf is not None and ocf > self.min_ocf,
             {
-                "Operating_Cash_Flow": ocf,
-                "Investing_Cash_Flow": first_valid(latest, ICF_KEYS),
-                "Financing_Cash_Flow": first_valid(latest, FCF_KEYS),
+                OPERATING_CASH_FLOW: ocf,
+                INVESTING_CASH_FLOW: first_valid(latest, ICF_KEYS),
+                FINANCING_CASH_FLOW: first_valid(latest, FCF_KEYS),
             },
         )
 

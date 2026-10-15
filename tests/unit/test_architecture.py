@@ -7,12 +7,18 @@
     base is one of ``CONFIG_NAMES`` (the config or an alias of one of its sections, e.g.
     ``sc = cfg["indicators"]``). Matching is by key name, not by full path. Keys under
     ``indicators.shock_lows`` are user-chosen crash names, read dynamically, and are exempt.
+(c) Result-row names and values are strings only in ``src/fields.py``: no other file of ``src/`` or ``main.py``
+    repeats one, and dynamic keys (``MA<n>``, ``Downside_to_<name>_Low(%)``) are built by its functions.
+(d) Every ``output.columns`` entry is a ``fields.py`` value or a dynamic key built from ``indicators``.
 """
 
 import ast
+import re
 from pathlib import Path
 
 import yaml
+
+from src import fields
 
 ROOT = Path(__file__).resolve().parents[2]
 CODE_FILES = sorted((ROOT / "src").glob("*.py")) + [ROOT / "main.py"]
@@ -93,3 +99,44 @@ def test_test_levels_do_not_import_each_other():
         if line.startswith(("from tests.unit", "from tests.integration", "from tests.e2e", "import tests."))
     ]
     assert not bad, f"cross-level test imports (move helpers to tests/fixtures): {bad}"
+
+
+FIELDS_FILE = ROOT / "src" / "fields.py"
+DYNAMIC_KEY = re.compile(r"MA\d|Downside_to_")
+
+
+def _field_values() -> set[str]:
+    tree = _parse(FIELDS_FILE)
+    assert isinstance(tree, ast.Module)
+    return {
+        node.value.value
+        for node in tree.body
+        if isinstance(node, ast.Assign) and isinstance(node.value, ast.Constant) and isinstance(node.value.value, str)
+    }
+
+
+def _string_literals(path: Path):
+    for node in ast.walk(_parse(path)):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            yield node
+
+
+def test_result_names_are_defined_only_in_fields():
+    values = _field_values()
+    offenders = [
+        f"{path.relative_to(ROOT)}:{node.lineno} {node.value!r}"
+        for path in CODE_FILES
+        if path != FIELDS_FILE
+        for node in _string_literals(path)
+        if node.value in values or DYNAMIC_KEY.match(node.value)
+    ]
+    assert not offenders, f"result names repeated outside src/fields.py (import them): {offenders}"
+
+
+def test_output_columns_are_known_fields():
+    config = yaml.safe_load((ROOT / "config.yaml").read_text(encoding="utf-8"))
+    ind = config["indicators"]
+    known = _field_values() | {fields.ma(ind["ma_short"]), fields.ma(ind["ma_long"])}
+    known |= {fields.downside_to_low(name.capitalize()) for name in ind["shock_lows"]}
+    unknown = [c for c in config["output"]["columns"] if c not in known]
+    assert not unknown, f"output.columns not defined by src/fields.py: {unknown}"

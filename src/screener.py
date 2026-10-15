@@ -2,6 +2,7 @@
 
 from typing import Any, NamedTuple
 
+from .fields import NAME, QUALITY_FLAGS, TICKER
 from .improvement import ImprovementSignal
 from .indicators import Indicator, build_indicators
 from .quality import EpsQualityFlags
@@ -45,7 +46,7 @@ class Screener:
     def screen(self, data: StockData) -> ScreenResult:
         """Compute improvement signals, run all rules (``fail_rule`` is the first failure), then the indicators."""
         metrics: dict[str, Any] = self.improvement.evaluate(data)
-        metrics["Quality_Flags"] = ",".join(self.quality.evaluate(data, metrics))
+        metrics[QUALITY_FLAGS] = self.quality.evaluate(data, metrics)
         fail_rule = None
         for rule in self.rules:
             res = rule.evaluate(data, metrics)
@@ -60,8 +61,8 @@ class Screener:
             return ScreenResult(False, fail_rule, metrics)
 
         row = {
-            "Ticker": data.ticker,
-            "Name": data.info.get("longName", data.ticker),
+            TICKER: data.ticker,
+            NAME: data.info.get("longName", data.ticker),
             **metrics,
         }
         return ScreenResult(True, None, row)

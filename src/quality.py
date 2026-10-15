@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Any
 
+from .fields import CLASS_CLEAR, EPS_Q_LATEST, IMPROVEMENT_CLASS, IMPROVEMENT_SOURCE, OI_YOY, SOURCE_QUARTERLY
 from .metrics import latest_valid_period, to_num
 from .stock_data import StockData
 
@@ -15,14 +16,14 @@ class EpsQualityFlags:
 
     def evaluate(self, data: StockData, metrics: dict[str, Any]) -> list[str]:
         # Only quarterly-decided clears: then EPS_Q_Latest is always present.
-        if metrics["Improvement_Class"] != "clear" or metrics.get("Improvement_Source") != "quarterly":
+        if metrics[IMPROVEMENT_CLASS] != CLASS_CLEAR or metrics.get(IMPROVEMENT_SOURCE) != SOURCE_QUARTERLY:
             return []
         flags = []
-        oi_yoy = to_num(metrics.get("OI_YoY(%)"))
+        oi_yoy = to_num(metrics.get(OI_YOY))
         if oi_yoy is not None and oi_yoy < 0:
             flags.append("oi_divergence")
         annual = self._annual_eps(data)
-        if annual is not None and annual > 0 and metrics["EPS_Q_Latest"] >= self.max_quarter_share_of_annual * annual:
+        if annual is not None and annual > 0 and metrics[EPS_Q_LATEST] >= self.max_quarter_share_of_annual * annual:
             flags.append("quarter_spike")
         return flags
 

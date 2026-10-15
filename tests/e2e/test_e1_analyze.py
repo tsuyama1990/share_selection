@@ -61,6 +61,7 @@ def test_every_ticker_is_recorded_with_its_fail_rule_and_exported(project):
     assert any(r[1] for r in rows)
     assert all((r[4] is None) == (r[0] == "9999.T") for r in rows)
     assert all(r[4] == json.loads(r[3])["Improvement_Class"] for r in rows if r[0] != "9999.T")
+    assert all(isinstance(json.loads(r[3])["Quality_Flags"], list) for r in rows if r[1])
     exported = project.root / CFG["records"]["export_dir"] / run_id / "screen_results.parquet"
     assert duckdb.sql(f"SELECT count(*) FROM read_parquet('{exported}')").fetchone() == (len(tickers),)
     assert len(list((project.root / CFG["output"]["dir"]).glob("*.csv"))) == 1
@@ -74,3 +75,19 @@ def test_issue_defaults_to_latest_shikiho_issue(project, monkeypatch):
     for argv, expected in ((["analyze"], "2099-03"), (["analyze", "--issue", "2020-06"], "2020-06")):
         project.run(*argv)
         assert calls[-1] == expected
+
+
+def test_stage2_candidates_are_recorded_in_the_column_and_flags_as_lists(project):
+    project.seed_sample()
+    project.run("analyze")
+
+    expected = int(result_csv(project)["Stage2_Candidate"].sum())
+    assert expected > 0
+    ((recorded,),) = project.query("SELECT count(*) FROM screen_results WHERE stage2_candidate")
+    assert recorded == expected
+    ((not_passed_candidates,),) = project.query(
+        "SELECT count(*) FROM screen_results WHERE stage2_candidate AND NOT stage1_pass"
+    )
+    assert not_passed_candidates == 0
+    flags = project.query("SELECT rebuttal_flags FROM screen_results WHERE stage1_pass")
+    assert all(isinstance(json.loads(f), list) for (f,) in flags)

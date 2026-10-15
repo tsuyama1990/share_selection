@@ -70,7 +70,7 @@
 |---|---|---|---|---|
 | C1 | 銘柄一覧 | JPX の一覧から対象銘柄 CSV を作る | `tickers.py` | ✅ |
 | C2 | データ取得 | 外部システムからの取得と保存（キャッシュ・文書） | `yahoo.py`、`cache.py`、`stock_data.py`、`earnings_calendar.py`、`edinet.py`、`webfetch.py` 🆕、`docstore.py`（詳細は `L2_C2_data_acquisition.md`） | ✅／🆕 |
-| C3 | 一次スクリーニング | 足切り（R1）、指標、改善の兆し（R2）、質の旗（R4）、順位と二次候補 | `rules.py`、`indicators.py`、`improvement.py`、`quality.py`、`metrics.py`、`screener.py`、`report.py`、`fields.py` 🆕（結果行の項目名と値の語彙を 1 か所で定義） | ✅／🆕 |
+| C3 | 一次スクリーニング | 足切り（R1）、指標、改善の兆し（R2）、質の旗（R4）、順位と二次候補 | `rules.py`、`indicators.py`、`improvement.py`、`quality.py`、`metrics.py`、`screener.py`、`report.py`、`fields.py`（結果行の項目名と値の語彙を 1 か所で定義） | ✅ |
 | C4 | 二次調査 | 業種の文脈、LLM による企業分析、引用の照合、調査メモ（R5） | `llm.py`、`sector.py` 🆕、`research.py` 🆕、`verify.py` 🆕（詳細は `L2_C4_stage2_research.md`） | ✅／🆕 |
 | C5 | 記録と答え合わせ | 実行・全銘柄の判定・二次の調査結果の記録、結果の計算（R6） | `records.py`（`reviews` テーブル 🆕） | ✅／🆕 |
 | C6 | 出力 | 結果 CSV、二次候補の一覧、調査メモ | `report.py`、`memo.py` 🆕（調査メモ） | ✅／🆕 |
@@ -107,8 +107,8 @@ E2E テストは、この表の形式が守られることを確かめる。
 | C2 → C3 | キャッシュ（DuckDB `stock_cache`） | 銘柄ごとの info、財務・四半期損益・株価（JSON） | ✅ |
 | C2 → C3 | `earnings_calendar.csv` | code、announce_date、period_en、fiscal_year_end | ✅ |
 | C3 → C6 | 結果 CSV | `output.columns` の列（順位、二次候補、改善区分、質の旗、指標、次回決算日） | ✅ |
-| C3 → C5 | `screen_results` | 全銘柄の通過・落ちた条件・改善区分・二次候補（`stage2_candidate` 列 🆕）・質の旗（リスト）・次回決算日・全指標（JSON）。項目名は `fields.py` が唯一の定義 | ✅／🆕 |
-| C5 → C2・C4 | `RecordStore.candidates` | 実行の二次候補（`stage2_candidate` 列で選ぶ 🆕）と指標 | ✅／🆕 |
+| C3 → C5 | `screen_results` | 全銘柄の通過・落ちた条件・改善区分・二次候補（`stage2_candidate` 列）・質の旗（リスト）・次回決算日・全指標（JSON）。項目名は `fields.py` が唯一の定義 | ✅ |
+| C5 → C2・C4 | `RecordStore.candidates` | 実行の二次候補（`stage2_candidate` 列で選ぶ）と指標 | ✅ |
 | C2 → C4 | 文書ストア 🆕 | 文書 ID、出典（URL・EDINET の書類 ID）、取得日時、本文 | 🆕 |
 | C4 → C5 | `reviews` 🆕 | 調査結果、照合できた根拠、照合率、モデル・プロンプトの版（git 対象外：公開リポジトリに引用を載せない） | 🆕 |
 | C5 → C8 | 記録（Parquet） | `runs`・`screen_results`・`outcomes`（`records/`、コミット）、`reviews`（`review.export_dir`、git 対象外） | ✅／🆕 |

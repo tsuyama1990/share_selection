@@ -36,9 +36,10 @@ def result(ticker: str, candidate: bool) -> dict:
         "stage1_pass": True,
         "stage1_fail_rule": None,
         "improvement_class": "clear",
+        "stage2_candidate": candidate,
         "next_earnings_date": None,
         "quality_flags": [],
-        "metrics": {"Stage2_Candidate": candidate},
+        "metrics": {},
     }
 
 

@@ -15,6 +15,7 @@ ROW = {
     "stage1_pass": True,
     "stage1_fail_rule": None,
     "improvement_class": "clear",
+    "stage2_candidate": False,
     "next_earnings_date": None,
     "quality_flags": [],
     "metrics": {},
