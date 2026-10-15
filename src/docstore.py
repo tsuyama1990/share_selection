@@ -60,6 +60,10 @@ class DocStore:
     def has(self, doc_id: str) -> bool:
         return self.con.execute("SELECT 1 FROM documents WHERE doc_id = ?", [doc_id]).fetchone() is not None
 
+    def has_source(self, ticker: str, source: str) -> bool:
+        sql = "SELECT 1 FROM documents WHERE ticker = ? AND source = ? LIMIT 1"
+        return self.con.execute(sql, [ticker, source]).fetchone() is not None
+
     def record_error(self, ticker: str, source: str, ref: str, error: str) -> None:
         self.con.execute(
             "INSERT INTO fetch_errors VALUES (?, ?, ?, ?, ?)", [ticker, source, ref, error, datetime.datetime.now()]

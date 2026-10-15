@@ -54,7 +54,7 @@ def result(ticker: str, candidate: bool) -> dict:
         "stage2_candidate": candidate,
         "next_earnings_date": None,
         "quality_flags": [],
-        "metrics": {F.NAME: f"Company {ticker}"},
+        "metrics": {F.NAME: f"Company {ticker}", F.PRIORITY_RANK: int(ticker.removesuffix(".T"))},
     }
 
 
@@ -185,3 +185,27 @@ def test_docs_search_requires_the_gemini_key(project, monkeypatch, capsys):
         project.run("docs", cfg=CFG_SEARCH)
     assert e.value.code == 1
     assert "GEMINI_API_KEY" in capsys.readouterr().out
+
+
+def test_docs_search_skips_searched_candidates_and_stops_at_the_quota(project, monkeypatch, capsys):
+    searched: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.host == GEMINI_HOST:
+            searched.append(request.content.decode())
+            if "Company 2.T" in searched[-1]:
+                return httpx.Response(429)
+        return all_handler(request)
+
+    mock_http(monkeypatch, handler)
+    monkeypatch.setenv("EDINET_API_KEY", KEY)
+    monkeypatch.setenv("GEMINI_API_KEY", GEMINI_KEY)
+    record_candidates(project)
+
+    project.run("docs", cfg=CFG_SEARCH)
+    assert "Search quota used up: 2 candidates left for the next `docs` run." in capsys.readouterr().out
+    assert ["Company 1.T" in s for s in searched] == [True, False]  # priority order; 3.T never searched
+
+    searched.clear()
+    project.run("docs", cfg=CFG_SEARCH)
+    assert ["Company 2.T" in s for s in searched] == [True]  # 1.T already has web documents

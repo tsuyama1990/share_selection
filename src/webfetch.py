@@ -68,12 +68,12 @@ def _download(url: str, http: httpx.Client, max_bytes: int) -> tuple[str, str, b
     with http.stream("GET", url, follow_redirects=True) as resp:
         if resp.is_error:
             raise ValueError(f"HTTP {resp.status_code}")
-        body = b""
+        body = bytearray()
         for chunk in resp.iter_bytes():
             body += chunk
             if len(body) > max_bytes:
                 raise ValueError("too large")
-        return str(resp.url), resp.headers.get("content-type", ""), body
+        return str(resp.url), resp.headers.get("content-type", ""), bytes(body)
 
 
 def fetch_document(url: str, ticker: str, http: httpx.Client, store: DocStore, max_bytes: int) -> str | None:

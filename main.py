@@ -17,7 +17,7 @@ from src.config import CONFIG_FILE, ROOT, load_config
 from src.docstore import DocStore
 from src.earnings_calendar import load_calendar, update_calendar_csv
 from src.edinet import EdinetClient, fetch_annual_report, update_index
-from src.llm import GeminiSearch, LLMClient, LLMError, Provider, RateLimiter
+from src.llm import GeminiSearch, LLMClient, LLMError, Provider, QuotaExceeded, RateLimiter
 from src.records import NO_CACHE, RecordStore, evaluate, git_sha, latest_issue
 from src.report import prioritize, write_report
 from src.screener import Screener, ScreenResult
@@ -118,7 +118,8 @@ def require_env(name: str) -> str:
 
 
 def collect_web_documents(cfg: dict[str, Any], search_key: str, candidates: list[tuple[str, dict]], store: DocStore):
-    """Gemini search per candidate, then fetch its first ``docs.max_sources`` sources; returns the documents stored."""
+    """Gemini search per candidate without web documents (best Priority_Rank first), then fetch its first
+    ``docs.max_sources`` sources; stops at the search quota. Returns the documents stored."""
     llm, search, web, docs = cfg["llm"], cfg["llm"]["search"], cfg["webfetch"], cfg["docs"]
     search_limiter = RateLimiter(llm["max_calls_per_minute"], SECONDS_PER_MINUTE)
     fetch_limiter = RateLimiter(1, web["request_interval_s"])
@@ -128,11 +129,18 @@ def collect_web_documents(cfg: dict[str, Any], search_key: str, candidates: list
         httpx.Client(timeout=web["timeout_s"], headers={"User-Agent": web["user_agent"]}) as web_http,
     ):
         gemini = GeminiSearch(search["base_url"], search["model"], search_key, search_http)
-        for ticker, metrics in tqdm(candidates):
+        pending = sorted(
+            (c for c in candidates if not store.has_source(c[0], "web")), key=lambda c: c[1][F.PRIORITY_RANK]
+        )
+        for done, (ticker, metrics) in enumerate(tqdm(pending)):
             search_limiter.acquire()
             prompt = docs["search_prompt"].format(name=metrics[F.NAME], code=ticker.removesuffix(TICKER_SUFFIX))
             try:
                 answer = gemini.search(prompt)
+            except QuotaExceeded as e:
+                store.record_error(ticker, "web", "search", str(e))
+                print(f"Search quota used up: {len(pending) - done} candidates left for the next `docs` run.")
+                break
             except LLMError as e:
                 store.record_error(ticker, "web", "search", str(e))
                 continue
