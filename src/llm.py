@@ -2,6 +2,7 @@ import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
+from http import HTTPStatus
 from typing import Any
 
 import httpx
@@ -9,6 +10,10 @@ import httpx
 
 class LLMError(RuntimeError):
     pass
+
+
+class QuotaExceeded(LLMError):
+    """HTTP 429. For Gemini search this is the daily free quota of grounded requests (shared by all models)."""
 
 
 @dataclass(frozen=True)
@@ -100,6 +105,8 @@ class GeminiSearch:
             resp = self._http.post(self._url, json=body, headers={"x-goog-api-key": self._api_key})
         except httpx.TransportError as e:
             raise LLMError(f"Gemini search failed: {type(e).__name__}") from e
+        if resp.status_code == HTTPStatus.TOO_MANY_REQUESTS:
+            raise QuotaExceeded(f"Gemini search failed: HTTP {resp.status_code}")
         if resp.is_error:
             raise LLMError(f"Gemini search failed: HTTP {resp.status_code}")
         candidate = resp.json()["candidates"][0]

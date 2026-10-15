@@ -10,6 +10,7 @@ dependencies = [
     "numpy>=2.4.2",
     "openpyxl>=3.1.5",
     "pandas>=3.0.0",
+    "pypdf>=6.20.1",
     "python-dotenv>=1.2.4",
     "pyyaml>=6.0.3",
     "tqdm>=4.67.2",
@@ -58,6 +59,7 @@ max-complexity = 10
 [tool.vulture]
 paths = ["src", "main.py"]
 min_confidence = 60
+ignore_names = ["handle_*"]  # html.parser callbacks
 
 [tool.deptry.per_rule_ignores]
 DEP002 = ["openpyxl"]  # engine used by pandas.read_excel (tickers command)
@@ -67,4 +69,4 @@ python_version = "3.12"
 ignore_missing_imports = true
 
 [tool.code_budget]
-max_source_lines = 1419
+max_source_lines = 1541
