@@ -19,7 +19,7 @@
 |---|---|---|---|
 | `docstore.py` | `Document`、`DocStore`、`DocumentRewriteError` | 文書・EDINET の索引・取得の失敗の保存と検索。同じ doc_id への別の本文の保存を拒む | ✅ |
 | `edinet.py` | `EdinetClient`、`parse_index`、`extract_sections`、`sec_code`、`update_index`、`fetch_annual_report` | EDINET API v2 の呼び出し、書類一覧の解析、ZIP の本文 CSV からの節の抽出、索引の差分更新、最新の有価証券報告書の保存 | ✅ |
-| `webfetch.py` | `extract_text`、`web_doc_id`、`fetch_document` | URL の取得（リダイレクト追従・サイズ上限）、HTML・PDF の本文抽出、保存 | 🆕 |
+| `webfetch.py` | `extract_text`、`web_doc_id`、`fetch_document` | URL の取得（リダイレクト追従・サイズ上限）、HTML・PDF の本文抽出、保存 | ✅ |
 | `verify.py` | `normalize`、`check_claims` | 引用の照合と照合率、支えのない項目の unknown への置き換え | 🆕 |
 | `sector.py` | `sector_medians`、`compare` | 業種ごとの中央値と、候補の同業比較 | 🆕 |
 | `research.py` | `ReplyError`、`TaskResult`、`load_prompts`、`build_messages`、`parse_reply`、`run_task`、`review_ticker` | T1〜T5 の実行（プロンプトの組み立て、JSON の検証と 1 回の再依頼、照合）と 1 銘柄分の結果の行 | 🆕 |
@@ -79,7 +79,7 @@ def fetch_annual_report(client, store, ticker: str, doc_type_code: str, elements
 def web_doc_id(final_url: str) -> str                 # "web:" + 正規化した URL の sha256 の先頭 16 桁
 def extract_text(body: bytes, content_type: str) -> tuple[str, str]   # (title, text)。HTML は script・style・nav・header・footer を除く。PDF は pypdf
 def fetch_document(url: str, ticker: str, http: httpx.Client, store: DocStore,
-                   max_bytes: int, limiter: RateLimiter) -> str | None  # doc_id。失敗は record_error して None
+                   max_bytes: int) -> str | None  # doc_id。失敗は record_error して None。取得間隔は呼び出し側の RateLimiter が守る（引数 6 個は ruff PLR0913 に触れるため limiter を外した）
 ```
 
 正規化：スキームとホストを小文字、フラグメントを除く。上限を超える応答は読み切らずに失敗とする。

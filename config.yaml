@@ -177,3 +177,22 @@ edinet:
 # ------------------------------------------
 docstore:
   db_file: "documents.duckdb"    # Documents, EDINET index and fetch errors (git-ignored; slow to rebuild, so kept)
+
+# ------------------------------------------
+# 12. webfetch: pages cited by the Gemini search (`docs` fetches the sources one by one)
+# ------------------------------------------
+webfetch:
+  timeout_s: 30                  # Per-request timeout (seconds)
+  max_bytes: 20000000            # A larger response is dropped as a failure
+  user_agent: "share-selection-research/1.0"
+  request_interval_s: 2          # Minimum time between page requests (seconds)
+
+# ------------------------------------------
+# 13. docs: web search part of `main.py docs` (needs the llm.search key)
+# ------------------------------------------
+docs:
+  search: true                   # false: only the EDINET sections are collected
+  max_sources: 5                 # Cited sources fetched per candidate
+  search_prompt: >-
+    {name}（証券コード{code}、東証上場）の最新の決算の結果、利益が増減した理由、
+    および同社のIRページ・決算短信の掲載ページを調べてください。

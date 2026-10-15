@@ -45,6 +45,8 @@ Edit `config.yaml` to adjust criteria. Every tunable parameter, path and file na
 *   `tickers`: `jpx_url`, the `markets` kept by the `tickers` command, and `timeout_s` of the download.
 *   `calendar`: `page_url`, `link_pattern` (regex for the workbook links), `user_agent`, `timeout_s`, `out_csv` of the `calendar` command.
 *   `edinet`: `base_url`, `key_env` (environment variable holding the EDINET API key), `index_days` (first-run index window), `doc_type_code`, `sections` (text blocks stored), `request_interval_s`, `timeout_s` of the `docs` command.
+*   `webfetch`: `timeout_s`, `max_bytes` (larger responses are dropped), `user_agent`, `request_interval_s` of the page fetches of `docs`.
+*   `docs`: `search` (also collect web sources), `search_prompt` (`{name}`, `{code}`), `max_sources` (per candidate).
 *   `docstore`: `db_file` of the document store.
 *   `records`: `db_file`, `export_dir` (Parquet backup per run), `shikiho_issue_months` / `shikiho_release_day` (default `--issue`), `horizons_months`, `benchmark_ticker`, `price_lookback_days` (history fetched before the earliest run by `evaluate`).
 *   `system`: `input_csv`, `db_file`, `sleep_time`, `cache_days`, `market_timezone` (timezone of the history timestamps, `Asia/Tokyo`), `daily_history_period`, `monthly_history_period`.
@@ -78,6 +80,8 @@ uv run python main.py calendar
 
 ### 2c. Collect Documents (optional)
 Stores the text sections listed in `edinet.sections` of each stage 2 candidate's latest annual securities report (EDINET) in the document store (`docstore.db_file`, default `documents.duckdb`, ignored by version control). The EDINET API key is read from the `edinet.key_env` variable (`EDINET_API_KEY`, environment or `.env`). Run it after `analyze`; `--run RUN_ID` picks another run (default: the latest). The first run indexes the last `edinet.index_days` days of filings (one request of `request_interval_s` per day); later runs add only new days. A report already stored is not fetched again; failures are kept in the `fetch_errors` table and the command goes on.
+
+With `docs.search: true` (default) it also asks Gemini (grounded search, key in the `llm.search.key_env` variable, `GEMINI_API_KEY`) about each candidate's latest results and IR pages, then fetches the first `docs.max_sources` cited pages (redirects followed; HTML and PDF text) into the document store as `web:` documents. The search answer itself is not stored. A failed search or page is kept in `fetch_errors`.
 
 ```bash
 uv run python main.py docs [--run RUN_ID]
@@ -169,6 +173,7 @@ The same checks run in CI (`.github/workflows/ci.yml`) and, except pytest, in pr
 *   `src/yahoo.py`: `YahooClient` downloads raw data from Yahoo Finance.
 *   `src/records.py`: `RecordStore` (runs, screen_results, outcomes in `records.duckdb`, exported to Parquet) and `evaluate`.
 *   `src/edinet.py`: `EdinetClient` (EDINET API v2), the filing index update and `fetch_annual_report` (text sections of the latest annual securities report).
+*   `src/webfetch.py`: `fetch_document` (a cited URL -> redirects followed, size limit, HTML/PDF text -> document store), `extract_text`, `web_doc_id`.
 *   `src/docstore.py`: `DocStore` (`documents.duckdb`: documents, EDINET index, fetch errors); a stored text is never rewritten.
 *   `src/tickers.py`: Builds the ticker CSV from the JPX listed company workbook.
 *   `src/report.py`: `write_report` writes the dated CSV (location and columns passed in from `output`), `prioritize` adds `Priority_Rank` / `Stage2_Candidate`, and the candidates are printed.

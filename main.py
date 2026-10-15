@@ -17,12 +17,15 @@ from src.config import CONFIG_FILE, ROOT, load_config
 from src.docstore import DocStore
 from src.earnings_calendar import load_calendar, update_calendar_csv
 from src.edinet import EdinetClient, fetch_annual_report, update_index
-from src.llm import GeminiSearch, LLMClient, Provider, RateLimiter
+from src.llm import GeminiSearch, LLMClient, LLMError, Provider, RateLimiter
 from src.records import NO_CACHE, RecordStore, evaluate, git_sha, latest_issue
 from src.report import prioritize, write_report
 from src.screener import Screener, ScreenResult
 from src.tickers import TICKER_SUFFIX, update_ticker_csv
+from src.webfetch import fetch_document
 from src.yahoo import YahooClient
+
+SECONDS_PER_MINUTE = 60
 
 
 def get_japan_tickers(cfg: dict[str, Any]) -> list[str]:
@@ -106,15 +109,47 @@ def run_evaluate(cfg: dict[str, Any], client: YahooClient):
     print(f"Added {added} outcome rows.")
 
 
-def run_docs(cfg: dict[str, Any], run_id: str | None):
-    key = os.environ.get(cfg["edinet"]["key_env"], "")
-    if not key:
-        print(f"Error: set {cfg['edinet']['key_env']} (environment or .env).")
+def require_env(name: str) -> str:
+    value = os.environ.get(name, "")
+    if not value:
+        print(f"Error: set {name} (environment or .env).")
         sys.exit(1)
+    return value
+
+
+def collect_web_documents(cfg: dict[str, Any], search_key: str, candidates: list[tuple[str, dict]], store: DocStore):
+    """Gemini search per candidate, then fetch its first ``docs.max_sources`` sources; returns the documents stored."""
+    llm, search, web, docs = cfg["llm"], cfg["llm"]["search"], cfg["webfetch"], cfg["docs"]
+    search_limiter = RateLimiter(llm["max_calls_per_minute"], SECONDS_PER_MINUTE)
+    fetch_limiter = RateLimiter(1, web["request_interval_s"])
+    stored = 0
+    with (
+        httpx.Client(timeout=llm["timeout_s"]) as search_http,
+        httpx.Client(timeout=web["timeout_s"], headers={"User-Agent": web["user_agent"]}) as web_http,
+    ):
+        gemini = GeminiSearch(search["base_url"], search["model"], search_key, search_http)
+        for ticker, metrics in tqdm(candidates):
+            search_limiter.acquire()
+            prompt = docs["search_prompt"].format(name=metrics[F.NAME], code=ticker.removesuffix(TICKER_SUFFIX))
+            try:
+                answer = gemini.search(prompt)
+            except LLMError as e:
+                store.record_error(ticker, "web", "search", str(e))
+                continue
+            for _, uri in answer.sources[: docs["max_sources"]]:
+                fetch_limiter.acquire()
+                stored += fetch_document(uri, ticker, web_http, store, web["max_bytes"]) is not None
+    return stored
+
+
+def run_docs(cfg: dict[str, Any], run_id: str | None):
+    key = require_env(cfg["edinet"]["key_env"])
+    search_key = require_env(cfg["llm"]["search"]["key_env"]) if cfg["docs"]["search"] else ""
     rec = cfg["records"]
     with RecordStore(ROOT / rec["db_file"], ROOT / rec["export_dir"]) as records:
         run_id = run_id or records.runs()[-1][0]
-        tickers = [t for t, _ in records.candidates(run_id)]
+        candidates = records.candidates(run_id)
+    tickers = [t for t, _ in candidates]
     print(f"Collecting documents of {len(tickers)} candidates of run {run_id}...")
     with (
         httpx.Client(timeout=cfg["edinet"]["timeout_s"]) as http,
@@ -127,11 +162,10 @@ def run_docs(cfg: dict[str, Any], run_id: str | None):
             fetch_annual_report(client, store, t, cfg["edinet"]["doc_type_code"], cfg["edinet"]["sections"])
             for t in tqdm(tickers)
         ]
+        web_stored = collect_web_documents(cfg, search_key, candidates, store) if search_key else 0
     failed = sum(not ids for ids in stored)
-    print(f"{sum(map(len, stored))} documents stored for {len(tickers) - failed} tickers; {failed} tickers failed.")
-
-
-SECONDS_PER_MINUTE = 60
+    summary = f"{sum(map(len, stored))} documents stored for {len(tickers) - failed} tickers; {failed} tickers failed."
+    print(f"{summary} {web_stored} web documents stored." if search_key else summary)
 
 
 def run_llm_check(cfg: dict[str, Any]):
