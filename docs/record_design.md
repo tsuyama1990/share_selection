@@ -54,7 +54,7 @@
 | テーブル | 1 行の単位 | 主な列 | 書く担当 | 実装するブランチ |
 |---|---|---|---|---|
 | `runs` | 1 回のスクリーニング実行 | run_id、run_at、issue（四季報の号）、git_sha、config（JSON）、ticker_list_date、data_fetched_min/max | 機械 | `feat/record` |
-| `screen_results` | 実行 × 銘柄（**全銘柄**） | run_id、ticker、stage1_pass、stage1_fail_rule、improvement_class、types、next_earnings_date、rebuttal_flags、metrics（その時の出力行すべてを JSON） | 機械 | `feat/record`（段階 2〜5 の列は各ブランチで埋める） |
+| `screen_results` | 実行 × 銘柄（**全銘柄**） | run_id、ticker、stage1_pass、stage1_fail_rule、improvement_class、stage2_candidate、next_earnings_date、rebuttal_flags（質の旗のリスト。列名は旧称のまま）、metrics（その時の出力行すべてを JSON） | 機械 | `feat/record`（段階 2〜5 の列は各ブランチで埋める） |
 | `outcomes` | 実行 × 銘柄 × 期間（6・12 か月） | price_t0、price_t1、return、benchmark_return（比較対象は config の `records.benchmark_ticker`、既定は TOPIX 連動の 1306）、excess、computed_at | 機械（`evaluate` コマンド） | `feat/record` |
 | `events` | 銘柄 × 開示 | ticker、date、kind（決算・予想修正・中計・資本政策・テーマ）、detail、source | 機械＋人 | `feat/catalyst-calendar`、`feat/company-forecast` |
 | `forecasts` | 銘柄 × 開示 × 予想の対象期 | ticker、disclosed_date、target（今期・来期・中間）、sales、op、odp、np、eps、source | 機械（J-Quants） | `feat/company-forecast` |
@@ -87,3 +87,4 @@
 - 判定日・評価日の株価は、その日以前で最後の終値。履歴がない場合は NULL。
 - `rebuttal_flags` には段階 5 の旗（現在は `Quality_Flags` の一覧）を記録する。キャッシュがない銘柄は NULL。
 - 足切りで落ちた銘柄も、すべての条件・指標を計算して `metrics` に記録する（落ちた条件は最初の 1 つ）。過去の実行を別の閾値で再現する実験のため（`--config` で別の設定ファイルを使う）。
+- `stage2_candidate`（2026-10-15 追加）：その実行で二次候補に選ばれたか。追加より前の実行は NULL。使われていなかった `types` 列は同日に削除した（既存の `records.duckdb` は一度だけ移行。それ以前の Parquet には `types` が残る）。
