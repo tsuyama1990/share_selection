@@ -3,20 +3,7 @@
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from .fields import (
-    CASH_TO_MARKET_CAP,
-    CHART_TREND,
-    CURRENT_PRICE,
-    DIVIDEND_YIELD,
-    MARKET_CAP,
-    NET_CASH,
-    PBR,
-    REAL_PSR,
-    SALES_CAGR,
-    SALES_GROWTH_YEARS,
-    downside_to_low,
-    ma,
-)
+from . import fields as F
 from .metrics import (
     CASH_KEYS,
     DEBT_KEYS,
@@ -46,7 +33,7 @@ class SalesCagr:
         cagr, years = sales_cagr(data.financials, self.years_back, self.min_years)
         if cagr is None:
             return {}
-        return {SALES_CAGR: round(cagr * 100, 2), SALES_GROWTH_YEARS: years}
+        return {F.SALES_CAGR: round(cagr * 100, 2), F.SALES_GROWTH_YEARS: years}
 
 
 class CashRatio:
@@ -55,10 +42,10 @@ class CashRatio:
     def compute(self, data: StockData, metrics: dict[str, Any]) -> dict[str, Any]:
         latest_bs = data.latest_balance_sheet
         cash = None if latest_bs is None else first_valid(latest_bs, CASH_KEYS)
-        mcap = metrics.get(MARKET_CAP)
+        mcap = metrics.get(F.MARKET_CAP)
         if cash is None or mcap is None or mcap <= 0:
             return {}
-        return {CASH_TO_MARKET_CAP: round(cash / mcap, 2)}
+        return {F.CASH_TO_MARKET_CAP: round(cash / mcap, 2)}
 
 
 class NetCash:
@@ -71,28 +58,28 @@ class NetCash:
             return {}
         debt = first_valid(latest_bs, DEBT_KEYS) or 0.0
         net_cash = cash - debt
-        out = {NET_CASH: round(net_cash / 1e9, 2)}
+        out = {F.NET_CASH: round(net_cash / 1e9, 2)}
         fin = data.financials
         i = latest_valid_period(fin, ("Total Revenue",))
         sales = None if i is None else to_num(fin.loc["Total Revenue"].iloc[i])
-        mcap = metrics.get(MARKET_CAP)
+        mcap = metrics.get(F.MARKET_CAP)
         if sales is not None and sales > 0 and mcap is not None:
-            out[REAL_PSR] = round((mcap - net_cash) / sales, 2)
+            out[F.REAL_PSR] = round((mcap - net_cash) / sales, 2)
         return out
 
 
 class Pbr:
-    """PBR (info first, else Market_Cap / equity)."""
+    """F.PBR (info first, else Market_Cap / equity)."""
 
     def compute(self, data: StockData, metrics: dict[str, Any]) -> dict[str, Any]:
         pbr = to_num(data.info.get("priceToBook"))
         latest_bs = data.latest_balance_sheet
         if pbr is None and latest_bs is not None:
             equity = first_valid(latest_bs, EQUITY_KEYS)
-            mcap = metrics.get(MARKET_CAP)
+            mcap = metrics.get(F.MARKET_CAP)
             if equity is not None and equity > 0 and mcap is not None:
                 pbr = mcap / equity
-        return {} if pbr is None else {PBR: round(pbr, 2)}
+        return {} if pbr is None else {F.PBR: round(pbr, 2)}
 
 
 class DividendYield:
@@ -102,7 +89,7 @@ class DividendYield:
         # dividendYield is a percent (3.0 = 3%); trailingAnnualDividendYield is a fraction
         pct = to_num(data.info.get("dividendYield"))
         div = pct / 100 if pct is not None else to_num(data.info.get("trailingAnnualDividendYield"))
-        return {} if div is None else {DIVIDEND_YIELD: round(div * 100, 2)}
+        return {} if div is None else {F.DIVIDEND_YIELD: round(div * 100, 2)}
 
 
 @dataclass
@@ -119,16 +106,16 @@ class Trend:
         close = hist["Close"]
         ma_s = close.rolling(self.ma_short).mean().iloc[-1]
         ma_l = close.rolling(self.ma_long).mean().iloc[-1]
-        out = {ma(self.ma_short): round(ma_s, 1), ma(self.ma_long): round(ma_l, 1)}
-        price = metrics.get(CURRENT_PRICE)
+        out = {F.ma(self.ma_short): round(ma_s, 1), F.ma(self.ma_long): round(ma_l, 1)}
+        price = metrics.get(F.CURRENT_PRICE)
         if price is None:
             return out
         if price > ma_s > ma_l:
-            out[CHART_TREND] = "Strong Bull"
+            out[F.CHART_TREND] = "Strong Bull"
         elif price > ma_s:
-            out[CHART_TREND] = "Bull"
+            out[F.CHART_TREND] = "Bull"
         else:
-            out[CHART_TREND] = "Bear"
+            out[F.CHART_TREND] = "Bear"
         return out
 
 
@@ -140,14 +127,14 @@ class ShockLow:
 
     def compute(self, data: StockData, metrics: dict[str, Any]) -> dict[str, Any]:
         hist = data.history_monthly
-        price = to_num(metrics.get(CURRENT_PRICE))
+        price = to_num(metrics.get(F.CURRENT_PRICE))
         out: dict[str, Any] = {}
         if hist.empty or "Low" not in hist.columns or price is None or price <= 0:
             return out
         for name, (start, end) in self.windows.items():
             low = to_num(hist.loc[start:end, "Low"].min())
             if low is not None:
-                out[downside_to_low(name)] = round((low / price - 1) * 100, 1)
+                out[F.downside_to_low(name)] = round((low / price - 1) * 100, 1)
         return out
 
 
