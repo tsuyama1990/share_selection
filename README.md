@@ -160,6 +160,7 @@ The same checks run in CI (`.github/workflows/ci.yml`) and, except pytest, in pr
 
 *   `main.py`: CLI entry point (`tickers` / `fetch` / `analyze` / `evaluate` / `calendar` / `docs`).
 *   `src/stock_data.py`: `StockData`, the typed raw data of one ticker (normalizes histories to naive market-local dates).
+*   `src/fields.py`: The stage-1 result vocabulary (row keys, improvement classes and sources, `ma` / `downside_to_low`); no other module repeats these strings (architecture test).
 *   `src/metrics.py`: Pure helpers (`to_num`, `sales_cagr`, `avg_turnover`, ...).
 *   `src/rules.py`: Gatekeeper rules (one dataclass each) and `build_rules`.
 *   `src/indicators.py`: Metric providers (one class each) and `build_indicators`.

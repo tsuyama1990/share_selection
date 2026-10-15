@@ -24,6 +24,7 @@ ROWS = [
         "stage1_pass": True,
         "stage1_fail_rule": None,
         "improvement_class": "clear",
+        "stage2_candidate": True,
         "next_earnings_date": "2026-11-05",
         "quality_flags": ["quarter_spike", "oi_divergence"],
         "metrics": {"PSR": 1.5, "Name": "x"},
@@ -33,6 +34,7 @@ ROWS = [
         "stage1_pass": False,
         "stage1_fail_rule": "PsrCap",
         "improvement_class": "none",
+        "stage2_candidate": False,
         "next_earnings_date": None,
         "quality_flags": [],
         "metrics": {"PSR": float("nan")},
@@ -42,6 +44,7 @@ ROWS = [
         "stage1_pass": False,
         "stage1_fail_rule": NO_CACHE,
         "improvement_class": None,
+        "stage2_candidate": False,
         "next_earnings_date": None,
         "quality_flags": None,
         "metrics": {},
@@ -73,6 +76,14 @@ def test_record_run_round_trip_and_parquet(tmp_path):
     out = tmp_path / "rec" / run_id
     assert parquet(out, "runs")["git_sha"].tolist() == ["abc"]
     assert parquet(out, "screen_results")["ticker"].tolist() == ["1.T", "2.T", "3.T"]
+
+
+def test_candidates_select_by_the_stage2_candidate_column(tmp_path):
+    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec") as store:
+        run_id = store.record_run(INFO, ROWS)
+        assert store.candidates(run_id) == [("1.T", {"PSR": 1.5, "Name": "x"})]
+        flags = store.con.execute("SELECT stage2_candidate FROM screen_results ORDER BY ticker").fetchall()
+    assert [f for (f,) in flags] == [True, False, False]
 
 
 def test_next_earnings_date_is_stored(tmp_path):

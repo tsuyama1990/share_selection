@@ -11,6 +11,7 @@ import pandas as pd
 from dotenv import load_dotenv
 from tqdm import tqdm
 
+from src import fields as F
 from src.cache import StockCache, refresh
 from src.config import CONFIG_FILE, ROOT, load_config
 from src.docstore import DocStore
@@ -58,21 +59,22 @@ def run_analyze(cfg: dict[str, Any], tickers: list[str], cache: StockCache, scre
         data = cache.get(ticker)
         res = screener.screen(data) if data is not None else ScreenResult(False, NO_CACHE, {})
         next_date, period = calendar.get(ticker, (None, None))
-        res.row["Next_Earnings_Date"], res.row["Earnings_Period"] = next_date, period
-        flags = res.row.get("Quality_Flags")
+        res.row[F.NEXT_EARNINGS_DATE], res.row[F.EARNINGS_PERIOD] = next_date, period
         screened.append(
             {
                 "ticker": ticker,
                 "stage1_pass": res.passed,
                 "stage1_fail_rule": res.fail_rule,
-                "improvement_class": res.row.get("Improvement_Class"),
+                "improvement_class": res.row.get(F.IMPROVEMENT_CLASS),
                 "next_earnings_date": next_date,
-                "quality_flags": None if flags is None else [f for f in flags.split(",") if f],
+                "quality_flags": res.row.get(F.QUALITY_FLAGS),
                 "metrics": res.row,
             }
         )
     results = [r["metrics"] for r in screened if r["stage1_pass"]]
     prioritize(results, cfg["selection"]["candidates_n"])
+    for r in screened:
+        r["stage2_candidate"] = r["metrics"].get(F.STAGE2_CANDIDATE, False)
     no_cache = sum(r["stage1_fail_rule"] == NO_CACHE for r in screened)
 
     fetched_min, fetched_max = cache.fetched_range()

@@ -16,7 +16,8 @@ SCHEMA = (
         ticker_list_date DATE, data_fetched_min TIMESTAMP, data_fetched_max TIMESTAMP)""",
     """CREATE TABLE IF NOT EXISTS screen_results (
         run_id TEXT, ticker TEXT, stage1_pass BOOLEAN, stage1_fail_rule TEXT, improvement_class TEXT,
-        types JSON, next_earnings_date DATE, rebuttal_flags JSON, metrics JSON, PRIMARY KEY (run_id, ticker))""",
+        stage2_candidate BOOLEAN, next_earnings_date DATE, rebuttal_flags JSON, metrics JSON,
+        PRIMARY KEY (run_id, ticker))""",
     """CREATE TABLE IF NOT EXISTS outcomes (
         run_id TEXT, ticker TEXT, horizon_months INTEGER, price_t0 DOUBLE, price_t1 DOUBLE, "return" DOUBLE,
         benchmark_return DOUBLE, excess DOUBLE, computed_at TIMESTAMP, PRIMARY KEY (run_id, ticker, horizon_months))""",
@@ -61,7 +62,8 @@ class RecordStore:
         """Store one run (``info``: issue, git_sha, config, ticker_list_date, data_fetched_min/max) and its ticker rows.
 
         Each result has ``ticker``, ``stage1_pass``, ``stage1_fail_rule``, ``improvement_class``,
-        ``next_earnings_date`` (``YYYY-MM-DD`` or None), ``quality_flags`` (list or None), ``metrics`` (dict).
+        ``stage2_candidate`` (bool), ``next_earnings_date`` (``YYYY-MM-DD`` or None),
+        ``quality_flags`` (list or None), ``metrics`` (dict).
         """
         run_at = datetime.datetime.now()
         run_id = run_at.strftime("%Y%m%dT%H%M%S%f")
@@ -80,8 +82,8 @@ class RecordStore:
         )
         self.con.executemany(
             "INSERT INTO screen_results"
-            " (run_id, ticker, stage1_pass, stage1_fail_rule, improvement_class, next_earnings_date,"
-            "  rebuttal_flags, metrics) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            " (run_id, ticker, stage1_pass, stage1_fail_rule, improvement_class, stage2_candidate,"
+            "  next_earnings_date, rebuttal_flags, metrics) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 [
                     run_id,
@@ -89,6 +91,7 @@ class RecordStore:
                     r["stage1_pass"],
                     r["stage1_fail_rule"],
                     r["improvement_class"],
+                    r["stage2_candidate"],
                     r["next_earnings_date"],
                     None if r["quality_flags"] is None else json.dumps(r["quality_flags"]),
                     pd.Series(r["metrics"], dtype=object).to_json(),
@@ -109,10 +112,7 @@ class RecordStore:
 
     def candidates(self, run_id: str) -> list[tuple[str, dict[str, Any]]]:
         """(ticker, metrics) of the run's stage 2 candidates."""
-        sql = (
-            "SELECT ticker, metrics FROM screen_results"
-            " WHERE run_id = ? AND CAST(json_extract(metrics, '$.Stage2_Candidate') AS BOOLEAN) ORDER BY ticker"
-        )
+        sql = "SELECT ticker, metrics FROM screen_results WHERE run_id = ? AND stage2_candidate ORDER BY ticker"
         return [(t, json.loads(m)) for t, m in self.con.execute(sql, [run_id]).fetchall()]
 
     def has_outcomes(self, run_id: str, horizon_months: int) -> bool:
