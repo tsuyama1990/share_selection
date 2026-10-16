@@ -6,7 +6,8 @@ from typing import Any
 
 import pandas as pd
 
-_FRAMES = ("financials", "balance_sheet", "cashflow", "history", "history_monthly", "quarterly_income")
+FRAMES = ("financials", "balance_sheet", "cashflow", "history", "history_monthly", "quarterly_income")
+HISTORY_FRAMES = ("history", "history_monthly")
 
 
 def _to_naive_datetime_index(df: pd.DataFrame, market_tz: str) -> pd.DataFrame:
@@ -39,8 +40,8 @@ class StockData:
     @classmethod
     def from_dict(cls, ticker: str, d: dict[str, Any], market_tz: str) -> "StockData":
         """Build from a raw dict: missing parts become empty, history indexes become naive dates."""
-        frames: dict[str, pd.DataFrame] = {k: d[k] if d.get(k) is not None else pd.DataFrame() for k in _FRAMES}
-        for key in ("history", "history_monthly"):
+        frames: dict[str, pd.DataFrame] = {k: d[k] if d.get(k) is not None else pd.DataFrame() for k in FRAMES}
+        for key in HISTORY_FRAMES:
             frames[key] = _to_naive_datetime_index(frames[key], market_tz)
         return cls(ticker, d.get("info") or {}, d.get("fast_info") or {}, **frames)
 

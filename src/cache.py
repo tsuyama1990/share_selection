@@ -8,10 +8,8 @@ from typing import Any
 import duckdb
 import pandas as pd
 
-from .stock_data import StockData
-
-FRAME_KEYS = ("financials", "balance_sheet", "history", "history_monthly", "cashflow", "quarterly_income")
-HISTORY_KEYS = ("history", "history_monthly")
+from .stock_data import FRAMES, HISTORY_FRAMES, StockData
+from .yahoo import YahooClient
 
 
 class StockCache:
@@ -45,7 +43,7 @@ class StockCache:
         """Read a ticker regardless of its age; None if not cached or corrupt."""
         res = self.con.execute(
             f"""
-            SELECT info, fast_info, {", ".join(FRAME_KEYS)}
+            SELECT info, fast_info, {", ".join(FRAMES)}
             FROM stock_cache WHERE ticker = ?
         """,
             [ticker],
@@ -54,9 +52,9 @@ class StockCache:
             return None
         try:
             d: dict[str, Any] = {"info": json.loads(res[0]), "fast_info": json.loads(res[1])}
-            for key, raw in zip(FRAME_KEYS, res[2:], strict=True):
+            for key, raw in zip(FRAMES, res[2:], strict=True):
                 df = pd.read_json(io.StringIO(raw)) if raw else pd.DataFrame()
-                if key in HISTORY_KEYS and not df.empty:
+                if key in HISTORY_FRAMES and not df.empty:
                     # JSON holds UTC instants (to_json converts tz-aware indexes to UTC)
                     df.index = pd.to_datetime(df.index, utc=True)
                 d[key] = df
@@ -67,12 +65,12 @@ class StockCache:
 
     def put(self, ticker: str, raw: dict[str, Any]) -> None:
         """Upsert the dict returned by ``YahooClient.download``."""
-        frames: list[pd.DataFrame] = [raw[k] if raw.get(k) is not None else pd.DataFrame() for k in FRAME_KEYS]
+        frames: list[pd.DataFrame] = [raw[k] if raw.get(k) is not None else pd.DataFrame() for k in FRAMES]
         self.con.execute(
             f"""
             INSERT OR REPLACE INTO stock_cache
-            (ticker, updated_at, info, fast_info, {", ".join(FRAME_KEYS)})
-            VALUES (?, ?, ?, ?, {", ".join("?" for _ in FRAME_KEYS)})
+            (ticker, updated_at, info, fast_info, {", ".join(FRAMES)})
+            VALUES (?, ?, ?, ?, {", ".join("?" for _ in FRAMES)})
         """,
             [
                 ticker,
@@ -101,7 +99,7 @@ class StockCache:
         self.con.close()
 
 
-def refresh(cache: StockCache, client, ticker: str, max_age_days: float) -> str | None:
+def refresh(cache: StockCache, client: YahooClient, ticker: str, max_age_days: float) -> str | None:
     """Download unless a fresh entry exists; None if the cache is up to date afterwards, else the error message."""
     if cache.is_fresh(ticker, max_age_days):
         return None
