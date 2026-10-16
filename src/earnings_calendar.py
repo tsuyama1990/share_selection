@@ -3,11 +3,11 @@
 import datetime
 import io
 import re
-import urllib.request
 from collections.abc import Sequence
 from pathlib import Path
 from urllib.parse import urljoin
 
+import httpx
 import pandas as pd
 
 from .tickers import TICKER_SUFFIX
@@ -41,9 +41,9 @@ def merge_calendars(frames: Sequence[pd.DataFrame], today: datetime.date) -> pd.
 
 
 def _download(url: str, user_agent: str, timeout_s: float) -> bytes:
-    request = urllib.request.Request(url, headers={"User-Agent": user_agent})
-    with urllib.request.urlopen(request, timeout=timeout_s) as res:
-        return res.read()
+    res = httpx.get(url, headers={"User-Agent": user_agent}, timeout=timeout_s, follow_redirects=True)
+    res.raise_for_status()
+    return res.content
 
 
 def update_calendar_csv(out_csv: Path, page_url: str, link_pattern: str, user_agent: str, timeout_s: float) -> int:

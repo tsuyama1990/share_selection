@@ -1,7 +1,17 @@
 import datetime
 from unittest import mock
 
-from src.earnings_calendar import CSV_COLUMNS, load_calendar, merge_calendars, parse_calendar, update_calendar_csv
+import httpx
+import pytest
+
+from src.earnings_calendar import (
+    CSV_COLUMNS,
+    _download,
+    load_calendar,
+    merge_calendars,
+    parse_calendar,
+    update_calendar_csv,
+)
 from tests.fixtures.calendar_workbook import TODAY, row, workbook
 
 
@@ -29,3 +39,20 @@ def test_update_downloads_every_linked_workbook(tmp_path):
         count = update_calendar_csv(out, "https://x/index.html", r'href="([^"]+\.xlsx)"', "UA", 1)
     assert count == 2
     assert load_calendar(out)["1111.T"][0] == "2099-01-04"
+
+
+def test_download_sends_user_agent_and_raises_on_error_status():
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.headers["user-agent"] == "UA"
+        return httpx.Response(503 if request.url.path == "/bad" else 200, content=b"ok", request=request)
+
+    transport = httpx.MockTransport(handler)
+
+    def get(url, **kwargs):
+        with httpx.Client(transport=transport) as c:
+            return c.get(url, **kwargs)
+
+    with mock.patch("src.earnings_calendar.httpx.get", side_effect=get):
+        assert _download("https://x/ok", "UA", 1) == b"ok"
+        with pytest.raises(httpx.HTTPStatusError):
+            _download("https://x/bad", "UA", 1)

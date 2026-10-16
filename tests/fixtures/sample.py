@@ -5,7 +5,8 @@ import gzip
 import json
 from pathlib import Path
 
-from src.cache import FRAME_KEYS, StockCache
+from src.cache import StockCache
+from src.stock_data import FRAMES
 
 SAMPLE = Path(__file__).parent / "sample_cache.json.gz"
 
@@ -14,7 +15,7 @@ def load_sample(cache: StockCache) -> list[str]:
     """Insert the fixture rows (stored JSON strings) into a cache; return the tickers."""
     with gzip.open(SAMPLE, "rt", encoding="utf-8") as f:
         rows = json.load(f)
-    cols = ["info", "fast_info", *FRAME_KEYS]
+    cols = ["info", "fast_info", *FRAMES]
     names, marks = ", ".join(cols), ", ".join("?" for _ in cols)
     for ticker, row in rows.items():
         cache.con.execute(

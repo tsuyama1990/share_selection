@@ -1,5 +1,3 @@
-import unittest
-
 import numpy as np
 import pandas as pd
 
@@ -49,32 +47,32 @@ def make(**overrides):
     return make_stock("T.T", d)
 
 
-class TestRules(unittest.TestCase):
+class TestRules:
     def test_gatekeeper_pass(self):
         # Total Equity Gross Minority Interest (consolidated statements)
         bs = pd.DataFrame({"2023-03-31": {"Total Assets": 100, "Total Equity Gross Minority Interest": 50}})
         res = check(make(balance_sheet=bs))
-        self.assertIsNotNone(res)
-        self.assertEqual(res["Equity_Ratio"], 50.0)
-        self.assertEqual(res["Operating_Margin(%)"], 15.0)
+        assert res is not None
+        assert res["Equity_Ratio"] == 50.0
+        assert res["Operating_Margin(%)"] == 15.0
 
     def test_gatekeeper_fail_margin(self):
         fin = pd.DataFrame({"2023-03-31": {"Total Revenue": 1e9, "Operating Income": 0.05e9}})  # 5% < 10%
-        self.assertIsNone(check(make(financials=fin, cashflow=pd.DataFrame())))
+        assert (check(make(financials=fin, cashflow=pd.DataFrame()))) is None
 
     def test_gatekeeper_fail_ocf(self):
         cf = pd.DataFrame({"2023-03-31": {"Operating Cash Flow": -100}})
-        self.assertIsNone(check(make(cashflow=cf)))
+        assert check(make(cashflow=cf)) is None
 
     def test_cf_extraction(self):
         cf = pd.DataFrame(
             {"2023-03-31": {"Operating Cash Flow": 500, "Investing Cash Flow": -200, "Financing Cash Flow": -100}}
         )
         res = check(make(cashflow=cf))
-        self.assertIsNotNone(res)
-        self.assertEqual(res["Operating_Cash_Flow"], 500)
-        self.assertEqual(res["Investing_Cash_Flow"], -200)
-        self.assertEqual(res["Financing_Cash_Flow"], -100)
+        assert res is not None
+        assert res["Operating_Cash_Flow"] == 500
+        assert res["Investing_Cash_Flow"] == -200
+        assert res["Financing_Cash_Flow"] == -100
 
     def test_gatekeeper_nan_equity_falls_through_to_next_key(self):
         # NaN in the first key must not shadow a valid later key (`a or b` bug)
@@ -87,14 +85,14 @@ class TestRules(unittest.TestCase):
                 }
             }
         )
-        self.assertIsNone(check(make(balance_sheet=bs)))  # 30% < 40%
+        assert check(make(balance_sheet=bs)) is None  # 30% < 40%
 
     def test_gatekeeper_prefers_stockholders_equity(self):
         # Non-controlling interests must not inflate the equity ratio
         bs = pd.DataFrame(
             {"2023-03-31": {"Total Assets": 100, "Stockholders Equity": 35, "Total Equity Gross Minority Interest": 50}}
         )
-        self.assertIsNone(check(make(balance_sheet=bs)))  # 35% < 40%
+        assert check(make(balance_sheet=bs)) is None  # 35% < 40%
 
     def test_gatekeeper_fail_nan_metrics(self):
         nan_cases = {
@@ -108,11 +106,10 @@ class TestRules(unittest.TestCase):
             "market_cap": {"fast_info": {"market_cap": np.nan, "last_price": 1000}},
         }
         for name, override in nan_cases.items():
-            with self.subTest(name):
-                self.assertIsNone(check(make(**override)))
+            assert check(make(**override)) is None, name
 
     def test_gatekeeper_fail_missing_ocf(self):
-        self.assertIsNone(check(make(cashflow=pd.DataFrame())))
+        assert check(make(cashflow=pd.DataFrame())) is None
 
     def test_gatekeeper_liquidity(self):
         dates = pd.date_range(start="2023-01-02", periods=60, freq="B")
@@ -121,10 +118,10 @@ class TestRules(unittest.TestCase):
         rules = gatekeeper(turnover_min=1e7)
 
         res = check(make(history=liquid), rules)
-        self.assertIsNotNone(res)
-        self.assertEqual(res["Avg_Turnover(M JPY)"], 20.0)
-        self.assertIsNone(check(make(history=illiquid), rules))
-        self.assertIsNone(check(make(), rules))
+        assert res is not None
+        assert (res["Avg_Turnover(M JPY)"]) == 20.0
+        assert (check(make(history=illiquid), rules)) is None
+        assert (check(make(), rules)) is None
 
     def test_gatekeeper_skips_unreported_latest_period(self):
         # A not-yet-reported fiscal year (all NaN) falls back to the previous one
@@ -135,12 +132,12 @@ class TestRules(unittest.TestCase):
             }
         )
         res = check(make(financials=fin))
-        self.assertIsNotNone(res)
-        self.assertEqual(res["Operating_Margin(%)"], 15.0)
+        assert res is not None
+        assert res["Operating_Margin(%)"] == 15.0
 
     def test_psr_cap(self):
         fin = pd.DataFrame({"2023-03-31": {"Total Revenue": 0.5e9, "Operating Income": 0.15e9}})  # PSR 4
-        self.assertIsNone(check(make(financials=fin)))
+        assert check(make(financials=fin)) is None
 
     def test_build_rules_order(self):
         cfg = {
@@ -154,8 +151,7 @@ class TestRules(unittest.TestCase):
                 "turnover_days": 60,
             }
         }
-        self.assertEqual(
-            [type(r).__name__ for r in build_rules(cfg)],
+        assert ([type(r).__name__ for r in build_rules(cfg)]) == (
             [
                 "MarketCapRule",
                 "LiquidityRule",
@@ -163,5 +159,5 @@ class TestRules(unittest.TestCase):
                 "OperatingMarginRule",
                 "PsrRule",
                 "OperatingCashFlowRule",
-            ],
+            ]
         )

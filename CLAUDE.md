@@ -4,7 +4,7 @@ Japanese stock screener (Emin Yurumazu's theory). Python 3.12, managed with `uv`
 
 ## Architecture
 - `main.py` CLI: `tickers` (JPX list -> CSV), `fetch` (Yahoo -> DuckDB cache), `analyze` (cache -> `results/` CSV, and a run record), `evaluate` (outcomes of recorded runs), `calendar` (JPX earnings announcement dates -> CSV), `docs [--run RUN_ID]` (EDINET annual report sections of the run's stage 2 candidates -> document store `documents.duckdb`).
-- `src/`: `stock_data` (typed raw data), `metrics` (pure helpers), `improvement` (stage 2 signs of improvement), `quality` (stage 5 one-off EPS flags), `rules` (gatekeeper), `indicators` (metrics such as Real_PSR, PBR, trend), `fields` (stage 1 result names), `earnings_calendar`, `edinet` (EDINET API v2 index and report sections), `webfetch` (web pages cited by the search: fetch, HTML/PDF text), `docstore` (documents, EDINET index, fetch errors), `screener`, `cache`, `yahoo`, `records` (run records in `records.duckdb` + Parquet export in `records/`, committed), `tickers`, `report`, `config`.
+- `src/`: `stock_data` (typed raw data), `metrics` (pure helpers), `improvement` (stage 2 signs of improvement), `quality` (stage 5 one-off EPS flags), `rules` (gatekeeper), `indicators` (metrics such as Real_PSR, PBR, trend), `fields` (stage 1 result names), `earnings_calendar`, `edinet` (EDINET API v2 index and report sections), `webfetch` (web pages cited by the search: fetch, HTML/PDF text), `docstore` (documents, EDINET index, fetch errors), `screener`, `selection` (stage 2 ranking and candidates), `throttle` (call-rate limiter shared by EDINET, web and LLM), `cache`, `yahoo`, `records` (run records in `records.duckdb` + Parquet export in `records/`, committed), `tickers`, `report` (CSV output only), `config`.
 - Rules and indicators are dataclasses with injected thresholds, created by `build_rules` / `build_indicators`; `Screener.from_config` wires them.
 
 ## Config rule
@@ -68,7 +68,7 @@ Japanese stock screener (Emin Yurumazu's theory). Python 3.12, managed with `uv`
 - Never delete or commit `stocks_cache.duckdb` (git-ignored full cache) or `results/`.
 
 ## Design docs (`docs/`)
-- `selection_flow.md` is the target design; `hypothesis_map.md` holds the evidence; `entry_types_design.md` is to be reorganized under it; `screening_criteria.md` describes what is implemented now; `selection_tuning.md` records threshold decisions and their evidence.
+- `selection_flow.md` is the target design; `hypothesis_map.md` holds the evidence; `entry_types_design.md` holds reference type definitions for its stage 3; `screening_criteria.md` describes what is implemented now; `selection_tuning.md` records threshold decisions and their evidence.
 - Label every factual claim ([原著]/[一次]/[報道]/[データ: date]/[推論]); recompute numbers with current config and data before committing; check cited examples satisfy the definition; log corrections at the end of the doc.
 - Before saying data "cannot be obtained", exhaust the retrieval paths (all yfinance accessors, official public data such as JPX) and state exactly what was tried.
 

@@ -25,7 +25,7 @@
 | R2 | 改善の兆しを判定し、改善の大きさで順位を付ける | 同 段階 2、`docs/selection_tuning.md` |
 | R3 | 改善が明るみに出る時期（次回決算日）を付ける | 同 段階 4 |
 | R4 | 改善の質の疑い（一時的な損益）に旗を立て、二次候補から外す | 同 段階 5、`docs/selection_tuning.md` 3.9 |
-| R5 | 二次候補を、一次情報と Web 検索をもとに LLM で調査し、根拠付きの調査メモと採否の提案を作る | `docs/stage2_automation_design.md` |
+| R5 | 二次候補を、一次情報と Web 検索をもとに LLM で調査し、根拠付きの調査メモと採否の提案を作る | `docs/architecture/L2_C4_stage2_research.md` |
 | R6 | 実行ごとに全銘柄の判定と指標を記録し、6 か月後・1 年後の結果を答え合わせする | `docs/record_design.md` |
 | R7 | 別の設定ファイルで、過去の記録を使った実験ができる | 同 6 章、`--config` |
 
@@ -69,8 +69,8 @@
 | ID | コンポーネント | 責務 | モジュール（現状） | 状態 |
 |---|---|---|---|---|
 | C1 | 銘柄一覧 | JPX の一覧から対象銘柄 CSV を作る | `tickers.py` | ✅ |
-| C2 | データ取得 | 外部システムからの取得と保存（キャッシュ・文書） | `yahoo.py`、`cache.py`、`stock_data.py`、`earnings_calendar.py`、`edinet.py`、`webfetch.py`、`docstore.py`（詳細は `L2_C2_data_acquisition.md`） | ✅ |
-| C3 | 一次スクリーニング | 足切り（R1）、指標、改善の兆し（R2）、質の旗（R4）、順位と二次候補 | `rules.py`、`indicators.py`、`improvement.py`、`quality.py`、`metrics.py`、`screener.py`、`report.py`、`fields.py`（結果行の項目名と値の語彙を 1 か所で定義） | ✅ |
+| C2 | データ取得 | 外部システムからの取得と保存（キャッシュ・文書） | `yahoo.py`、`cache.py`、`stock_data.py`、`earnings_calendar.py`、`edinet.py`、`webfetch.py`、`docstore.py`、`throttle.py`（外部 API の呼び出し間隔。C4 の LLM も使う）（詳細は `L2_C2_data_acquisition.md`） | ✅ |
+| C3 | 一次スクリーニング | 足切り（R1）、指標、改善の兆し（R2）、質の旗（R4）、順位と二次候補 | `rules.py`、`indicators.py`、`improvement.py`、`quality.py`、`metrics.py`、`screener.py`、`selection.py`（順位と二次候補）、`fields.py`（結果行の項目名と値の語彙を 1 か所で定義） | ✅ |
 | C4 | 二次調査 | 業種の文脈、LLM による企業分析、引用の照合、調査メモ（R5） | `llm.py`、`sector.py` 🆕、`research.py` 🆕、`verify.py` 🆕（詳細は `L2_C4_stage2_research.md`） | ✅／🆕 |
 | C5 | 記録と答え合わせ | 実行・全銘柄の判定・二次の調査結果の記録、結果の計算（R6） | `records.py`（`reviews` テーブル 🆕） | ✅／🆕 |
 | C6 | 出力 | 結果 CSV、二次候補の一覧、調査メモ | `report.py`、`memo.py` 🆕（調査メモ） | ✅／🆕 |
@@ -176,3 +176,5 @@ E2E テストは、この表の形式が守られることを確かめる。
 - 2026-10-15（承認済み）：文書の取得を `review` から `docs` コマンドに分けた（E7 を追加）。理由：文書の取得だけを LLM の費用なしにやり直せる。また L2 C2 のモジュールを `review` より前に呼び出し元つきでマージでき、未使用コードの関門（vulture）を通せる
 
 - 2026-10-15（承認済み）：C3 の結果行の項目名を `fields.py` に集め（3 章・5 章）、文字列の重複を禁じる関門を追加（9 章 4）。理由：項目名が 2〜4 モジュールに文字列で重複し、つづりの違いが空の値になるだけで検出されなかった。`screen_results` に `stage2_candidate` 列を追加し、使われていない `types` 列を削除、質の旗はリストのまま記録する
+
+- 2026-10-16：SOLID の見直し。順位づけを `report.py` から `selection.py` へ（`report.py` は出力だけ）、呼び出し間隔の制御を `llm.py` から `throttle.py` へ（EDINET・Web・LLM が共有）

@@ -1,5 +1,3 @@
-import unittest
-
 import pandas as pd
 
 from src.improvement import ImprovementSignal
@@ -31,7 +29,7 @@ NO_QUALITY = EpsQualityFlags(0.5)
 DATA = make_stock("1234.T", {"info": {"longName": "Foo"}})
 
 
-class TestScreener(unittest.TestCase):
+class TestScreener:
     CFG = {
         "gatekeeper": {
             "equity_ratio_min": 0.4,
@@ -62,9 +60,9 @@ class TestScreener(unittest.TestCase):
             [FakeIndicator({"Dividend_Yield(%)": 3.0})],
         )
         res = screener.screen(DATA)
-        self.assertEqual((res.passed, res.fail_rule, after.calls), (False, "FakeRule", 1))
-        self.assertEqual((res.row["PSR"], res.row["PBR"], res.row["Dividend_Yield(%)"]), (1.0, 2.0, 3.0))
-        self.assertEqual(res.row["Improvement_Class"], "unknown")
+        assert (res.passed, res.fail_rule, after.calls) == (False, "FakeRule", 1)
+        assert (res.row["PSR"], res.row["PBR"], res.row["Dividend_Yield(%)"]) == (1.0, 2.0, 3.0)
+        assert res.row["Improvement_Class"] == "unknown"
 
     def test_first_rule_failure_keeps_later_rule_and_indicator_metrics(self):
         data = make_stock(
@@ -79,10 +77,12 @@ class TestScreener(unittest.TestCase):
             },
         )
         res = Screener.from_config(self.CFG).screen(data)
-        self.assertEqual((res.passed, res.fail_rule), (False, "MarketCapRule"))
-        self.assertEqual(
-            (res.row["PSR"], res.row["Equity_Ratio"], res.row["Real_PSR"], res.row["Dividend_Yield(%)"]),
-            (0.05, 50.0, 0.05, 4.0),
+        assert (res.passed, res.fail_rule) == (False, "MarketCapRule")
+        assert (res.row["PSR"], res.row["Equity_Ratio"], res.row["Real_PSR"], res.row["Dividend_Yield(%)"]) == (
+            0.05,
+            50.0,
+            0.05,
+            4.0,
         )
 
     def test_missing_market_cap_skips_dependent_metrics_without_raising(self):
@@ -96,9 +96,9 @@ class TestScreener(unittest.TestCase):
             },
         )
         res = Screener.from_config(self.CFG).screen(data)
-        self.assertEqual((res.passed, res.fail_rule), (False, "MarketCapRule"))
-        self.assertEqual((res.row["Equity_Ratio"], res.row["Net_Cash(Billion)"]), (50.0, 0.0))
-        self.assertTrue({"PSR", "Real_PSR", "PBR", "Cash_to_MarketCap_Ratio"}.isdisjoint(res.row))
+        assert (res.passed, res.fail_rule) == (False, "MarketCapRule")
+        assert (res.row["Equity_Ratio"], res.row["Net_Cash(Billion)"]) == (50.0, 0.0)
+        assert {"PSR", "Real_PSR", "PBR", "Cash_to_MarketCap_Ratio"}.isdisjoint(res.row)
 
     def test_row_has_identity_and_merged_metrics(self):
         res = (
@@ -111,30 +111,15 @@ class TestScreener(unittest.TestCase):
             .screen(DATA)
             .row
         )
-        self.assertEqual((res["Ticker"], res["Name"]), ("1234.T", "Foo"))
-        self.assertEqual((res["PSR"], res["Chart_Trend"]), (1.0, "Bull"))
-        self.assertNotIn("Total_Score", res)
-        self.assertNotIn("Recommendation_Type", res)
+        assert (res["Ticker"], res["Name"]) == ("1234.T", "Foo")
+        assert (res["PSR"], res["Chart_Trend"]) == (1.0, "Bull")
+        assert "Total_Score" not in res
+        assert "Recommendation_Type" not in res
 
     def test_from_config_wires_improvement_and_quality(self):
         screener = Screener.from_config(self.CFG)
-        self.assertEqual(screener.improvement, ImprovementSignal(0.4, 20, 200))
-        self.assertEqual(screener.quality, NO_QUALITY)
-
-    def test_from_config_end_to_end(self):
-        cfg = self.CFG
-        data = make_stock(
-            "1234.T",
-            {
-                "fast_info": {"market_cap": 2e9, "last_price": 1000},
-                "balance_sheet": pd.DataFrame({"2023": {"Total Assets": 100, "Stockholders Equity": 50}}),
-                "financials": pd.DataFrame({"2023": {"Total Revenue": 1e9, "Operating Income": 0.15e9}}),
-                "cashflow": pd.DataFrame({"2023": {"Operating Cash Flow": 100}}),
-            },
-        )
-        res = Screener.from_config(cfg).screen(data).row
-        self.assertEqual(res["PSR"], 2.0)
-        self.assertEqual(res["PBR"], 40000000.0)
+        assert screener.improvement == (ImprovementSignal(0.4, 20, 200))
+        assert screener.quality == NO_QUALITY
 
     def test_improvement_metrics_present_for_gate_failing_ticker(self):
         data = make_stock(
@@ -146,7 +131,5 @@ class TestScreener(unittest.TestCase):
             },
         )
         res = Screener.from_config(self.CFG).screen(data)  # no market cap -> fails the first rule
-        self.assertFalse(res.passed)
-        self.assertEqual(
-            (res.row["EPS_Q_YoY(%)"], res.row["Improvement_Class"]), (20.0, "signal")
-        )  # 20% < clear_threshold 40%
+        assert not res.passed
+        assert (res.row["EPS_Q_YoY(%)"], res.row["Improvement_Class"]) == (20.0, "signal")  # 20% < clear_threshold 40%

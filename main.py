@@ -1,7 +1,9 @@
 import argparse
 import datetime
 import os
+import subprocess
 import sys
+from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -17,11 +19,13 @@ from src.config import CONFIG_FILE, ROOT, load_config
 from src.docstore import DocStore
 from src.earnings_calendar import load_calendar, update_calendar_csv
 from src.edinet import EdinetClient, fetch_annual_report, update_index
-from src.llm import GeminiSearch, LLMClient, LLMError, Provider, QuotaExceeded, RateLimiter
-from src.records import NO_CACHE, RecordStore, evaluate, git_sha, latest_issue
-from src.report import prioritize, write_report
+from src.llm import GeminiSearch, LLMClient, LLMError, Provider, QuotaExceeded
+from src.records import NO_CACHE, RecordStore, evaluate
+from src.report import write_report
 from src.screener import Screener, ScreenResult
-from src.tickers import TICKER_SUFFIX, update_ticker_csv
+from src.selection import prioritize
+from src.throttle import RateLimiter
+from src.tickers import TICKER_SUFFIX, read_tickers, update_ticker_csv
 from src.webfetch import fetch_document
 from src.yahoo import YahooClient
 
@@ -29,13 +33,13 @@ SECONDS_PER_MINUTE = 60
 
 
 def get_japan_tickers(cfg: dict[str, Any]) -> list[str]:
-    """Tickers (code + suffix) from the ``code`` column of ``system.input_csv``; exits with status 1 if missing."""
+    """Tickers of ``system.input_csv``; exits with status 1 if the file is missing."""
     csv_path = ROOT / cfg["system"]["input_csv"]
     if not csv_path.exists():
         print(f"Error: ticker CSV not found: {csv_path} (run `tickers`)")
         sys.exit(1)
     print(f"Reading tickers from {csv_path}...")
-    return [code.strip() + TICKER_SUFFIX for code in pd.read_csv(csv_path, dtype=str)["code"]]
+    return read_tickers(csv_path)
 
 
 def run_fetch(cfg: dict[str, Any], tickers: list[str], cache: StockCache, client: YahooClient):
@@ -192,6 +196,24 @@ def run_llm_check(cfg: dict[str, Any]):
         key = os.environ.get(search["key_env"], "")
         answer = GeminiSearch(search["base_url"], search["model"], key, http).search(llm["check"]["search_prompt"])
         print(f"search: answer {len(answer.text)} chars, {len(answer.sources)} sources, {len(answer.queries)} queries")
+
+
+def latest_issue(today: datetime.date, months: Sequence[int], release_day: int) -> str:
+    """Latest Shikiho issue (``YYYY-MM``) out by ``today``; an issue is out on ``release_day`` of its month."""
+    released = [
+        (year, month)
+        for year in (today.year - 1, today.year)
+        for month in months
+        if datetime.date(year, month, release_day) <= today
+    ]
+    return "{}-{:02d}".format(*max(released))
+
+
+def git_sha() -> str | None:
+    try:
+        return subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
 
 
 def default_issue(cfg: dict[str, Any]) -> str:

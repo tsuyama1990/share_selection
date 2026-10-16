@@ -1,6 +1,6 @@
 """Pure, config-free helpers for reading yfinance data."""
 
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 import pandas as pd
@@ -41,6 +41,12 @@ def latest_valid_period(df: pd.DataFrame, keys: tuple[str, ...]) -> int | None:
         if all(to_num(df[df.columns[i]].get(key)) is not None for key in keys):
             return i
     return None
+
+
+def latest_values(df: pd.DataFrame, keys: tuple[str, ...]) -> tuple[float, ...] | None:
+    """Values of ``keys`` at the latest period where all have values, or None."""
+    i = latest_valid_period(df, keys)
+    return None if i is None else cast(tuple[float, ...], tuple(to_num(df.loc[key].iloc[i]) for key in keys))
 
 
 def sales_cagr(financials: pd.DataFrame, years_back: int, min_years: int) -> tuple[float | None, int | None]:

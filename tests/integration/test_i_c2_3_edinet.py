@@ -7,7 +7,7 @@ import pytest
 
 from src.docstore import DocStore
 from src.edinet import EdinetClient, fetch_annual_report, update_index
-from src.llm import RateLimiter
+from src.throttle import RateLimiter
 from tests.fixtures.edinet import csv_zip, listing, listing_doc
 
 KEY = "SECRET-KEY"

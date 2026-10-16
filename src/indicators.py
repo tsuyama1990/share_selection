@@ -9,7 +9,7 @@ from .metrics import (
     DEBT_KEYS,
     EQUITY_KEYS,
     first_valid,
-    latest_valid_period,
+    latest_values,
     sales_cagr,
     to_num,
 )
@@ -59,9 +59,8 @@ class NetCash:
         debt = first_valid(latest_bs, DEBT_KEYS) or 0.0
         net_cash = cash - debt
         out = {F.NET_CASH: round(net_cash / 1e9, 2)}
-        fin = data.financials
-        i = latest_valid_period(fin, ("Total Revenue",))
-        sales = None if i is None else to_num(fin.loc["Total Revenue"].iloc[i])
+        found = latest_values(data.financials, ("Total Revenue",))
+        sales = None if found is None else found[0]
         mcap = metrics.get(F.MARKET_CAP)
         if sales is not None and sales > 0 and mcap is not None:
             out[F.REAL_PSR] = round((mcap - net_cash) / sales, 2)

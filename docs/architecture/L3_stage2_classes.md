@@ -8,7 +8,7 @@
 
 - 外部とやりとりする部分（HTTP、DB、ファイル）と、純粋な処理（解析・抽出・照合・集計・整形）を分ける。純粋な処理は単体テスト、つなぎは L2 の結合テストで確かめる。
 - 組み立ては既存と同じく `main.py`（`run_review`）が行う。設定値は引数で渡し、`src/` は設定を読まない（`tests/unit/test_architecture.py`）。
-- 抽象化は 2 つ目の実例が出るまで作らない。HTTP の間隔の制御は `llm.RateLimiter`（`max_calls=1`、`window_s=間隔`）を使い回す（2 つ目の利用者になるので、ここで初めて共有する）。
+- 抽象化は 2 つ目の実例が出るまで作らない。HTTP の間隔の制御は `throttle.RateLimiter`（`max_calls=1`、`window_s=間隔`）を EDINET・Web・LLM で共有する（2026-10-16 に `llm.py` から移した）。
 - 新しい依存は `pypdf`（PDF の本文抽出）の 1 つだけ。HTML は標準ライブラリの `html.parser` で抜く（L2 C2 §8 の先送りをここで決定）。
 
 ## 2. モジュールと公開する名前

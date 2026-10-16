@@ -12,7 +12,7 @@ from .metrics import (
     OCF_KEYS,
     avg_turnover,
     first_valid,
-    latest_valid_period,
+    latest_values,
     to_num,
 )
 from .stock_data import StockData
@@ -34,13 +34,7 @@ class Rule(Protocol):
     def evaluate(self, data: StockData, metrics: dict[str, Any]) -> RuleResult: ...
 
 
-def _sales_and_income(data: StockData):
-    """(sales, operating income) of the latest valid period, or None."""
-    fin = data.financials
-    i = latest_valid_period(fin, ("Total Revenue", "Operating Income"))
-    if i is None:
-        return None
-    return to_num(fin.loc["Total Revenue"].iloc[i]), to_num(fin.loc["Operating Income"].iloc[i])
+SALES_AND_INCOME_KEYS = ("Total Revenue", "Operating Income")
 
 
 @dataclass
@@ -96,7 +90,7 @@ class OperatingMarginRule:
     min_margin: float
 
     def evaluate(self, data: StockData, metrics: dict[str, Any]) -> RuleResult:
-        found = _sales_and_income(data)
+        found = latest_values(data.financials, SALES_AND_INCOME_KEYS)
         if found is None or found[0] <= 0:
             return _FAIL
         margin = found[1] / found[0]
@@ -110,7 +104,7 @@ class PsrRule:
     cap: float
 
     def evaluate(self, data: StockData, metrics: dict[str, Any]) -> RuleResult:
-        found = _sales_and_income(data)
+        found = latest_values(data.financials, SALES_AND_INCOME_KEYS)
         mcap = metrics.get(F.MARKET_CAP)
         if found is None or found[0] <= 0 or mcap is None:
             return _FAIL

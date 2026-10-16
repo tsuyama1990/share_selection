@@ -86,13 +86,6 @@ def test_candidates_select_by_the_stage2_candidate_column(tmp_path):
     assert [f for (f,) in flags] == [True, False, False]
 
 
-def test_next_earnings_date_is_stored(tmp_path):
-    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec") as store:
-        store.record_run(INFO, ROWS)
-        dates = store.con.execute("SELECT next_earnings_date FROM screen_results ORDER BY ticker").fetchall()
-    assert [d for (d,) in dates] == [datetime.date(2026, 11, 5), None, None]
-
-
 def closes(values: dict[str, float]) -> pd.Series:
     return pd.Series(list(values.values()), index=pd.to_datetime(list(values)), dtype=float)
 

@@ -165,18 +165,20 @@ The same checks run in CI (`.github/workflows/ci.yml`) and, except pytest, in pr
 *   `main.py`: CLI entry point (`tickers` / `fetch` / `analyze` / `evaluate` / `calendar` / `docs`).
 *   `src/stock_data.py`: `StockData`, the typed raw data of one ticker (normalizes histories to naive market-local dates).
 *   `src/fields.py`: The stage-1 result vocabulary (row keys, improvement classes and sources, `ma` / `downside_to_low`); no other module repeats these strings (architecture test).
-*   `src/metrics.py`: Pure helpers (`to_num`, `sales_cagr`, `avg_turnover`, ...).
+*   `src/metrics.py`: Pure helpers (`to_num`, `latest_values`, `sales_cagr`, `avg_turnover`, ...).
 *   `src/rules.py`: Gatekeeper rules (one dataclass each) and `build_rules`.
 *   `src/indicators.py`: Metric providers (one class each) and `build_indicators`.
 *   `src/screener.py`: `Screener` runs rules then indicators and builds the result row.
 *   `src/cache.py`: `StockCache` (DuckDB) and `refresh` (download if stale).
 *   `src/yahoo.py`: `YahooClient` downloads raw data from Yahoo Finance.
-*   `src/records.py`: `RecordStore` (runs, screen_results, outcomes in `records.duckdb`, exported to Parquet) and `evaluate`.
+*   `src/records.py`: `RecordStore` (runs, screen_results, outcomes in `records.duckdb`, exported to Parquet) and `evaluate`; run metadata (`latest_issue`, `git_sha`) is gathered in `main.py`.
 *   `src/edinet.py`: `EdinetClient` (EDINET API v2), the filing index update and `fetch_annual_report` (text sections of the latest annual securities report).
 *   `src/webfetch.py`: `fetch_document` (a cited URL -> redirects followed, size limit, HTML/PDF text -> document store), `extract_text`, `web_doc_id`.
 *   `src/docstore.py`: `DocStore` (`documents.duckdb`: documents, EDINET index, fetch errors); a stored text is never rewritten.
-*   `src/tickers.py`: Builds the ticker CSV from the JPX listed company workbook.
-*   `src/report.py`: `write_report` writes the dated CSV (location and columns passed in from `output`), `prioritize` adds `Priority_Rank` / `Stage2_Candidate`, and the candidates are printed.
+*   `src/tickers.py`: Builds the ticker CSV from the JPX listed company workbook (`update_ticker_csv`) and reads it (`read_tickers`).
+*   `src/selection.py`: `prioritize` adds `Priority_Rank` / `Stage2_Candidate` (class, then improvement yield, then Real_PSR).
+*   `src/throttle.py`: `RateLimiter` (sliding window) shared by the EDINET, web and LLM clients.
+*   `src/report.py`: `write_report` writes the dated CSV (location and columns passed in from `output`) and prints the candidates.
 *   `src/config.py`: `load_config(path)` reads a config file (default `config.yaml`; `main.py --config` overrides). Only `config.py` and `main.py` touch it; everything else receives values through `build_*` / `from_config` / dataclass fields.
 
 ## Design documents (`docs/`, Japanese)
@@ -186,10 +188,9 @@ The same checks run in CI (`.github/workflows/ci.yml`) and, except pytest, in pr
 *   `selection_flow.md`: target selection flow (downside safety -> signs of improvement -> catalyst within 6-12 months); open decisions.
 *   `selection_tuning.md`: 2026-10-14 tuning of the gate (op margin 5%, PSR 1.2), improvement rule (quarterly-first, 40%), stage-2 ranking by improvement yield, review fixes, with the data behind each decision.
 *   `record_design.md`: stage 7 records (runs, screen_results, outcomes, reviews) derived from the verification questions.
-*   `stage2_automation_design.md`: decisions for automating the second stage (LLM research, web search, fallback, sector policy).
 *   `architecture/process.md`: the gated modified-waterfall process (design -> tests -> implementation -> bonsai, each with a blocking gate).
 *   `architecture/L1_architecture.md`: requirements, components C1-C8, data contracts, E2E plan (checked by `tests/unit/test_design_docs.py`).
 *   `architecture/L2_C2_data_acquisition.md`, `architecture/L2_C4_stage2_research.md`: detailed designs and integration test plans.
-*   `entry_types_design.md`: entry types A-G (to be reorganized under `selection_flow.md` stage 3).
+*   `entry_types_design.md`: reference definitions of entry types A-G (input for the stage 3 design in `selection_flow.md`).
 
 Claims in these documents carry source labels ([原著]/[一次]/[報道]/[データ]/[推論]); numbers are recomputed before each commit.

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from . import fields as F
-from .metrics import latest_valid_period, to_num
+from .metrics import latest_values, to_num
 from .stock_data import StockData
 
 
@@ -29,5 +29,5 @@ class EpsQualityFlags:
 
     @staticmethod
     def _annual_eps(data: StockData) -> float | None:
-        i = latest_valid_period(data.financials, ("Diluted EPS",))
-        return None if i is None else to_num(data.financials.loc["Diluted EPS"].iloc[i])
+        found = latest_values(data.financials, ("Diluted EPS",))
+        return None if found is None else found[0]
