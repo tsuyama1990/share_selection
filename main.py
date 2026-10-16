@@ -25,7 +25,7 @@ from src.report import write_report
 from src.screener import Screener, ScreenResult
 from src.selection import prioritize
 from src.throttle import RateLimiter
-from src.tickers import TICKER_SUFFIX, update_ticker_csv
+from src.tickers import TICKER_SUFFIX, read_tickers, update_ticker_csv
 from src.webfetch import fetch_document
 from src.yahoo import YahooClient
 
@@ -33,13 +33,13 @@ SECONDS_PER_MINUTE = 60
 
 
 def get_japan_tickers(cfg: dict[str, Any]) -> list[str]:
-    """Tickers (code + suffix) from the ``code`` column of ``system.input_csv``; exits with status 1 if missing."""
+    """Tickers of ``system.input_csv``; exits with status 1 if the file is missing."""
     csv_path = ROOT / cfg["system"]["input_csv"]
     if not csv_path.exists():
         print(f"Error: ticker CSV not found: {csv_path} (run `tickers`)")
         sys.exit(1)
     print(f"Reading tickers from {csv_path}...")
-    return [code.strip() + TICKER_SUFFIX for code in pd.read_csv(csv_path, dtype=str)["code"]]
+    return read_tickers(csv_path)
 
 
 def run_fetch(cfg: dict[str, Any], tickers: list[str], cache: StockCache, client: YahooClient):
