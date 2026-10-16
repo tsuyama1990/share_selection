@@ -1,8 +1,20 @@
 import pandas as pd
 
-from src.cache import StockCache
+from src.cache import StockCache, refresh
 
 TZ = "Asia/Tokyo"
+
+
+class FakeClient:
+    def download(self, ticker):
+        return {
+            "info": {"longName": "Foo"},
+            "fast_info": {"market_cap": 5.0},
+            "financials": pd.DataFrame({"2023": {"Total Revenue": 10.0}}),
+            "history": pd.DataFrame(
+                {"Close": [1.0, 2.0]}, index=pd.to_datetime(["2024-01-01", "2024-01-02"]).tz_localize(TZ)
+            ),
+        }
 
 
 def quarterly_frame() -> pd.DataFrame:
@@ -42,3 +54,32 @@ def test_corrupt_entry_reads_as_missing(tmp_path):
         cache.put("1.T", {})
         cache.con.execute("UPDATE stock_cache SET financials = '\"not a frame\"' WHERE ticker = '1.T'")
         assert cache.get("1.T") is None
+
+
+def test_put_get_roundtrip(tmp_path):
+    with StockCache(str(tmp_path / "c.duckdb"), TZ) as cache:
+        assert cache.get("1234.T") is None
+        assert not cache.is_fresh("1234.T", 3)
+        assert refresh(cache, FakeClient(), "1234.T", 3) is None
+        assert cache.is_fresh("1234.T", 3)
+        data = cache.get("1234.T")
+    assert data.info["longName"] == "Foo"
+    assert data.fast_info["market_cap"] == 5.0
+    assert data.financials.loc["Total Revenue"].iloc[0] == 10.0
+    assert list(data.history["Close"]) == [1.0, 2.0]
+    assert data.history.index.tz is None
+    assert data.balance_sheet.empty
+
+
+def test_history_dates_roundtrip_in_market_timezone(tmp_path):
+    monthly = pd.DataFrame(
+        {"Low": [1.0, 2.0, 3.0]}, index=pd.DatetimeIndex(["2008-09-01", "2008-10-01", "2008-11-01"], tz=TZ)
+    )
+    daily = pd.DataFrame({"Close": [1.0, 2.0]}, index=pd.DatetimeIndex(["2024-01-04", "2024-01-05"], tz=TZ))
+    with StockCache(str(tmp_path / "c.duckdb"), TZ) as cache:
+        cache.put("1234.T", {"history": daily, "history_monthly": monthly})
+        data = cache.get("1234.T")
+    assert data.history_monthly.index.tz is None
+    assert list(data.history_monthly.index) == list(monthly.index.tz_localize(None))
+    assert list(data.history.index) == list(daily.index.tz_localize(None))
+    assert data.history_monthly.loc["2008-10-01", "Low"] == 2.0
