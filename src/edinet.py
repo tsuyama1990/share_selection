@@ -12,7 +12,7 @@ from typing import Any
 import httpx
 
 from src.docstore import DocStore, Document
-from src.llm import RateLimiter
+from src.throttle import RateLimiter
 from src.tickers import TICKER_SUFFIX
 
 BODY_CSV = "XBRL_TO_CSV/jpcrp*asr*.csv"

@@ -5,7 +5,8 @@ import httpx
 import pytest
 
 import main
-from src.llm import GeminiSearch, LLMClient, LLMError, Provider, RateLimiter
+from src.llm import GeminiSearch, LLMClient, LLMError, Provider
+from src.throttle import RateLimiter
 
 OK_BODY = {"choices": [{"message": {"content": "hello"}}]}
 MSGS = [{"role": "user", "content": "hi"}]
@@ -88,20 +89,6 @@ def test_request_body_and_json_option():
     assert as_json["response_format"] == {"type": "json_object"}
     assert calls[0].headers["authorization"] == "Bearer SECRET"
     assert str(calls[0].url) == "https://a.test/v1/chat/completions"
-
-
-def test_rate_limiter_sleeps_when_window_is_full():
-    now = [0.0]
-    slept: list[float] = []
-    limiter = RateLimiter(2, 60, clock=lambda: now[0], sleep=slept.append)
-    limiter.acquire()
-    now[0] = 10
-    limiter.acquire()
-    limiter.acquire()
-    assert slept == [50]
-    now[0] = 200
-    limiter.acquire()
-    assert slept == [50]
 
 
 SEARCH_BODY = {

@@ -17,10 +17,11 @@ from src.config import CONFIG_FILE, ROOT, load_config
 from src.docstore import DocStore
 from src.earnings_calendar import load_calendar, update_calendar_csv
 from src.edinet import EdinetClient, fetch_annual_report, update_index
-from src.llm import GeminiSearch, LLMClient, LLMError, Provider, QuotaExceeded, RateLimiter
+from src.llm import GeminiSearch, LLMClient, LLMError, Provider, QuotaExceeded
 from src.records import NO_CACHE, RecordStore, evaluate, git_sha, latest_issue
 from src.report import prioritize, write_report
 from src.screener import Screener, ScreenResult
+from src.throttle import RateLimiter
 from src.tickers import TICKER_SUFFIX, update_ticker_csv
 from src.webfetch import fetch_document
 from src.yahoo import YahooClient
