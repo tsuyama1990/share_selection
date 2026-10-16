@@ -1,7 +1,9 @@
 import argparse
 import datetime
 import os
+import subprocess
 import sys
+from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -18,7 +20,7 @@ from src.docstore import DocStore
 from src.earnings_calendar import load_calendar, update_calendar_csv
 from src.edinet import EdinetClient, fetch_annual_report, update_index
 from src.llm import GeminiSearch, LLMClient, LLMError, Provider, QuotaExceeded
-from src.records import NO_CACHE, RecordStore, evaluate, git_sha, latest_issue
+from src.records import NO_CACHE, RecordStore, evaluate
 from src.report import write_report
 from src.screener import Screener, ScreenResult
 from src.selection import prioritize
@@ -194,6 +196,24 @@ def run_llm_check(cfg: dict[str, Any]):
         key = os.environ.get(search["key_env"], "")
         answer = GeminiSearch(search["base_url"], search["model"], key, http).search(llm["check"]["search_prompt"])
         print(f"search: answer {len(answer.text)} chars, {len(answer.sources)} sources, {len(answer.queries)} queries")
+
+
+def latest_issue(today: datetime.date, months: Sequence[int], release_day: int) -> str:
+    """Latest Shikiho issue (``YYYY-MM``) out by ``today``; an issue is out on ``release_day`` of its month."""
+    released = [
+        (year, month)
+        for year in (today.year - 1, today.year)
+        for month in months
+        if datetime.date(year, month, release_day) <= today
+    ]
+    return "{}-{:02d}".format(*max(released))
+
+
+def git_sha() -> str | None:
+    try:
+        return subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
 
 
 def default_issue(cfg: dict[str, Any]) -> str:
