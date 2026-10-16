@@ -1,6 +1,6 @@
 import unittest
 
-from src.report import prioritize
+from src.selection import prioritize
 
 
 def row(ticker, cls, yld=None, psr=1.0, flags=""):
