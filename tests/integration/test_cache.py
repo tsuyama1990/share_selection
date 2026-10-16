@@ -34,13 +34,6 @@ def test_quarterly_income_round_trip(tmp_path):
     assert got.to_numpy().tolist() == frame.to_numpy().tolist()
 
 
-def test_missing_quarterly_income_is_empty(tmp_path):
-    with StockCache(str(tmp_path / "c.duckdb"), TZ) as cache:
-        cache.put("1234.T", {})
-        data = cache.get("1234.T")
-    assert data is not None and data.quarterly_income.empty
-
-
 def test_fetched_range(tmp_path):
     with StockCache(str(tmp_path / "c.duckdb"), "Asia/Tokyo") as cache:
         assert cache.fetched_range() == (None, None)

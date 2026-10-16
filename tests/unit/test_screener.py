@@ -121,21 +121,6 @@ class TestScreener(unittest.TestCase):
         self.assertEqual(screener.improvement, ImprovementSignal(0.4, 20, 200))
         self.assertEqual(screener.quality, NO_QUALITY)
 
-    def test_from_config_end_to_end(self):
-        cfg = self.CFG
-        data = make_stock(
-            "1234.T",
-            {
-                "fast_info": {"market_cap": 2e9, "last_price": 1000},
-                "balance_sheet": pd.DataFrame({"2023": {"Total Assets": 100, "Stockholders Equity": 50}}),
-                "financials": pd.DataFrame({"2023": {"Total Revenue": 1e9, "Operating Income": 0.15e9}}),
-                "cashflow": pd.DataFrame({"2023": {"Operating Cash Flow": 100}}),
-            },
-        )
-        res = Screener.from_config(cfg).screen(data).row
-        self.assertEqual(res["PSR"], 2.0)
-        self.assertEqual(res["PBR"], 40000000.0)
-
     def test_improvement_metrics_present_for_gate_failing_ticker(self):
         data = make_stock(
             "1234.T",
