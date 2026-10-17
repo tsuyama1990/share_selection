@@ -9,11 +9,12 @@ import httpx
 from pypdf import PdfReader
 from pypdf.errors import PyPdfError
 
-from src.docstore import DocStore, Document
+from src.docstore import Company, DocStore, Document
 
 SKIPPED_TAGS = {"script", "style", "noscript", "nav", "header", "footer"}
 SNIFF_BYTES = 2048
 DEFAULT_CHARSET = "utf-8"
+NOT_ABOUT_COMPANY = "not about the company"
 CHARSET = re.compile(rb"charset\s*=\s*[\"']?([\w-]+)", re.IGNORECASE)
 
 
@@ -76,8 +77,11 @@ def _download(url: str, http: httpx.Client, max_bytes: int) -> tuple[str, str, b
         return str(resp.url), resp.headers.get("content-type", ""), bytes(body)
 
 
-def fetch_document(url: str, ticker: str, http: httpx.Client, store: DocStore, max_bytes: int) -> str | None:
-    """Store the page behind ``url`` (first fetch of a final URL wins); a failure is recorded and gives None."""
+def fetch_document(url: str, company: Company, http: httpx.Client, store: DocStore, max_bytes: int) -> str | None:
+    """Store the page behind ``url`` (first fetch of a final URL wins).
+
+    A failure, or a page that does not name the company, is recorded and gives None.
+    """
     try:
         final_url, content_type, body = _download(url, http, max_bytes)
         doc_id = web_doc_id(final_url)
@@ -87,7 +91,10 @@ def fetch_document(url: str, ticker: str, http: httpx.Client, store: DocStore, m
         if not text:
             raise ValueError("empty text")
     except (httpx.HTTPError, ValueError, LookupError, PyPdfError) as e:
-        store.record_error(ticker, "web", url, str(e) if isinstance(e, ValueError) else type(e).__name__)
+        store.record_error(company.ticker, "web", url, str(e) if isinstance(e, ValueError) else type(e).__name__)
         return None
-    store.put(Document(doc_id, ticker, "web", final_url, title, datetime.datetime.now(), text))
+    if not company.mentioned_in(title + text):
+        store.record_error(company.ticker, "web", url, NOT_ABOUT_COMPANY)
+        return None
+    store.put(Document(doc_id, company.ticker, "web", final_url, title, datetime.datetime.now(), text))
     return doc_id

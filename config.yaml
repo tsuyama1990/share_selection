@@ -173,6 +173,7 @@ edinet:
     - BusinessPolicyBusinessEnvironmentIssuesToAddressEtcTextBlock
     - BusinessRisksTextBlock
     - NotesSegmentInformationEtcConsolidatedFinancialStatementsTextBlock
+    - ManagementAnalysisOfFinancialPositionOperatingResultsAndCashFlowsTextBlock  # MD&A: where the company explains the profit change
   request_interval_s: 0.5        # Minimum time between requests (seconds)
   timeout_s: 60                  # Per-request timeout (seconds)
 

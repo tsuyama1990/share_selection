@@ -62,11 +62,11 @@ class CollectClients:           # from_config(cfg, env, stack)：HTTP クライ�
     edinet: EdinetClient; search: GeminiSearch | None; web_http: httpx.Client
     search_limiter: RateLimiter; fetch_limiter: RateLimiter
 
-def collect_documents(candidates, settings, clients, store, today) -> CollectSummary
+def collect_documents(companies: list[Company], settings, clients, store, today) -> CollectSummary
 ```
 
-- 候補は `RecordStore.candidates` の (ticker, 指標)。検索は `docs.search` が真で `clients.search` が与えられたときだけ（偽なら `clients.search` は None）。
-- Web 文書がまだ無い候補だけを `Priority_Rank` の良い順に検索する。`QuotaExceeded` で止め、残りの数を返す。
+- `companies` は優先順（良い順）に並べて渡す（`docs` は `Priority_Rank` 順、`review-eval` は評価の銘柄の順）。名前は日本語（`japan_tickers.csv` の `name`、無ければ指標の `Name`。評価は `EvalCase.name`）で、検索の指示の `{name}` に入れ、Web 文書の会社名の照合にも使う。検索は `docs.search` が真で `clients.search` が与えられたときだけ（偽なら `clients.search` は None）。
+- Web 文書がまだ無い会社だけを、渡された順に検索する。`QuotaExceeded` で止め、残りの数を返す。
 
 ### 5.2 `review.py`
 

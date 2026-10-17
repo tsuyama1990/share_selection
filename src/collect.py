@@ -9,8 +9,7 @@ from typing import Any
 import httpx
 from tqdm import tqdm
 
-from . import fields as F
-from .docstore import DocStore
+from .docstore import Company, DocStore
 from .edinet import EdinetClient, fetch_annual_report, update_index
 from .llm import GeminiSearch, LLMError, QuotaExceeded
 from .throttle import RateLimiter
@@ -74,45 +73,45 @@ class CollectClients:
 
 
 def collect_documents(
-    candidates: list[tuple[str, dict]],
+    companies: list[Company],
     settings: CollectSettings,
     clients: CollectClients,
     store: DocStore,
     today: datetime.date,
 ) -> CollectSummary:
-    """EDINET sections of every candidate; then, if searching, web sources of the candidates without web documents.
+    """EDINET sections of every company; then, if searching, web sources of the companies without web documents.
 
-    Searches go in ``Priority_Rank`` order and stop at the search quota.
+    ``companies`` come best first; searches go in that order and stop at the search quota.
     """
     update_index(clients.edinet, store, today, settings.index_days)
     stored = [
-        fetch_annual_report(clients.edinet, store, t, settings.doc_type_code, settings.sections)
-        for t, _ in tqdm(candidates)
+        fetch_annual_report(clients.edinet, store, c.ticker, settings.doc_type_code, settings.sections)
+        for c in tqdm(companies)
     ]
-    web_docs, searches_left = _collect_web(candidates, settings, clients, store)
+    web_docs, searches_left = _collect_web(companies, settings, clients, store)
     return CollectSummary(sum(map(len, stored)), sum(not ids for ids in stored), web_docs, searches_left)
 
 
 def _collect_web(
-    candidates: list[tuple[str, dict]], settings: CollectSettings, clients: CollectClients, store: DocStore
+    companies: list[Company], settings: CollectSettings, clients: CollectClients, store: DocStore
 ) -> tuple[int, int]:
     """(documents stored, candidates left unsearched)."""
     if clients.search is None:
         return 0, 0
-    pending = sorted((c for c in candidates if not store.has_source(c[0], "web")), key=lambda c: c[1][F.PRIORITY_RANK])
+    pending = [c for c in companies if not store.has_source(c.ticker, "web")]
     stored = 0
-    for done, (ticker, metrics) in enumerate(tqdm(pending)):
+    for done, company in enumerate(tqdm(pending)):
         clients.search_limiter.acquire()
-        prompt = settings.search_prompt.format(name=metrics[F.NAME], code=ticker.removesuffix(TICKER_SUFFIX))
+        prompt = settings.search_prompt.format(name=company.name, code=company.ticker.removesuffix(TICKER_SUFFIX))
         try:
             answer = clients.search.search(prompt)
         except QuotaExceeded as e:
-            store.record_error(ticker, "web", "search", str(e))
+            store.record_error(company.ticker, "web", "search", str(e))
             return stored, len(pending) - done
         except LLMError as e:
-            store.record_error(ticker, "web", "search", str(e))
+            store.record_error(company.ticker, "web", "search", str(e))
             continue
         for _, uri in answer.sources[: settings.max_sources]:
             clients.fetch_limiter.acquire()
-            stored += fetch_document(uri, ticker, clients.web_http, store, settings.max_bytes) is not None
+            stored += fetch_document(uri, company, clients.web_http, store, settings.max_bytes) is not None
     return stored, 0

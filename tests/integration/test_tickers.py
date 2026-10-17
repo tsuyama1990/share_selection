@@ -5,13 +5,19 @@ import httpx
 import pandas as pd
 import pytest
 
-from src.tickers import read_tickers, update_ticker_csv
+from src.tickers import read_names, read_tickers, update_ticker_csv
 
 
 def test_read_tickers_appends_suffix_and_keeps_alphanumeric_codes(tmp_path):
     csv = tmp_path / "t.csv"
     csv.write_text("code,name\n1301 ,A\n130A,B\n", encoding="utf-8")
     assert read_tickers(csv) == ["1301.T", "130A.T"]
+
+
+def test_read_names_maps_tickers_to_japanese_names(tmp_path):
+    csv = tmp_path / "t.csv"
+    csv.write_text("code,name\n1301 ,極洋\n130A,ベリタス\n", encoding="utf-8")
+    assert read_names(csv) == {"1301.T": "極洋", "130A.T": "ベリタス"}
 
 
 def _workbook() -> bytes:

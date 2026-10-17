@@ -17,7 +17,7 @@
 
 | モジュール | 公開する名前 | 責務 | 状態 |
 |---|---|---|---|
-| `docstore.py` | `Document`、`DocStore`、`DocumentRewriteError` | 文書・EDINET の索引・取得の失敗の保存と検索。同じ doc_id への別の本文の保存を拒む | ✅ |
+| `docstore.py` | `Company`、`Document`、`DocStore`、`DocumentRewriteError` | 文書・EDINET の索引・取得の失敗の保存と検索。同じ doc_id への別の本文の保存を拒む | ✅ |
 | `edinet.py` | `EdinetClient`、`parse_index`、`extract_sections`、`sec_code`、`update_index`、`fetch_annual_report` | EDINET API v2 の呼び出し、書類一覧の解析、ZIP の本文 CSV からの節の抽出、索引の差分更新、最新の有価証券報告書の保存 | ✅ |
 | `webfetch.py` | `extract_text`、`web_doc_id`、`fetch_document` | URL の取得（リダイレクト追従・サイズ上限）、HTML・PDF の本文抽出、保存 | ✅ |
 | `verify.py` | `normalize`、`check_claims` | 引用の照合と照合率、支えのない項目の unknown への置き換え | ✅ |
@@ -32,6 +32,11 @@
 ### 3.1 `docstore.py`
 
 ```python
+@dataclass(frozen=True)
+class Company:                         # 会社名の照合（L2 C2 2.2 節）
+    ticker: str; name: str             # name は銘柄一覧の日本語名
+    def mentioned_in(self, text: str) -> bool   # verify.normalize した text に、正規化した name か証券コード（ticker から tickers.TICKER_SUFFIX を除く）が含まれる
+
 @dataclass(frozen=True)
 class Document:
     doc_id: str; ticker: str; source: str  # "edinet" | "web"
@@ -70,7 +75,7 @@ def fetch_annual_report(client, store, ticker: str, doc_type_code: str, elements
 - `update_index`：`store.index_last_date()` の翌日（無ければ `today - index_days`）から `today` まで 1 日ずつ。
 - `parse_index` は `edinet_index` の列名の辞書を返す。secCode のある書類はすべて索引に入れる（種類で絞らない）。
 - `update_index` は失敗した日で走査を止め、失敗を記録する（次回は最後に索引に入った提出日の翌日から。抜けを作らない）。
-- `fetch_annual_report`：索引から最新の docID。既に `edinet:{docID}:*` があれば取り直さない。失敗（HTTP、ZIP 不正、節が無い）は `record_error` して空のリストを返す。
+- `fetch_annual_report`：索引から最新の docID。設定の節の**すべて**が保存済みのときだけ取り直さない。足りなければ取得して節を `put`（同じ本文は何もしない）。失敗（HTTP、ZIP 不正、設定の節が 1 つも無い）は `record_error` して空のリストを返す。
 - 英字を含む証券コード（`130A` など、銘柄一覧に 181 件 [データ：2026-10-14 `japan_tickers.csv`]）の secCode も「コード＋0」（例 `250A0`）と確認した [データ：2026-10-15 EDINET 書類一覧 2026-06-25 提出分]。
 
 ### 3.3 `webfetch.py`
@@ -78,8 +83,8 @@ def fetch_annual_report(client, store, ticker: str, doc_type_code: str, elements
 ```python
 def web_doc_id(final_url: str) -> str                 # "web:" + 正規化した URL の sha256 の先頭 16 桁
 def extract_text(body: bytes, content_type: str) -> tuple[str, str]   # (title, text)。HTML は script・style・nav・header・footer を除く。PDF は pypdf
-def fetch_document(url: str, ticker: str, http: httpx.Client, store: DocStore,
-                   max_bytes: int) -> str | None  # doc_id。失敗は record_error して None。取得間隔は呼び出し側の RateLimiter が守る（引数 6 個は ruff PLR0913 に触れるため limiter を外した）
+def fetch_document(url: str, company: Company, http: httpx.Client, store: DocStore,
+                   max_bytes: int) -> str | None  # doc_id。失敗、または title + 本文が company.mentioned_in を満たさない（"not about the company"）ときは record_error して None（保存しない）。取得間隔は呼び出し側の RateLimiter が守る（引数 6 個は ruff PLR0913 に触れるため limiter を外した）
 ```
 
 正規化：スキームとホストを小文字、フラグメントを除く。上限を超える応答は読み切らずに失敗とする。
@@ -147,6 +152,7 @@ def render_memo(ticker: str, name: str, review: dict, sector_comparison: dict, s
 | ID | 対象 | 確かめること |
 |---|---|---|
 | U-docstore-1 | `Document` | 不変（frozen） |
+| U-docstore-2 | `Company`、`mentioned_in` | 日本語名または証券コードを含むと真、含まないと偽。全角・半角・空白の違いを無視。英字を含むコード（`130A`） |
 | U-edinet-1 | `sec_code` | 数字のコード、英字を含むコード、`.T` の除去 |
 | U-edinet-2 | `parse_index` | 必要な列だけ、secCode の無い書類を除く |
 | U-edinet-3 | `extract_sections` | UTF-16 タブ区切りの本文 CSV から指定の要素だけ、タグの除去、要素が無いときは空の辞書 |
