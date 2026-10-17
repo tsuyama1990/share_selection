@@ -72,23 +72,25 @@ def collect_documents(companies: list[Company], settings, clients, store, today)
 
 ```python
 @dataclass(frozen=True)
-class ReviewSettings:           # from_config(cfg)：review の値（B。sector の値は C）
+class ReviewSettings:           # from_config(cfg)：review の値と memo.filename（C）
     max_tickers: int; min_verified_ratio: float; max_doc_chars: int
     prompt_version: str; task_fields: dict[str, list[str]]; context_metrics: list[str]
+    memo_filename: str
 
 @dataclass(frozen=True)
 class ReviewSummary:
-    reviewed: int; failed: int; needs_attention: int      # memo_paths は C
+    reviewed: int; failed: int; needs_attention: int      # メモの場所は main.py が memo.dir を表示する（memo_paths は作らない）
 
 @dataclass(frozen=True)
-class ReviewDeps:               # 引数を 5 個に収めるための束（llm・prompts・records・store）
+class ReviewDeps:               # 引数を 5 個に収めるための束
     llm: LLMClient; prompts: dict[str, str]; records: RecordStore; store: DocStore
+    peers: Peers | None; memo_dir: Path | None            # C。評価は両方 None
 
 def review_candidates(run_id, candidates, tickers, settings, deps) -> ReviewSummary
 ```
 
 - 対象：`tickers` が与えられればそれ（少数での確認用。`max_tickers` の対象外）、無ければ `candidates`（`RecordStore.candidates` の (ticker, 指標)。評価では正解の銘柄から作る）のうち `reviewed(run_id)` に無いものを `Priority_Rank` の順に `max_tickers` 件。
-- 1 銘柄：文書を `max_doc_chars` で切る → T1〜T4 → T5（T1〜T4 の照合済みの answer を文脈 `verified_answers` に。照合は `run_task` の中）→ `record_review`（B）→ `render_memo` を書き出す（C）。文脈は銘柄コード・名前と `review.context_metrics` の指標。銘柄の照合率はタスクごとの照合率の平均。`needs_attention` は成功した銘柄の照合率が `min_verified_ratio` 未満のとき。業種の比較（`sector.py`）と調査メモ（`memo.py`）はブランチ C で足す（B では `sector_comparison` は空、メモは出さない。`ReviewSettings` の sector の値と `sectors`・`memo_dir` の引数も C で足す）。失敗（文書が無い、全プロバイダーの失敗、JSON 不正）は status に残して次へ。
+- 1 銘柄：文書を `max_doc_chars` で切る → T1〜T4 → T5（T1〜T4 の照合済みの answer を文脈 `verified_answers` に。照合は `run_task` の中）→ `record_review`（B）→ `render_memo` を書き出す（C）。文脈は銘柄コード・名前と `review.context_metrics` の指標。銘柄の照合率はタスクごとの照合率の平均。`needs_attention` は成功した銘柄の照合率が `min_verified_ratio` 未満のとき。業種の比較（`sector.py`）と調査メモ（`memo.py`）はブランチ C で足す：`ReviewDeps` に `peers: Peers | None` と `memo_dir: Path | None` を足す。`main.py` が実行の全銘柄の指標（`records.run_metrics`）と銘柄一覧の業種（`tickers.read_column(csv, "sector33")`）から `Peers` を 1 回作る。評価（`review-eval`）は両方 None（同業比較なし、メモなし）。銘柄ごとに `compare` を `reviews.sector_comparison` に記録し、`render_memo` を書き出す。`tickers.read_names` は `read_column(csv, "name")` に置き換える。失敗（文書が無い、全プロバイダーの失敗、JSON 不正）は status に残して次へ。
 - **品質の関門**：`records.passed_eval(prompt_version, first_model)` が偽なら、評価以外の実行を拒む（`main.py` が「先に `review-eval` を」と表示して終了コード 1）。
 
 ### 5.3 `review_eval.py`（モデルの品質の関門）
@@ -182,7 +184,7 @@ def evaluate_model(cases, candidates, settings, deps, gate) -> list[EvalResult] 
 |---|---|---|---|
 | A ✅ | `refactor/composition` | 4 章の既存モジュールの変更（`RunInfo`、`screen_universe`、`from_config`、`require_key`、`refresh_all`、`write_failures`、`collect.py`、`main.py` の `COMMANDS`）。E7 の流れのテストを `collect_documents` の結合テストへ | 変えない（ゴールデンと実データの全件が一致） |
 | B ✅ | `feat/review-command` | `verify.py`、`research.py`（`run_task` まで）、`review.py`、`review_eval.py`、`prompts/`、`eval/stage2_cases.yaml`、`reviews`・`review_evals`、`review`・`review-eval` コマンド、プロバイダーの順番 | 新機能。ライブで評価を実行し、結果を報告して承認を受けてからマージ |
-| C | `feat/review-sector-memo` | `sector.py`、`memo.py` | 新機能 |
+| C ✅ | `feat/review-sector-memo` | `sector.py`、`memo.py` | 新機能 |
 
 各ブランチの後に bonsai。A の後、`main.py` は 150 行以下を目安にする [推論]。
 
@@ -216,3 +218,4 @@ def evaluate_model(cases, candidates, settings, deps, gate) -> list[EvalResult] 
 - 2026-10-17：評価の正解を `hypothesis_map.md` と照合し、一次情報で確かめていない 3 件（燦ホールディングス・東プレ・セントラル硝子）を外した。ダイコク電機は「減益」の語ではなく T5 の提案（落選・監視）で採点する。評価の銘柄の文書は `review-eval` が `collect_documents` で集める（`EvalCase.name` を追加）
 
 - 2026-10-17（ブランチ A の実装）：5.1 節の `collect_documents` の引数が 8 個で ruff の PLR0913（5 個まで）を超えるため、依存を `CollectClients`（edinet・search・web_http・二つのリミッター）にまとめ、`collect_documents(candidates, settings, clients, store, today)` にした。`CollectSettings.search` は `clients.search is None` と重複するので削除（`main.py` は `docs.search` を `CollectClients.from_config` 経由で読む）。`SECONDS_PER_MINUTE` は `llm.py` に置く。`latest_issue`・`git_sha` は `main.py` から `records.py`（`RunInfo` の隣）へ移した。`GeminiSearch.search` の「キー無し」検査は `from_config` の `require_key` に置き換えて削除。
+- 2026-10-17（ブランチ C の実装）：(1) メモのファイル名の雛形 `memo.filename` を `ReviewSettings.memo_filename` に置いた（`ReviewDeps` は 5 個のまま）。(2) `ReviewSummary` に `memo_paths` は足さず、`cmd_review` が `memo.dir` を表示する。(3) `ReviewRow` に `sector_comparison` を足し、`review._process` が `compare` の結果を入れて記録し、成功（`ok`）した銘柄だけメモを書く（失敗した銘柄に書く内容が無いため）。(4) 出典は `Document.source_ref`（EDINET は docID:要素名、Web は URL）。

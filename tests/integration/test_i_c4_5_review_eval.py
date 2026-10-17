@@ -57,7 +57,7 @@ def evaluate(stores, respond, run_id=RUN) -> EvalResult:
     """What `review-eval` does after collecting the documents."""
     rec, docs, _ = stores
     candidates = [(c.ticker, {F.NAME: c.name, F.PRIORITY_RANK: i}) for i, c in enumerate(CASES, 1)]
-    deps = ReviewDeps(FakeLLM(respond), load_prompts(PROMPT_DIR), rec, docs)
+    deps = ReviewDeps(FakeLLM(respond), load_prompts(PROMPT_DIR), rec, docs, None, None)
     review_candidates(run_id, candidates, None, ReviewSettings.from_config(CFG), deps)
     rows = rec.reviews(run_id)
     results = [(c, score_case(c, rows[c.ticker])) for c in CASES]

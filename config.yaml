@@ -225,3 +225,17 @@ review:
     repeats: 3                   # The eval passes only when every one of this many repetitions passes (answers vary run to run)
     min_hit_rate: 0.8            # Cases answered as expected / cases
     max_parse_failures: 0        # Reviews whose reply was invalid JSON even after the re-ask
+
+# ------------------------------------------
+# 15. sector: comparison of each reviewed candidate with the median of its 33-sector over all tickers of the run
+# ------------------------------------------
+sector:
+  metrics: [Real_PSR, PBR, Improvement_Yield(%)]  # Compared metrics (names of src/fields.py)
+  min_peers: 5                   # A sector's median needs at least this many tickers with a value; else it is missing
+
+# ------------------------------------------
+# 16. memo: one Markdown research memo per reviewed ticker (`main.py review`; under results/, git-ignored)
+# ------------------------------------------
+memo:
+  dir: "results/memos"
+  filename: "{run_id}_{ticker}.md"

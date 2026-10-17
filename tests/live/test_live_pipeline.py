@@ -21,7 +21,7 @@ from dotenv import dotenv_values
 
 from src.cache import StockCache
 from src.docstore import Company
-from src.tickers import read_names
+from src.tickers import read_column
 
 ROOT = Path(__file__).resolve().parents[2]
 REAL_CACHE = ROOT / "stocks_cache.duckdb"
@@ -229,7 +229,7 @@ def test_lv7_docs(scratch):
     result = run(scratch, "docs", "--run", run_id)
     assert result.code == 0, result.err
     db = scratch.path("docstore", "db_file")
-    names = read_names(scratch.path("system", "input_csv"))
+    names = read_column(scratch.path("system", "input_csv"), "name")
     sql = "SELECT title FROM documents WHERE source = 'edinet' AND ticker = ?"
     sections = {t: [title for (title,) in query(db, sql, t)] for t in tickers}
     assert all(sections.values()), f"candidates without EDINET documents: {[t for t in tickers if not sections[t]]}"

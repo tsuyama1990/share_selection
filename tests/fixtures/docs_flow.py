@@ -19,6 +19,7 @@ GEMINI_HOST = "generativelanguage.googleapis.com"
 EDINET_HOST = "api.edinet-fsa.go.jp"
 HTML_HEADERS = {"content-type": "text/html; charset=utf-8"}
 FAILING_DOC = "S2"
+SECTOR = "水産・農林業"
 COMPANIES = [Company(f"{n}.T", f"会社{n}") for n in (1, 2, 3)]
 CANDIDATES = [(c.ticker, {F.NAME: c.name, F.PRIORITY_RANK: n}) for n, c in enumerate(COMPANIES, 1)]
 INFO = RunInfo("2026-10", "abc", {}, datetime.date(2026, 10, 1), None, None)
@@ -30,8 +31,8 @@ def record_candidates(root) -> str:
         ticker: ScreenResult(True, None, {**metrics, F.IMPROVEMENT_CLASS: "clear", F.STAGE2_CANDIDATE: True})
         for ticker, metrics in CANDIDATES
     }
-    rows = "".join(f"{c.ticker.removesuffix('.T')},{c.name}\n" for c in COMPANIES)
-    (root / CFG["system"]["input_csv"]).write_text("code,name\n" + rows, encoding="utf-8")
+    rows = "".join(f"{c.ticker.removesuffix('.T')},{c.name},{SECTOR}\n" for c in COMPANIES)
+    (root / CFG["system"]["input_csv"]).write_text("code,name,sector33\n" + rows, encoding="utf-8")
     with RecordStore.from_config(CFG, root) as store:
         return store.record_run(INFO, results)
 

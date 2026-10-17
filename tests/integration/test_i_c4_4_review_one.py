@@ -41,10 +41,13 @@ def stores(tmp_path):
         yield rec, docs, tmp_path
 
 
-def run(stores, llm=None, tickers=None, settings=SETTINGS, candidates=CANDIDATES):
+def run(stores, llm=None, tickers=None, memo_dir=None, **options):
+    """``options``: ``settings`` and ``candidates`` replacing SETTINGS and CANDIDATES."""
     rec, docs, _ = stores
-    deps = ReviewDeps(llm or FakeLLM(good), load_prompts(PROMPT_DIR), rec, docs)
-    return review_candidates(RUN, candidates, tickers, settings, deps)
+    deps = ReviewDeps(llm or FakeLLM(good), load_prompts(PROMPT_DIR), rec, docs, None, memo_dir)
+    return review_candidates(
+        RUN, options.get("candidates", CANDIDATES), tickers, options.get("settings", SETTINGS), deps
+    )
 
 
 def row(rec, ticker, run_id=RUN):
@@ -170,3 +173,23 @@ def test_reviews_round_trip_through_the_records(stores):
     rows = stores[0].reviews(RUN)
     assert list(rows) == ["1.T"] and rows["1.T"]["status"] == "ok"
     assert rows["1.T"]["answers"]["T5"]["suggestion"] == "採用" and rows["1.T"]["verified_ratio"] == 1.0
+
+
+MEMO = CFG["memo"]["filename"]
+
+
+def test_a_memo_is_written_per_ok_ticker_only_when_memo_dir_is_set(stores):
+    memo_dir = stores[2] / "memos"
+    run(stores, tickers=["1.T"])
+    assert not memo_dir.exists()
+    run(stores, tickers=["1.T", "9.T"], memo_dir=memo_dir)  # 9.T has no documents: no memo
+    assert [p.name for p in memo_dir.iterdir()] == [MEMO.format(run_id=RUN, ticker="1.T")]
+    memo = (memo_dir / MEMO.format(run_id=RUN, ticker="1.T")).read_text(encoding="utf-8")
+    assert memo.startswith("# 1.T Company 1")
+    assert "提案: 採用" in memo and "要注意" not in memo and "(1.T)" in memo  # source_ref of the document
+
+
+def test_the_memo_marks_a_ticker_that_needs_attention(stores):
+    memo_dir = stores[2] / "memos"
+    run(stores, FakeLLM(fabricating), tickers=["1.T"], memo_dir=memo_dir)
+    assert "要注意" in (memo_dir / MEMO.format(run_id=RUN, ticker="1.T")).read_text(encoding="utf-8")

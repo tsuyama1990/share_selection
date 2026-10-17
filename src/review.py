@@ -1,7 +1,8 @@
 """The `review` flow: per candidate, documents -> tasks T1..T5 with verified quotes -> a record. A failing ticker is
 recorded with its status and the flow goes on."""
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, replace
+from pathlib import Path
 from typing import Any
 
 from tqdm import tqdm
@@ -9,8 +10,10 @@ from tqdm import tqdm
 from . import fields as F
 from .docstore import DocStore
 from .llm import LLMClient, LLMError
+from .memo import render_memo
 from .records import RecordStore, ReviewRow
 from .research import ReplyError, prompt_version, run_task
+from .sector import Peers, compare
 
 VERIFIED_ANSWERS = "verified_answers"  # context key: what the last task sees of the tasks before it
 SUGGESTION = ("T5", "suggestion")  # (task, answer item) copied to the columns of the same name
@@ -26,6 +29,7 @@ class ReviewSettings:
     task_fields: dict[str, list[str]]  # in running order
     context_metrics: list[str]
     sources: list[str]  # document sources the tasks may use ("edinet", "web")
+    memo_filename: str  # memo file name template, filled with run_id and ticker
 
     @classmethod
     def from_config(cls, cfg: dict[str, Any]) -> "ReviewSettings":
@@ -37,6 +41,7 @@ class ReviewSettings:
             rev["tasks"],
             rev["context_metrics"],
             rev["sources"],
+            cfg["memo"]["filename"],
         )
 
 
@@ -53,6 +58,8 @@ class ReviewDeps:
     prompts: dict[str, str]
     records: RecordStore
     store: DocStore
+    peers: Peers | None  # sector comparison of each reviewed ticker
+    memo_dir: Path | None  # where a memo per reviewed ticker is written
 
 
 def review_candidates(
@@ -70,13 +77,25 @@ def review_candidates(
         targets = todo[: settings.max_tickers]
     else:
         targets = [(t, metrics.get(t, {})) for t in tickers]
-    rows = []
-    for ticker, ticker_metrics in tqdm(targets):
-        row = _review_ticker(ticker, ticker_metrics, settings, deps)
-        deps.records.record_review(run_id, row)
-        rows.append(row)
+    rows = [_process(run_id, ticker, ticker_metrics, settings, deps) for ticker, ticker_metrics in tqdm(targets)]
     failed = sum(r.status != F.ReviewStatus.OK for r in rows)
     return ReviewSummary(len(rows) - failed, failed, sum(r.needs_attention for r in rows))
+
+
+def _process(
+    run_id: str, ticker: str, metrics: dict[str, Any], settings: ReviewSettings, deps: ReviewDeps
+) -> ReviewRow:
+    """Review one ticker, record it with its sector comparison and write its memo."""
+    row = _review_ticker(ticker, metrics, settings, deps)
+    if deps.peers:
+        row = replace(row, sector_comparison=compare(ticker, metrics, deps.peers))
+    deps.records.record_review(run_id, row)
+    if deps.memo_dir and row.status == F.ReviewStatus.OK:
+        sources = {d.doc_id: d.source_ref for d in deps.store.documents(ticker) if d.doc_id in row.doc_ids}
+        memo = render_memo(ticker, metrics.get(F.NAME, ""), asdict(row), row.sector_comparison, sources)
+        deps.memo_dir.mkdir(parents=True, exist_ok=True)
+        (deps.memo_dir / settings.memo_filename.format(run_id=run_id, ticker=ticker)).write_text(memo, encoding="utf-8")
+    return row
 
 
 def _answer(answers: dict[str, dict[str, Any]], where: tuple[str, str]) -> str | None:
@@ -106,6 +125,7 @@ def _to_row(ticker: str, out: _Outcome, doc_ids: list[str], settings: ReviewSett
         out.evidence,
         ratio,
         out.status == F.ReviewStatus.OK and ratio < settings.min_verified_ratio,
+        None,
         doc_ids,
         sorted(set(out.providers)),
         version,

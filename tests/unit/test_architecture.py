@@ -10,7 +10,8 @@
     are exempt.
 (c) Result-row names and values are strings only in ``src/fields.py``: no other file of ``src/`` or ``main.py``
     repeats one, and dynamic keys (``MA<n>``, ``Downside_to_<name>_Low(%)``) are built by its functions.
-(d) Every ``output.columns`` entry is a ``fields.py`` value or a dynamic key built from ``indicators``.
+(d) Every ``output.columns`` entry is a ``fields.py`` value or a dynamic key built from ``indicators``;
+    every ``sector.metrics`` entry is a ``fields.py`` value.
 """
 
 import ast
@@ -43,6 +44,7 @@ CONFIG_NAMES = {
     "check",
     "docs",
     "rev",
+    "sec",
     "thresholds",
 }
 DYNAMIC_PARENTS = {"shock_lows", "tasks"}
@@ -161,3 +163,9 @@ def test_output_columns_are_known_fields():
     known |= {fields.downside_to_low(name.capitalize()) for name in ind["shock_lows"]}
     unknown = [c for c in config["output"]["columns"] if c not in known]
     assert not unknown, f"output.columns not defined by src/fields.py: {unknown}"
+
+
+def test_sector_metrics_are_known_fields():
+    config = yaml.safe_load((ROOT / "config.yaml").read_text(encoding="utf-8"))
+    unknown = [m for m in config["sector"]["metrics"] if m not in _field_values()]
+    assert not unknown, f"sector.metrics not defined by src/fields.py: {unknown}"
