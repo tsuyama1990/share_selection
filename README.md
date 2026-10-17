@@ -217,6 +217,7 @@ Runs the CLI end to end against the real JPX, Yahoo, EDINET, Gemini and LLM APIs
 *   `screening_criteria.md`: current first-screen criteria vs. the original book, decisions and corrections.
 *   `hypothesis_map.md`: why-why hypothesis map of what makes prices jump, validated against past cases.
 *   `selection_flow.md`: target selection flow (downside safety -> signs of improvement -> catalyst within 6-12 months); open decisions.
+*   `pest_watch_design.md`: planned weekly PEST watch (events likely to lift operating income for 6+ months -> beneficiary companies -> stage 1 gate -> alerts), decided 2026-10-18, to be designed and built in a separate session.
 *   `selection_tuning.md`: 2026-10-14 tuning of the gate (op margin 5%, PSR 1.2), improvement rule (quarterly-first, 40%), stage-2 ranking by improvement yield, review fixes, with the data behind each decision.
 *   `record_design.md`: stage 7 records (runs, screen_results, outcomes, reviews) derived from the verification questions.
 *   `architecture/process.md`: the gated modified-waterfall process (design -> tests -> implementation -> bonsai, each with a blocking gate).
