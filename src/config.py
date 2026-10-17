@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -12,3 +13,14 @@ def load_config(path: Path = CONFIG_FILE) -> dict[str, Any]:
         raise FileNotFoundError(f"Config file not found: {path}")
     with open(path, encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+class MissingKeyError(RuntimeError):
+    pass
+
+
+def require_key(env: Mapping[str, str], name: str) -> str:
+    value = env.get(name, "")
+    if not value:
+        raise MissingKeyError(f"set {name} (environment or .env)")
+    return value

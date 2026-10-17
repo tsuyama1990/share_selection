@@ -40,6 +40,10 @@ class DocStore:
         for ddl in SCHEMA:
             self.con.execute(ddl)
 
+    @classmethod
+    def from_config(cls, cfg: dict[str, Any], root: Path) -> "DocStore":
+        return cls(root / cfg["docstore"]["db_file"])
+
     def __enter__(self) -> "DocStore":
         return self
 

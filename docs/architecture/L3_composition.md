@@ -26,7 +26,7 @@
 
 | モジュール | 公開する名前 | 責務 | 状態 |
 |---|---|---|---|
-| `collect.py` | `CollectSettings`、`CollectSummary`、`collect_documents` | `docs` の流れ：EDINET の索引の更新と有価証券報告書、Web 文書がまだ無い候補だけを優先順に検索し出典を取得、検索の割り当てで停止 | 🆕 |
+| `collect.py` | `CollectClients`、`CollectSettings`、`CollectSummary`、`collect_documents` | `docs` の流れ：EDINET の索引の更新と有価証券報告書、Web 文書がまだ無い候補だけを優先順に検索し出典を取得、検索の割り当てで停止 | ✅ |
 | `review.py` | `ReviewSettings`、`ReviewSummary`、`review_candidates` | `review` の流れ：業種の中央値、候補ごとに文書の読み出し → T1〜T5（`research.py`）→ 照合（`verify.py`）→ 記録 → 調査メモ。銘柄の失敗は状態として記録して次へ | 🆕 |
 | `review_eval.py` | `EvalCase`、`EvalResult`、`load_eval_cases`、`score_case`、`judge` | モデルの品質の関門：正解のある銘柄の調査結果の採点と合否 | 🆕 |
 
@@ -51,16 +51,21 @@
 @dataclass(frozen=True)
 class CollectSettings:          # from_config(cfg)：edinet・webfetch・docs の値
     index_days: int; doc_type_code: str; sections: list[str]
-    search: bool; search_prompt: str; max_sources: int; max_bytes: int
+    search_prompt: str; max_sources: int; max_bytes: int
 
 @dataclass(frozen=True)
 class CollectSummary:
     edinet_docs: int; edinet_failed: int; web_docs: int; searches_left: int   # 割り当てで止まったときの残り
 
-def collect_documents(candidates, settings, edinet, search, web_http, store, today, fetch_limiter) -> CollectSummary
+@dataclass(frozen=True)
+class CollectClients:           # from_config(cfg, env, stack)：HTTP クライアントを stack に開き、キーを require_key で確認
+    edinet: EdinetClient; search: GeminiSearch | None; web_http: httpx.Client
+    search_limiter: RateLimiter; fetch_limiter: RateLimiter
+
+def collect_documents(candidates, settings, clients, store, today) -> CollectSummary
 ```
 
-- 候補は `RecordStore.candidates` の (ticker, 指標)。検索は `docs.search` が真で `search` が与えられたときだけ。
+- 候補は `RecordStore.candidates` の (ticker, 指標)。検索は `docs.search` が真で `clients.search` が与えられたときだけ（偽なら `clients.search` は None）。
 - Web 文書がまだ無い候補だけを `Priority_Rank` の良い順に検索する。`QuotaExceeded` で止め、残りの数を返す。
 
 ### 5.2 `review.py`
@@ -161,7 +166,7 @@ def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresho
 
 | 順 | ブランチ | 中身 | 挙動 |
 |---|---|---|---|
-| A | `refactor/composition` | 4 章の既存モジュールの変更（`RunInfo`、`screen_universe`、`from_config`、`require_key`、`refresh_all`、`write_failures`、`collect.py`、`main.py` の `COMMANDS`）。E7 の流れのテストを `collect_documents` の結合テストへ | 変えない（ゴールデンと実データの全件が一致） |
+| A ✅ | `refactor/composition` | 4 章の既存モジュールの変更（`RunInfo`、`screen_universe`、`from_config`、`require_key`、`refresh_all`、`write_failures`、`collect.py`、`main.py` の `COMMANDS`）。E7 の流れのテストを `collect_documents` の結合テストへ | 変えない（ゴールデンと実データの全件が一致） |
 | B | `feat/review-command` | `verify.py`、`research.py`（`run_task` まで）、`review.py`、`review_eval.py`、`prompts/v1/`、`eval/stage2_cases.yaml`、`reviews`・`review_evals`、`review`・`review-eval` コマンド、プロバイダーの順番 | 新機能。ライブで評価を実行し、結果を報告して承認を受けてからマージ |
 | C | `feat/review-sector-memo` | `sector.py`、`memo.py` | 新機能 |
 
@@ -169,4 +174,4 @@ def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresho
 
 ## 9. 訂正履歴
 
-（なし）
+- 2026-10-17（ブランチ A の実装）：5.1 節の `collect_documents` の引数が 8 個で ruff の PLR0913（5 個まで）を超えるため、依存を `CollectClients`（edinet・search・web_http・二つのリミッター）にまとめ、`collect_documents(candidates, settings, clients, store, today)` にした。`CollectSettings.search` は `clients.search is None` と重複するので削除（`main.py` は `docs.search` を `CollectClients.from_config` 経由で読む）。`SECONDS_PER_MINUTE` は `llm.py` に置く。`latest_issue`・`git_sha` は `main.py` から `records.py`（`RunInfo` の隣）へ移した。`GeminiSearch.search` の「キー無し」検査は `from_config` の `require_key` に置き換えて削除。

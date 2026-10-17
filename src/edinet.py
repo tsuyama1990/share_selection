@@ -7,10 +7,12 @@ import html
 import io
 import re
 import zipfile
+from collections.abc import Mapping
 from typing import Any
 
 import httpx
 
+from src.config import require_key
 from src.docstore import DocStore, Document
 from src.throttle import RateLimiter
 from src.tickers import TICKER_SUFFIX
@@ -25,6 +27,11 @@ class EdinetClient:
 
     def __init__(self, base_url: str, api_key: str, http: httpx.Client, limiter: RateLimiter):
         self._base_url, self._api_key, self._http, self._limiter = base_url.rstrip("/"), api_key, http, limiter
+
+    @classmethod
+    def from_config(cls, cfg: dict[str, Any], http: httpx.Client, env: Mapping[str, str]) -> "EdinetClient":
+        ed = cfg["edinet"]
+        return cls(ed["base_url"], require_key(env, ed["key_env"]), http, RateLimiter(1, ed["request_interval_s"]))
 
     def _get(self, path: str, **params: Any) -> httpx.Response:
         self._limiter.acquire()

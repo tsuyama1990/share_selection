@@ -16,7 +16,7 @@ import pandas as pd
 import pytest
 
 import main
-from src.records import NO_CACHE
+from src.screener import NO_CACHE
 from tests.fixtures.config import CFG
 
 GOLDEN = Path(__file__).parent.parent / "fixtures" / "golden_screening.csv"
@@ -69,12 +69,10 @@ def test_every_ticker_is_recorded_with_its_fail_rule_and_exported(project):
 
 def test_issue_defaults_to_latest_shikiho_issue(project, monkeypatch):
     project.write_tickers(["1.T"])
-    calls = []
-    monkeypatch.setattr(main, "run_analyze", lambda *a: calls.append(a[-1]))
     monkeypatch.setattr(main, "default_issue", lambda cfg: "2099-03")
     for argv, expected in ((["analyze"], "2099-03"), (["analyze", "--issue", "2020-06"], "2020-06")):
         project.run(*argv)
-        assert calls[-1] == expected
+        assert project.query("SELECT issue FROM runs ORDER BY run_id")[-1] == (expected,)
 
 
 def test_stage2_candidates_are_recorded_in_the_column_and_flags_as_lists(project):

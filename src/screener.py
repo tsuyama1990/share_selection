@@ -1,13 +1,19 @@
 """Screener: runs gatekeeper rules, then indicators, and assembles the result row."""
 
+from collections.abc import Mapping
 from typing import Any, NamedTuple
 
+from tqdm import tqdm
+
 from . import fields as F
+from .cache import StockCache
 from .improvement import ImprovementSignal
 from .indicators import Indicator, build_indicators
 from .quality import EpsQualityFlags
 from .rules import Rule, build_rules
 from .stock_data import StockData
+
+NO_CACHE = "no_cache"
 
 
 class ScreenResult(NamedTuple):
@@ -66,3 +72,19 @@ class Screener:
             **metrics,
         }
         return ScreenResult(True, None, row)
+
+
+def screen_universe(
+    tickers: list[str],
+    cache: StockCache,
+    screener: Screener,
+    calendar: Mapping[str, tuple[str | None, str | None]],
+) -> dict[str, ScreenResult]:
+    """Screen every ticker (``NO_CACHE`` result without cached data) and add the earnings calendar fields."""
+    results = {}
+    for ticker in tqdm(tickers):
+        data = cache.get(ticker)
+        res = screener.screen(data) if data is not None else ScreenResult(False, NO_CACHE, {})
+        res.row[F.NEXT_EARNINGS_DATE], res.row[F.EARNINGS_PERIOD] = calendar.get(ticker, (None, None))
+        results[ticker] = res
+    return results

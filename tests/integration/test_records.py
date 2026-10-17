@@ -6,50 +6,40 @@ import duckdb
 import pandas as pd
 import pytest
 
+from src import fields as F
 from src.config import load_config
-from src.records import NO_CACHE, RecordStore, evaluate
+from src.records import RecordStore, RunInfo, evaluate
+from src.screener import NO_CACHE, ScreenResult
 
 CFG = load_config()
-INFO = {
-    "issue": "2026-10",
-    "git_sha": "abc",
-    "config": {"a": 1},
-    "ticker_list_date": datetime.date(2026, 10, 1),
-    "data_fetched_min": datetime.datetime(2026, 10, 2),
-    "data_fetched_max": datetime.datetime(2026, 10, 3),
+INFO = RunInfo(
+    "2026-10",
+    "abc",
+    {"a": 1},
+    datetime.date(2026, 10, 1),
+    datetime.datetime(2026, 10, 2),
+    datetime.datetime(2026, 10, 3),
+)
+RESULTS = {
+    "1.T": ScreenResult(
+        True,
+        None,
+        {
+            F.IMPROVEMENT_CLASS: "clear",
+            F.STAGE2_CANDIDATE: True,
+            F.NEXT_EARNINGS_DATE: "2026-11-05",
+            F.QUALITY_FLAGS: ["quarter_spike", "oi_divergence"],
+            "PSR": 1.5,
+            "Name": "x",
+        },
+    ),
+    "2.T": ScreenResult(
+        False,
+        "PsrCap",
+        {F.IMPROVEMENT_CLASS: "none", F.STAGE2_CANDIDATE: False, F.QUALITY_FLAGS: [], "PSR": float("nan")},
+    ),
+    "3.T": ScreenResult(False, NO_CACHE, {F.NEXT_EARNINGS_DATE: None}),
 }
-ROWS = [
-    {
-        "ticker": "1.T",
-        "stage1_pass": True,
-        "stage1_fail_rule": None,
-        "improvement_class": "clear",
-        "stage2_candidate": True,
-        "next_earnings_date": "2026-11-05",
-        "quality_flags": ["quarter_spike", "oi_divergence"],
-        "metrics": {"PSR": 1.5, "Name": "x"},
-    },
-    {
-        "ticker": "2.T",
-        "stage1_pass": False,
-        "stage1_fail_rule": "PsrCap",
-        "improvement_class": "none",
-        "stage2_candidate": False,
-        "next_earnings_date": None,
-        "quality_flags": [],
-        "metrics": {"PSR": float("nan")},
-    },
-    {
-        "ticker": "3.T",
-        "stage1_pass": False,
-        "stage1_fail_rule": NO_CACHE,
-        "improvement_class": None,
-        "stage2_candidate": False,
-        "next_earnings_date": None,
-        "quality_flags": None,
-        "metrics": {},
-    },
-]
 
 
 def parquet(path, table):
@@ -58,7 +48,7 @@ def parquet(path, table):
 
 def test_record_run_round_trip_and_parquet(tmp_path):
     with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec") as store:
-        run_id = store.record_run(INFO, ROWS)
+        run_id = store.record_run(INFO, RESULTS)
         run = store.con.execute("SELECT issue, git_sha, config, ticker_list_date FROM runs").fetchall()
         res = store.con.execute(
             "SELECT ticker, stage1_pass, stage1_fail_rule, metrics, improvement_class FROM screen_results"
@@ -69,8 +59,8 @@ def test_record_run_round_trip_and_parquet(tmp_path):
         assert store.tickers(run_id) == ["1.T", "2.T"]
     assert run == [("2026-10", "abc", '{"a": 1}', datetime.date(2026, 10, 1))]
     assert [r[:3] for r in res] == [("1.T", True, None), ("2.T", False, "PsrCap"), ("3.T", False, NO_CACHE)]
-    assert json.loads(res[0][3]) == {"PSR": 1.5, "Name": "x"}
-    assert json.loads(res[1][3]) == {"PSR": None}
+    assert json.loads(res[0][3]) == RESULTS["1.T"].row
+    assert json.loads(res[1][3])["PSR"] is None
     assert flags == ['["quarter_spike", "oi_divergence"]', "[]", None]
     assert [r[4] for r in res] == ["clear", "none", None]
     out = tmp_path / "rec" / run_id
@@ -80,8 +70,8 @@ def test_record_run_round_trip_and_parquet(tmp_path):
 
 def test_candidates_select_by_the_stage2_candidate_column(tmp_path):
     with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec") as store:
-        run_id = store.record_run(INFO, ROWS)
-        assert store.candidates(run_id) == [("1.T", {"PSR": 1.5, "Name": "x"})]
+        run_id = store.record_run(INFO, RESULTS)
+        assert store.candidates(run_id) == [("1.T", RESULTS["1.T"].row)]
         flags = store.con.execute("SELECT stage2_candidate FROM screen_results ORDER BY ticker").fetchall()
     assert [f for (f,) in flags] == [True, False, False]
 
@@ -100,7 +90,7 @@ HISTORY = {
 def make_run(store, run_at):
     with mock.patch("src.records.datetime.datetime") as dt:
         dt.now.return_value = run_at
-        return store.record_run(INFO, ROWS)
+        return store.record_run(INFO, RESULTS)
 
 
 def test_evaluate_computes_elapsed_horizons_only(tmp_path):

@@ -1,9 +1,11 @@
+from collections.abc import Mapping
 from dataclasses import dataclass
 from http import HTTPStatus
 from typing import Any
 
 import httpx
 
+from .config import require_key
 from .throttle import RateLimiter
 
 
@@ -44,6 +46,16 @@ class LLMClient:
         self._providers = [p for p in providers if p.api_key]
         self._http, self._temperature, self._limiter = http, temperature, limiter
 
+    @classmethod
+    def from_config(cls, cfg: dict[str, Any], http: httpx.Client, env: Mapping[str, str]) -> "LLMClient":
+        """Providers whose key variable is empty are skipped by the client."""
+        llm = cfg["llm"]
+        providers = [
+            Provider(p["name"], p["base_url"], p["model"], env.get(p["key_env"], "")) for p in llm["providers"]
+        ]
+        limiter = RateLimiter.per_minute(llm["max_calls_per_minute"])
+        return cls(providers, http, llm["temperature"], limiter)
+
     def chat(self, messages: list[dict[str, str]], json_mode: bool = False) -> Reply:
         if not self._providers:
             raise LLMError("no LLM provider has an API key")
@@ -73,9 +85,12 @@ class GeminiSearch:
     def __init__(self, base_url: str, model: str, api_key: str, http: httpx.Client):
         self._url, self._api_key, self._http = f"{base_url}/models/{model}:generateContent", api_key, http
 
+    @classmethod
+    def from_config(cls, cfg: dict[str, Any], http: httpx.Client, env: Mapping[str, str]) -> "GeminiSearch":
+        search = cfg["llm"]["search"]
+        return cls(search["base_url"], search["model"], require_key(env, search["key_env"]), http)
+
     def search(self, prompt: str) -> SearchAnswer:
-        if not self._api_key:
-            raise LLMError("no API key for Gemini search")
         body = {"contents": [{"parts": [{"text": prompt}]}], "tools": [{"google_search": {}}]}
         try:
             resp = self._http.post(self._url, json=body, headers={"x-goog-api-key": self._api_key})

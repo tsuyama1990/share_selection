@@ -3,10 +3,12 @@
 import datetime
 import io
 import json
+from pathlib import Path
 from typing import Any
 
 import duckdb
 import pandas as pd
+from tqdm import tqdm
 
 from .stock_data import FRAMES, HISTORY_FRAMES, StockData
 from .yahoo import YahooClient
@@ -32,6 +34,11 @@ class StockCache:
                 quarterly_income JSON
             )
         """)
+
+    @classmethod
+    def from_config(cls, cfg: dict[str, Any], root: Path) -> "StockCache":
+        sc = cfg["system"]
+        return cls(str(root / sc["db_file"]), sc["market_timezone"])
 
     def __enter__(self) -> "StockCache":
         return self
@@ -108,3 +115,9 @@ def refresh(cache: StockCache, client: YahooClient, ticker: str, max_age_days: f
         return None
     except Exception as e:
         return str(e)
+
+
+def refresh_all(cache: StockCache, client: YahooClient, tickers: list[str], max_age_days: float) -> dict[str, str]:
+    """Refresh every ticker; returns the failed ones with their error message."""
+    errors = {t: refresh(cache, client, t, max_age_days) for t in tqdm(tickers)}
+    return {t: e for t, e in errors.items() if e is not None}

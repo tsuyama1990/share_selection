@@ -10,6 +10,14 @@ import pandas as pd
 from . import fields as F
 
 
+def write_failures(failures: dict[str, str], out_dir: Path, filename: str) -> Path:
+    """Write the failed tickers and their errors to ``filename`` with ``{date}`` filled in."""
+    path = out_dir / filename.format(date=datetime.date.today())
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(list(failures.items()), columns=["ticker", "error"]).to_csv(path, index=False, encoding="utf-8")
+    return path
+
+
 def write_report(results: list[dict[str, Any]], out_dir: Path, filename: str, columns: Sequence[str]) -> Path:
     """Write results (sorted by Priority_Rank) to ``filename`` with ``{date}`` filled in, print the candidates."""
     full = pd.DataFrame(results).sort_values(F.PRIORITY_RANK)

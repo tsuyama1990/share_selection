@@ -2,6 +2,8 @@ import time
 from collections import deque
 from collections.abc import Callable
 
+SECONDS_PER_MINUTE = 60
+
 
 class RateLimiter:
     """Sliding window: at most ``max_calls`` per ``window_s`` seconds; ``acquire`` sleeps when full."""
@@ -15,6 +17,10 @@ class RateLimiter:
     ):
         self._max_calls, self._window_s, self._clock, self._sleep = max_calls, window_s, clock, sleep
         self._stamps: deque[float] = deque()
+
+    @classmethod
+    def per_minute(cls, max_calls: int) -> "RateLimiter":
+        return cls(max_calls, SECONDS_PER_MINUTE)
 
     def acquire(self) -> None:
         now = self._clock()
