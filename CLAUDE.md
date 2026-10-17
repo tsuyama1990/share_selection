@@ -1,6 +1,6 @@
 # Project conventions
 
-Japanese stock screener (Emin Yurumazu's theory). Python 3.12, managed with `uv`.
+Japanese stock selection with two methods: **Value Turn** (monthly; cheap stocks whose operating-income improvement is confirmed in results, based on Emin Yurumazu's theory; built) and **Tailwind Watch** (weekly; PEST tailwinds lasting 6+ months, checked with Value Turn's gate; planned in `docs/tailwind_watch_design.md`). Python 3.12, managed with `uv`.
 
 ## Architecture
 - `main.py` CLI and wiring only (parse args, load config and `.env`, build parts with `from_config`, `COMMANDS` -> `cmd_<name>`, print summaries; flows live in `src/`): `tickers` (JPX list -> CSV), `fetch` (Yahoo -> DuckDB cache), `analyze` (cache -> `results/` CSV, and a run record), `evaluate` (outcomes of recorded runs), `calendar` (JPX earnings announcement dates -> CSV), `docs [--run RUN_ID]` (EDINET annual report sections of the run's stage 2 candidates -> document store `documents.duckdb`), `review [--run RUN_ID] [--tickers T1,T2]` (LLM research T1-T5 on the run's stage 2 candidates with checked quotes -> `reviews` and a memo per ticker in `results/memos/`; refused until `review-eval` has passed for the prompt version and first model), `backup` (ignored records -> timestamped folders in `backup.dir`, outside the repository), `review-eval` (scores the model on `eval/stage2_cases.yaml` -> `review_evals`; live gate, run by hand after changing models, their order or `prompts/`). `reviews/` (Parquet export) is git-ignored: it quotes web articles.
@@ -68,7 +68,7 @@ Japanese stock screener (Emin Yurumazu's theory). Python 3.12, managed with `uv`
 - Never delete or commit `stocks_cache.duckdb` (git-ignored full cache) or `results/`.
 
 ## Design docs (`docs/`)
-- `pest_watch_design.md` is the agreed plan for the weekly PEST watch (next project, separate session); `selection_flow.md` is the target design; `hypothesis_map.md` holds the evidence; `entry_types_design.md` holds reference type definitions for its stage 3; `screening_criteria.md` describes what is implemented now; `selection_tuning.md` records threshold decisions and their evidence.
+- `tailwind_watch_design.md` is the agreed plan for Tailwind Watch (next project, separate session); `selection_flow.md` is the target design; `hypothesis_map.md` holds the evidence; `entry_types_design.md` holds reference type definitions for its stage 3; `screening_criteria.md` describes what is implemented now; `selection_tuning.md` records threshold decisions and their evidence.
 - Label every factual claim ([原著]/[一次]/[報道]/[データ: date]/[推論]); recompute numbers with current config and data before committing; check cited examples satisfy the definition; log corrections at the end of the doc.
 - Before saying data "cannot be obtained", exhaust the retrieval paths (all yfinance accessors, official public data such as JPX) and state exactly what was tried.
 
