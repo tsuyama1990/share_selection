@@ -5,6 +5,9 @@ import datetime
 import httpx
 
 from src import fields as F
+from src.records import RecordStore, RunInfo
+from src.screener import ScreenResult
+from tests.fixtures.config import CFG
 from tests.fixtures.edinet import csv_zip, listing, listing_doc
 from tests.fixtures.web import html_page, pdf_bytes
 
@@ -16,6 +19,17 @@ EDINET_HOST = "api.edinet-fsa.go.jp"
 HTML_HEADERS = {"content-type": "text/html; charset=utf-8"}
 FAILING_DOC = "S2"
 CANDIDATES = [(f"{n}.T", {F.NAME: f"Company {n}.T", F.PRIORITY_RANK: n}) for n in (1, 2, 3)]
+INFO = RunInfo("2026-10", "abc", {}, datetime.date(2026, 10, 1), None, None)
+
+
+def record_candidates(root) -> str:
+    """Record a run in which the three CANDIDATES are the stage 2 candidates; returns its run id."""
+    results = {
+        ticker: ScreenResult(True, None, {**metrics, F.IMPROVEMENT_CLASS: "clear", F.STAGE2_CANDIDATE: True})
+        for ticker, metrics in CANDIDATES
+    }
+    with RecordStore.from_config(CFG, root) as store:
+        return store.record_run(INFO, results)
 
 
 def edinet_handler(request: httpx.Request) -> httpx.Response:

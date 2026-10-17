@@ -20,9 +20,9 @@
 | `docstore.py` | `Document`、`DocStore`、`DocumentRewriteError` | 文書・EDINET の索引・取得の失敗の保存と検索。同じ doc_id への別の本文の保存を拒む | ✅ |
 | `edinet.py` | `EdinetClient`、`parse_index`、`extract_sections`、`sec_code`、`update_index`、`fetch_annual_report` | EDINET API v2 の呼び出し、書類一覧の解析、ZIP の本文 CSV からの節の抽出、索引の差分更新、最新の有価証券報告書の保存 | ✅ |
 | `webfetch.py` | `extract_text`、`web_doc_id`、`fetch_document` | URL の取得（リダイレクト追従・サイズ上限）、HTML・PDF の本文抽出、保存 | ✅ |
-| `verify.py` | `normalize`、`check_claims` | 引用の照合と照合率、支えのない項目の unknown への置き換え | 🆕 |
+| `verify.py` | `normalize`、`check_claims` | 引用の照合と照合率、支えのない項目の unknown への置き換え | ✅ |
 | `sector.py` | `sector_medians`、`compare` | 業種ごとの中央値と、候補の同業比較 | 🆕 |
-| `research.py` | `ReplyError`、`TaskResult`、`load_prompts`、`build_messages`、`parse_reply`、`run_task` | T1〜T5 の実行（プロンプトの組み立て、JSON の検証と 1 回の再依頼、照合） | 🆕 |
+| `research.py` | `ReplyError`、`TaskResult`、`load_prompts`、`prompt_version`、`build_messages`、`parse_reply`、`run_task` | T1〜T5 の実行（プロンプトの組み立て、JSON の検証と 1 回の再依頼、照合） | ✅ |
 | `memo.py` | `render_memo` | 1 銘柄の調査メモ（Markdown の文字列） | 🆕 |
 
 `records.py`（✅）には `reviews` テーブル、`candidates(run_id)`、`run_metrics(run_id)`、`reviewed(run_id)`、`record_review(run_id, row)` を足す。`main.py`（✅）には `docs [--run RUN_ID]`・`run_docs` と `review [--run RUN_ID]`・`run_review` を足す。
@@ -88,12 +88,12 @@ def fetch_document(url: str, ticker: str, http: httpx.Client, store: DocStore,
 
 ```python
 def normalize(text: str) -> str      # NFKC、空白・改行の除去
-def check_claims(answer: dict, claims: list[dict], docs: dict[str, str]) -> tuple[dict, list[dict], float]
-    # → (支えのない項目を "unknown" にした answer, 照合できた claims, 照合率)
+def check_claims(answer: dict, claims: list[dict], docs: dict[str, str]) -> tuple[dict, list[dict]]
+    # → (支えのない項目を "unknown" にした answer, 照合できた claims)
 ```
 
 - 照合できる claim：`doc_id` が `docs` にあり、正規化した `quote` が正規化した本文の部分文字列。空の quote は不一致。
-- 照合率 = 照合できた数 ÷ claims の数（claims が 0 件なら 0.0）。
+- 照合率は銘柄ごとに `review.py` が計算する：全タスクの照合できた数 ÷ 全タスクの claims の数（0 件なら 0.0）。「unknown」と正直に答えて claims の無いタスクは、照合率を下げない。
 - `answer` の項目は、照合できた claim のどれかの `field` がその項目名のときだけ残す（下の 5 章の変更 1）。
 
 ### 3.5 `sector.py`
@@ -118,13 +118,14 @@ class TaskResult:
 def load_prompts(prompt_dir: Path) -> dict[str, str]         # system と t1〜t5（prompts/<版>/*.md）
 def build_messages(system: str, task_prompt: str, docs: dict[str, str], context: dict) -> list[dict[str, str]]
 def parse_reply(text: str, fields: list[str]) -> dict         # JSON・answer の項目・claims の形を検証。合わなければ ReplyError
-def run_task(llm: LLMClient, task: str, prompts: dict[str, str], fields: list[str],
-             docs: dict[str, str], context: dict) -> TaskResult   # 1 回だけ再依頼。それでも ReplyError なら送出
+def run_task(llm: LLMClient, prompts: dict[str, str], task_fields: tuple[str, list[str]],
+             docs: dict[str, str], context: dict) -> TaskResult   # task_fields＝(タスク名, 項目名)。1 回だけ再依頼。それでも ReplyError なら送出
 ```
 
+- `prompts` はファイル名の語幹をキーにした辞書（`system`、`t1`〜`t5`、再依頼の文面 `retry`。`{error}` を埋める）。文書は `<document id="doc_id">` で囲んで渡す。`TaskResult.providers` は `<プロバイダー>/<モデル>` の呼び出し順。
 - T1〜T5 の順番、T5 への文脈の渡し方、全体の照合率と `needs_attention` は `review.py`（`L3_composition.md` 5.2 節）。
 - 各タスクの項目名（`task_fields`）は config の `review.tasks` に置く（L2 C4 §4 の表と同じ項目）。
-- 文書が長すぎないよう、`main.run_review` が 1 文書を `review.max_doc_chars` 文字で切ってから渡す。照合も切った後の本文に対して行う（LLM に見せた本文と照合の対象を一致させる）。
+- 文書が長すぎないよう、`review.py` が 1 文書を `review.max_doc_chars` 文字で切ってから渡す。照合も切った後の本文に対して行う（LLM に見せた本文と照合の対象を一致させる）。
 
 ### 3.7 `memo.py`
 
@@ -157,6 +158,7 @@ def render_memo(ticker: str, name: str, review: dict, sector_comparison: dict, s
 | U-sector-2 | `compare` | 比、中央値が None か 0 のとき |
 | U-research-1 | `build_messages` | 文書が doc_id 付きで入る、指示と指標 |
 | U-research-2 | `parse_reply` | 正しい JSON、JSON でない、項目の欠け、claims の形の誤り |
+| U-research-4 | `prompt_version` | プロンプトのどの文字が変わっても版が変わる、順番に依らない |
 | U-research-3 | `run_task`（偽の LLM） | 1 回目の不正 → 再依頼で成功、2 回とも不正で ReplyError、照合の反映 |
 | U-memo-1 | `render_memo` | 見出し・根拠と出典・unknown・要注意の表示 |
 
@@ -177,7 +179,7 @@ def render_memo(ticker: str, name: str, review: dict, sector_comparison: dict, s
 | `docs` | search、search_prompt、max_sources（1 銘柄で取る出典の数） |
 | `docstore` | db_file |
 | `sector` | metrics（`Real_PSR`、`PBR`、`Improvement_Yield(%)`）、min_peers |
-| `review` | max_tickers、min_verified_ratio、prompt_dir（`prompts/v1`）、prompt_version、max_doc_chars、tasks（タスクごとの項目名）、export_dir |
+| `review` | max_tickers、min_verified_ratio、prompt_dir（`prompts`。版は内容のハッシュ）、max_doc_chars、tasks（タスクごとの項目名）、export_dir |
 | `memo` | dir（`results/` の下）、filename |
 
 ## 7. 実装の順番
@@ -185,6 +187,10 @@ def render_memo(ticker: str, name: str, review: dict, sector_comparison: dict, s
 ブランチ 1・2（`feat/docs-edinet`、`feat/docs-web`）はマージ済み。以降は `L3_composition.md` 8 章（A 組み立ての見直し → B `review` と品質の関門 → C 業種の比較と調査メモ）。各ブランチは、足すコードの呼び出し元を同じブランチに含める（vulture は `src/` と `main.py` だけを見る）。
 
 ## 8. 訂正履歴
+
+- 2026-10-17：プロンプトの版を手で付ける番号（`prompts/v1/` など）から内容のハッシュへ。同じ版の名前で中身が違うと、評価の合格が別の文に付くため。
+
+- 2026-10-17（ライブの評価で判明）：照合率をタスクごとの平均（claims の無いタスクを 0 とする）から、銘柄の全 claims に対する割合へ（L2 C4 §5 のとおり）。`check_claims` は照合率を返さない。
 
 - 2026-10-17（承認済み）：組み立てと処理の流れを `L3_composition.md` に移す。`research.review_ticker` を削除し（流れは `review.py`）、3.8 節の `main.run_docs`・`run_review` と 7 章の実装の順番は `L3_composition.md` の 4 章・8 章に置き換える。
 

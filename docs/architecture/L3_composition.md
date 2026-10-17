@@ -27,8 +27,8 @@
 | モジュール | 公開する名前 | 責務 | 状態 |
 |---|---|---|---|
 | `collect.py` | `CollectClients`、`CollectSettings`、`CollectSummary`、`collect_documents` | `docs` の流れ：EDINET の索引の更新と有価証券報告書、Web 文書がまだ無い候補だけを優先順に検索し出典を取得、検索の割り当てで停止 | ✅ |
-| `review.py` | `ReviewSettings`、`ReviewSummary`、`review_candidates` | `review` の流れ：業種の中央値、候補ごとに文書の読み出し → T1〜T5（`research.py`）→ 照合（`verify.py`）→ 記録 → 調査メモ。銘柄の失敗は状態として記録して次へ | 🆕 |
-| `review_eval.py` | `EvalCase`、`EvalResult`、`load_eval_cases`、`score_case`、`judge` | モデルの品質の関門：正解のある銘柄の調査結果の採点と合否 | 🆕 |
+| `review.py` | `ReviewDeps`、`ReviewSettings`、`ReviewSummary`、`review_candidates` | `review` の流れ：業種の中央値、候補ごとに文書の読み出し → T1〜T5（`research.py`）→ 照合（`verify.py`）→ 記録 → 調査メモ。銘柄の失敗は状態として記録して次へ（B：業種の中央値・調査メモはまだ無い） | ✅ |
+| `review_eval.py` | `EvalCase`、`EvalResult`、`load_eval_cases`、`score_case`、`judge` | モデルの品質の関門：正解のある銘柄の調査結果の採点と合否 | ✅ |
 
 ## 4. 既存モジュールの変更
 
@@ -72,19 +72,23 @@ def collect_documents(candidates, settings, clients, store, today) -> CollectSum
 
 ```python
 @dataclass(frozen=True)
-class ReviewSettings:           # from_config(cfg)：review・sector の値
+class ReviewSettings:           # from_config(cfg)：review の値（B。sector の値は C）
     max_tickers: int; min_verified_ratio: float; max_doc_chars: int
-    prompt_version: str; task_fields: dict[str, list[str]]; sector_metrics: list[str]; min_peers: int
+    prompt_version: str; task_fields: dict[str, list[str]]; context_metrics: list[str]
 
 @dataclass(frozen=True)
 class ReviewSummary:
-    reviewed: int; failed: int; needs_attention: int; memo_paths: list[Path]
+    reviewed: int; failed: int; needs_attention: int      # memo_paths は C
 
-def review_candidates(run_id, tickers, settings, llm, prompts, records, store, sectors, memo_dir) -> ReviewSummary
+@dataclass(frozen=True)
+class ReviewDeps:               # 引数を 5 個に収めるための束（llm・prompts・records・store）
+    llm: LLMClient; prompts: dict[str, str]; records: RecordStore; store: DocStore
+
+def review_candidates(run_id, candidates, tickers, settings, deps) -> ReviewSummary
 ```
 
-- 対象：`tickers` が与えられればそれ（評価・少数での確認用）、無ければ実行の二次候補のうち `reviewed(run_id)` に無いものを `Priority_Rank` の順に `max_tickers` 件。
-- 1 銘柄：文書を `max_doc_chars` で切る → T1〜T4 → T5（T1〜T4 の照合済みの answer を文脈に）→ `check_claims` → `record_review` → `render_memo` を書き出す。業種の比較（`sector.py`）と調査メモ（`memo.py`）はブランチ C で足す（B では `sector_comparison` は空、メモは出さない。`ReviewSettings` の sector の値と `sectors`・`memo_dir` の引数も C で足す）。失敗（文書が無い、全プロバイダーの失敗、JSON 不正）は status に残して次へ。
+- 対象：`tickers` が与えられればそれ（少数での確認用。`max_tickers` の対象外）、無ければ `candidates`（`RecordStore.candidates` の (ticker, 指標)。評価では正解の銘柄から作る）のうち `reviewed(run_id)` に無いものを `Priority_Rank` の順に `max_tickers` 件。
+- 1 銘柄：文書を `max_doc_chars` で切る → T1〜T4 → T5（T1〜T4 の照合済みの answer を文脈 `verified_answers` に。照合は `run_task` の中）→ `record_review`（B）→ `render_memo` を書き出す（C）。文脈は銘柄コード・名前と `review.context_metrics` の指標。銘柄の照合率はタスクごとの照合率の平均。`needs_attention` は成功した銘柄の照合率が `min_verified_ratio` 未満のとき。業種の比較（`sector.py`）と調査メモ（`memo.py`）はブランチ C で足す（B では `sector_comparison` は空、メモは出さない。`ReviewSettings` の sector の値と `sectors`・`memo_dir` の引数も C で足す）。失敗（文書が無い、全プロバイダーの失敗、JSON 不正）は status に残して次へ。
 - **品質の関門**：`records.passed_eval(prompt_version, first_model)` が偽なら、評価以外の実行を拒む（`main.py` が「先に `review-eval` を」と表示して終了コード 1）。
 
 ### 5.3 `review_eval.py`（モデルの品質の関門）
@@ -94,7 +98,7 @@ def review_candidates(run_id, tickers, settings, llm, prompts, records, store, s
 ```python
 @dataclass(frozen=True)
 class EvalCase:
-    ticker: str; task: str; field: str
+    ticker: str; name: str; task: str; field: str
     expect_any: list[str]       # 照合済みの answer か根拠の引用に、どれか 1 つが含まれれば合格（空なら「項目が unknown でない」）
     basis: str                  # 出典（hypothesis_map の節）
 
@@ -107,7 +111,7 @@ def score_case(case: EvalCase, review_row: dict) -> bool
 def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresholds: dict) -> EvalResult
 ```
 
-`review-eval` コマンド：評価の銘柄で `review_candidates(tickers=...)` を実行し（記録先は通常と同じ `reviews` だが run_id は評価用に `eval-<日時>`）、`judge` の結果を `review_evals` に記録して表示する。不合格なら終了コード 1。
+`review-eval` コマンド：評価の銘柄は二次候補ではないので、まず `collect_documents` で評価の銘柄（名前は `EvalCase.name`）の文書を集め、次に `review_candidates(tickers=...)` を実行し（記録先は通常と同じ `reviews` だが run_id は評価用に `eval-<日時>`）、`judge` の結果を `review_evals` に記録して表示する。不合格なら終了コード 1。
 
 **合格の条件**（値はすべて `review.eval:` に置く）：
 
@@ -117,16 +121,15 @@ def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresho
 | JSON の不正（再依頼の後も不正） | 0 件 | 不正が出るモデルは本番で銘柄を落とす |
 | 銘柄ごとの照合率の最小値 | `review.min_verified_ratio`（0.7）以上 | 引用の捏造が多いモデルを止める |
 
-初期の正解（`eval/stage2_cases.yaml` の中身。値は実装の前に `hypothesis_map.md` と照合する）：
+初期の正解（`eval/stage2_cases.yaml` の中身。2026-10-17 に `docs/hypothesis_map.md` と照合済み）：
 
-| 銘柄 | タスク・項目 | expect_any |
-|---|---|---|
-| 5232.T 住友大阪セメント | T1・source_type の根拠 | 値上げ、価格改定、販売価格 |
-| 6599.T エブレン | T1・demand_wave | 半導体 |
-| 6430.T ダイコク電機 | T4・reason_forgotten の根拠 | 減益 |
-| 9628.T 燦ホールディングス | T2・one_off_items | （空でない） |
-| 5975.T 東プレ | T2・one_off_items | （空でない） |
-| 4044.T セントラル硝子 | T2・one_off_items | （空でない） |
+| 銘柄 | タスク・項目 | expect_any | 根拠 |
+|---|---|---|---|
+| 5232.T 住友大阪セメント | T1・source_type | 値上げ、価格改定、販売価格 | [一次] 決算短信：セメントの値上げで営業利益 +46 億円（hypothesis_map H1b） |
+| 6599.T エブレン | T1・demand_wave | 半導体 | [一次][報道] 決算説明会：AI 向け半導体製造装置、防衛（H1a） |
+| 6430.T ダイコク電機 | T5・suggestion | 落選、監視 | [一次][報道] 第 1 四半期 営業利益 −34.4%、通期予想 経常 −53%（H4a、N1 改善なし） |
+
+燦ホールディングス・東プレ・セントラル硝子（「四半期 EPS の急増に一時的な損益が含まれるか」）は入れない：根拠が自分たちの旗（`Quality_Flags`）だけで、一次情報で確かめていない。正解として使うには、先に決算短信で一時的な損益を確かめる（確かめたら追加する）。3 件のため、一致率 0.8 以上は「3 件すべて一致」になる。
 
 評価は本物の API を使うライブの関門（CI には入れない）。モデルの順番・プロンプトの版を変えたら必ず実行する。`review` は合格の記録がないと動かない（上の 5.2）ので、実行を忘れても本番は走らない。
 
@@ -157,8 +160,9 @@ def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresho
 
 | 節 | 追加・変更 |
 |---|---|
+| `llm` | `retries`・`retry_wait_s`：429・5xx・タイムアウトは同じプロバイダーで再試行してから次へ（無料枠は負荷で 503 を返す [データ：2026-10-16]。評価はフォールバックで答えると不合格のため） |
 | `llm.providers` | 先頭に `gemini-3.5-flash-lite`（無料枠：1 日 379 回以上、64k トークンの入力 [データ：2026-10-16]）、次に `gemini-2.5-flash`、Groq、DeepSeek |
-| `review` | max_tickers、min_verified_ratio、prompt_dir、prompt_version、max_doc_chars、tasks（タスクごとの項目名）、export_dir、`eval:`（cases_file、min_hit_rate、max_parse_failures） |
+| `review` | max_tickers、min_verified_ratio、prompt_dir（版はプロンプトの内容のハッシュ）、max_doc_chars、tasks（タスクごとの項目名）、export_dir、`eval:`（cases_file、min_hit_rate、max_parse_failures） |
 | `sector` | metrics、min_peers |
 | `memo` | dir（`results/` の下）、filename |
 
@@ -167,11 +171,34 @@ def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresho
 | 順 | ブランチ | 中身 | 挙動 |
 |---|---|---|---|
 | A ✅ | `refactor/composition` | 4 章の既存モジュールの変更（`RunInfo`、`screen_universe`、`from_config`、`require_key`、`refresh_all`、`write_failures`、`collect.py`、`main.py` の `COMMANDS`）。E7 の流れのテストを `collect_documents` の結合テストへ | 変えない（ゴールデンと実データの全件が一致） |
-| B | `feat/review-command` | `verify.py`、`research.py`（`run_task` まで）、`review.py`、`review_eval.py`、`prompts/v1/`、`eval/stage2_cases.yaml`、`reviews`・`review_evals`、`review`・`review-eval` コマンド、プロバイダーの順番 | 新機能。ライブで評価を実行し、結果を報告して承認を受けてからマージ |
+| B ✅ | `feat/review-command` | `verify.py`、`research.py`（`run_task` まで）、`review.py`、`review_eval.py`、`prompts/`、`eval/stage2_cases.yaml`、`reviews`・`review_evals`、`review`・`review-eval` コマンド、プロバイダーの順番 | 新機能。ライブで評価を実行し、結果を報告して承認を受けてからマージ |
 | C | `feat/review-sector-memo` | `sector.py`、`memo.py` | 新機能 |
 
 各ブランチの後に bonsai。A の後、`main.py` は 150 行以下を目安にする [推論]。
 
+## 8.1 ライブのシナリオ試験（2026-10-17、`gemini-3.5-flash-lite`、プロンプトの版 1b250eef9b52）[データ]
+
+| # | シナリオ | 期待 | 結果 |
+|---|---|---|---|
+| S1 | `docs`（一部の候補は検索済み） | 検索済みを飛ばし、割り当てで止まり残りを表示 | 50 社の EDINET、16 社の検索で 73 文書、「12 candidates left」 |
+| S0 | `review-eval` を 3 回 | 毎回合格 | 合格 1 回・不合格 2 回（照合率の最小 0.67・0.50、ダイコクの T5 の外れ 1 回）。同じモデル・同じプロンプトで結果が揺れる |
+| S2 | 上位 5 社の `review` | 5 社 ok | 5 社 ok、要注意 1 |
+| S3b | `max_tickers: 3` の `review` | レビュー済みを飛ばし 6〜8 位 | 3 社（ok 2、JSON 不正 1 は状態として記録して次へ） |
+| S4 | プロンプトを 1 文字変えた複製 | 拒否 | 拒否（新しい版に評価がない） |
+| S5 | 誤った正解での評価 | 不合格・終了コード 1 | 1/3、不合格 |
+| S6 | S5 の後の `review` | 拒否 | 拒否（最新の評価が不合格） |
+| S7 | Gemini のキーなし | 拒否かキーのエラー | 拒否（主のモデルが Groq になり、その評価がない） |
+
+結論：流れと関門は期待どおり。軽いモデルは評価の合否が揺れるため、関門に「k 回続けて合格」を足し（ユーザー承認、次のブランチ）、DeepSeek を同じ関門で試す。
+
 ## 9. 訂正履歴
+
+- 2026-10-17（ライブのシナリオ試験の結果）：上位 5 社の review で、判断の項目（T4・T5）の引用がプロンプト自身の型の説明文になり unknown になった → system に「判断の項目も文書の根拠の文を引用し、指示の説明文は引用しない」を追加。その後の評価でダイコクの T5 が unknown（「落選」と書かれた文を探した）→ T5 に「判断を決めた事実を引用する」を追加。版の名前と中身がずれる危険があるため、版をプロンプトの内容のハッシュにした（`review.prompt_version` を削除、`prompts/` を 1 つに）
+
+- 2026-10-17（ライブの評価 1 回目の結果による修正）：不合格（2/3、照合率の最小 0.40、フォールバック 1 件）。原因と対応：(1) 照合率の計算がタスクの平均で「unknown」と正直に答えたタスクを 0 と数えていた → 銘柄の全 claims に対する割合へ。(2) 一時的な 503 で次のモデルへ移っていた → 同じプロバイダーで再試行。(3) 住友大阪セメントの T1 で、決算短信にある「値上げ」ではなく中計の半導体の話を源泉にした → T1 のプロンプトを v2 に（源泉は決算で会社が書いた利益の増減の理由）。v1 は削除。評価の判定に `fallback_rows`（主のモデル以外が答えた銘柄の数）を追加
+
+- 2026-10-17（ブランチ B の実装）：(1) `run_task` の引数が 6 個で PLR0913 を超えるため、`task` と `fields` を 1 つの組 `task_fields: tuple[str, list[str]]`（`ReviewSettings.task_fields.items()` の 1 要素）にして 5 個にした。(2) `review_candidates` も同じ理由で依存を `ReviewDeps` にまとめ、評価の銘柄を渡せるよう `candidates` を引数にした（`tickers` は絞り込み）。(3) `ReviewSettings` に `context_metrics`（LLM に見せる一次の指標。`review.context_metrics`）を足し、sector の値と `ReviewSummary.memo_paths` は C に送った。(4) 再依頼の文面は `prompts/<版>/retry.md`（`{error}`）。(5) 状態の語彙は `fields.ReviewStatus`（`ok`・`no_documents`・`llm_failed`・`bad_json`）。(6) 応答の `unknown` キーと答えの値 `unknown` は同じ語で `fields.UNKNOWN`（既存の `CLASS_UNKNOWN` はこれを指す）。(7) `review.tasks` の下はタスク名で動的に読むため、アーキテクチャテストの `DYNAMIC_PARENTS` に加えた。(8) `RecordStore.reviews(run_id)`（評価の採点が読む）と `LLMClient.primary_model`（最初のキーのあるプロバイダーのモデル。無ければ `MissingKeyError`）を足した。
+
+- 2026-10-17：評価の正解を `hypothesis_map.md` と照合し、一次情報で確かめていない 3 件（燦ホールディングス・東プレ・セントラル硝子）を外した。ダイコク電機は「減益」の語ではなく T5 の提案（落選・監視）で採点する。評価の銘柄の文書は `review-eval` が `collect_documents` で集める（`EvalCase.name` を追加）
 
 - 2026-10-17（ブランチ A の実装）：5.1 節の `collect_documents` の引数が 8 個で ruff の PLR0913（5 個まで）を超えるため、依存を `CollectClients`（edinet・search・web_http・二つのリミッター）にまとめ、`collect_documents(candidates, settings, clients, store, today)` にした。`CollectSettings.search` は `clients.search is None` と重複するので削除（`main.py` は `docs.search` を `CollectClients.from_config` 経由で読む）。`SECONDS_PER_MINUTE` は `llm.py` に置く。`latest_issue`・`git_sha` は `main.py` から `records.py`（`RunInfo` の隣）へ移した。`GeminiSearch.search` の「キー無し」検査は `from_config` の `require_key` に置き換えて削除。

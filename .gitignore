@@ -20,6 +20,8 @@ stocks_cache.duckdb
 emin_screening_result*.csv
 !tests/fixtures/*.csv
 results/
+# LLM reviews quote web articles: never committed (public repo)
+reviews/
 # records/ (Parquet exports) is committed as the backup of records.duckdb
 
 # IDE & OS

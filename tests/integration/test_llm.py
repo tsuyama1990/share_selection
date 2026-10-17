@@ -6,7 +6,7 @@ import pytest
 
 import main
 from src.llm import GeminiSearch, LLMClient, LLMError, Provider
-from src.throttle import RateLimiter
+from src.throttle import RateLimiter, Retry
 
 OK_BODY = {"choices": [{"message": {"content": "hello"}}]}
 MSGS = [{"role": "user", "content": "hi"}]
@@ -17,9 +17,12 @@ def providers(*names: str, keys: dict[str, str] | None = None) -> list[Provider]
     return [Provider(n, f"https://{n}.test/v1", f"{n}-model", keys.get(n, "k")) for n in names]
 
 
-def client(handler, provs: list[Provider], max_calls: int = 100) -> LLMClient:
+def client(
+    handler, provs: list[Provider], max_calls: int = 100, retries: int = 0, waits: list | None = None
+) -> LLMClient:
     http = httpx.Client(transport=httpx.MockTransport(handler))
-    return LLMClient(provs, http, 0, RateLimiter(max_calls, 60, sleep=lambda _: None))
+    retry = Retry(retries, 1.0, sleep=(waits if waits is not None else []).append)
+    return LLMClient(provs, http, 0, RateLimiter(max_calls, 60, sleep=lambda _: None), retry)
 
 
 def recording(responses: dict[str, httpx.Response | Exception]):
@@ -53,6 +56,26 @@ def test_falls_back_to_next_provider(failure):
     assert [c.url.host for c in calls] == ["a.test", "b.test"]
 
 
+def test_transient_failures_are_retried_on_the_same_provider():
+    answers = iter([httpx.Response(503), httpx.ConnectTimeout("t"), httpx.Response(200, json=OK_BODY)])
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        r = next(answers)
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+    waits: list[float] = []
+    assert client(handler, providers("a", "b"), retries=2, waits=waits).chat(MSGS).provider == "a"
+    assert waits == [1.0, 2.0]
+
+
+def test_other_failures_are_not_retried():
+    handler, calls = recording({"a": httpx.Response(402), "b": httpx.Response(200, json=OK_BODY)})
+    assert client(handler, providers("a", "b"), retries=2).chat(MSGS).provider == "b"
+    assert [c.url.host for c in calls] == ["a.test", "b.test"]
+
+
 def test_first_provider_answers_without_fallback():
     handler, calls = recording({"a": httpx.Response(200, json=OK_BODY), "b": httpx.Response(500)})
     assert client(handler, providers("a", "b")).chat(MSGS).provider == "a"
@@ -71,7 +94,7 @@ def test_all_fail_raises_without_leaking_keys():
     with pytest.raises(LLMError, match="all LLM providers failed") as exc:
         client(handler, providers("a", "b", keys={"a": "SECRET-A", "b": "SECRET-B"})).chat(MSGS)
     assert "SECRET" not in str(exc.value)
-    assert "a: LLMError HTTP 429" in str(exc.value)
+    assert "a: HTTP 429" in str(exc.value)
 
 
 def test_no_keys_raises():
@@ -169,6 +192,6 @@ def test_llm_check_prints_only_summary(monkeypatch, capsys):
         monkeypatch.delenv(name, raising=False)
     main.cmd_llm_check(cfg, None)
     out = capsys.readouterr().out
-    assert "chat: gemini / gemini-2.5-flash, answer 5 chars" in out
+    assert "chat: gemini-lite / gemini-3.5-flash-lite, answer 5 chars" in out
     assert "search: answer 11 chars, 2 sources, 2 queries" in out
     assert "SECRET" not in out

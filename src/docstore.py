@@ -68,6 +68,13 @@ class DocStore:
         sql = "SELECT 1 FROM documents WHERE ticker = ? AND source = ? LIMIT 1"
         return self.con.execute(sql, [ticker, source]).fetchone() is not None
 
+    def documents(self, ticker: str) -> list[Document]:
+        sql = (
+            "SELECT doc_id, ticker, source, source_ref, title, fetched_at, text"
+            " FROM documents WHERE ticker = ? ORDER BY doc_id"
+        )
+        return [Document(*row) for row in self.con.execute(sql, [ticker]).fetchall()]
+
     def record_error(self, ticker: str, source: str, ref: str, error: str) -> None:
         self.con.execute(
             "INSERT INTO fetch_errors VALUES (?, ?, ?, ?, ?)", [ticker, source, ref, error, datetime.datetime.now()]

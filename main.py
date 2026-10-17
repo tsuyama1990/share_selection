@@ -11,6 +11,7 @@ from typing import Any
 import httpx
 from dotenv import load_dotenv
 
+from src import fields as F
 from src.cache import StockCache, refresh_all
 from src.collect import CollectClients, CollectSettings, collect_documents
 from src.config import CONFIG_FILE, ROOT, MissingKeyError, load_config
@@ -19,6 +20,9 @@ from src.earnings_calendar import load_calendar, update_calendar_csv
 from src.llm import GeminiSearch, LLMClient
 from src.records import RecordStore, RunInfo, evaluate, git_sha, latest_issue
 from src.report import write_failures, write_report
+from src.research import load_prompts, prompt_version
+from src.review import ReviewDeps, ReviewSettings, review_candidates
+from src.review_eval import EvalCase, EvalResult, judge, load_eval_cases, score_case
 from src.screener import NO_CACHE, Screener, screen_universe
 from src.selection import prioritize
 from src.tickers import read_tickers, update_ticker_csv
@@ -26,6 +30,7 @@ from src.yahoo import YahooClient
 
 Args = argparse.Namespace
 Cfg = dict[str, Any]
+EVAL_RUN_ID = "eval-%Y%m%dT%H%M%S"
 
 
 def read_universe(cfg: Cfg) -> list[str]:
@@ -114,6 +119,69 @@ def cmd_docs(cfg: Cfg, args: Args) -> None:
     print(f"{text} {summary.web_docs} web documents stored." if clients.search else text)
 
 
+def open_review(cfg: Cfg, stack: ExitStack) -> ReviewDeps:
+    """The parts of a review run, opened on ``stack``; a missing LLM key raises before any record is read."""
+    http = stack.enter_context(httpx.Client(timeout=cfg["llm"]["timeout_s"]))
+    llm = LLMClient.from_config(cfg, http, os.environ)
+    prompts = load_prompts(ROOT / cfg["review"]["prompt_dir"])
+    return ReviewDeps(
+        llm,
+        prompts,
+        stack.enter_context(RecordStore.from_config(cfg, ROOT)),
+        stack.enter_context(DocStore.from_config(cfg, ROOT)),
+    )
+
+
+def cmd_review(cfg: Cfg, args: Args) -> None:
+    with ExitStack() as stack:
+        deps = open_review(cfg, stack)
+        version = prompt_version(deps.prompts)
+        model = deps.llm.primary.model
+        if not deps.records.passed_eval(version, model):
+            print(f"Error: no passed review-eval for prompt {version} / {model}; run `review-eval` first.")
+            sys.exit(1)
+        run_id = args.run or deps.records.runs()[-1][0]
+        tickers = args.tickers.split(",") if args.tickers else None
+        candidates = deps.records.candidates(run_id)
+        summary = review_candidates(run_id, candidates, tickers, ReviewSettings.from_config(cfg), deps)
+    print(
+        f"Run {run_id}: {summary.reviewed} reviewed, {summary.failed} failed, {summary.needs_attention} need attention."
+    )
+
+
+def print_eval(results: list[tuple[EvalCase, bool]], result: EvalResult, model: str) -> None:
+    for case, hit in results:
+        print(f"  {'hit ' if hit else 'MISS'} {case.ticker} {case.task}.{case.field} {case.expect_any}: {case.basis}")
+    print(
+        f"review-eval {model}: {result.hits}/{result.cases} cases, {result.parse_failures} parse failures, "
+        f"lowest verified ratio {result.min_verified_ratio:.2f}, {result.fallback_rows} answered by a fallback: "
+        f"{'PASSED' if result.passed else 'FAILED'}"
+    )
+
+
+def cmd_review_eval(cfg: Cfg, args: Args) -> None:
+    rev = cfg["review"]
+    cases = load_eval_cases(ROOT / rev["eval"]["cases_file"])
+    names = {c.ticker: c.name for c in cases}
+    candidates = [(t, {F.NAME: n, F.PRIORITY_RANK: rank}) for rank, (t, n) in enumerate(names.items(), 1)]
+    run_id = datetime.datetime.now().strftime(EVAL_RUN_ID)
+    with ExitStack() as stack:
+        clients = CollectClients.from_config(cfg, os.environ, stack)
+        deps = open_review(cfg, stack)
+        collect_documents(candidates, CollectSettings.from_config(cfg), clients, deps.store, datetime.date.today())
+        review_candidates(run_id, candidates, None, ReviewSettings.from_config(cfg), deps)
+        rows = deps.records.reviews(run_id)
+        results = [(c, score_case(c, rows[c.ticker])) for c in cases]
+        thresholds = {**rev["eval"], "min_verified_ratio": rev["min_verified_ratio"]}
+        model = deps.llm.primary.model
+        result = judge(results, list(rows.values()), thresholds, f"{deps.llm.primary.name}/{model}")
+        summary = [{"ticker": c.ticker, "task": c.task, "field": c.field, "hit": hit} for c, hit in results]
+        deps.records.record_eval(prompt_version(deps.prompts), model, result, summary)
+    print_eval(results, result, model)
+    if not result.passed:
+        sys.exit(1)
+
+
 def cmd_llm_check(cfg: Cfg, args: Args) -> None:
     """Smoke test: one prompt through the fallback chain and one grounded search; prints no secrets."""
     check = cfg["llm"]["check"]
@@ -131,6 +199,8 @@ COMMANDS: dict[str, tuple[Callable[[Cfg, Args], None], str]] = {
     "analyze": (cmd_analyze, "Analyze cached data and record the run"),
     "evaluate": (cmd_evaluate, "Compute outcomes of recorded runs whose horizons have elapsed"),
     "docs": (cmd_docs, "Collect EDINET annual report sections and web sources of a run's stage 2 candidates"),
+    "review": (cmd_review, "LLM research on a run's stage 2 candidates (needs a passed review-eval)"),
+    "review-eval": (cmd_review_eval, "Score the model and prompt version on tickers with known answers"),
     "llm-check": (cmd_llm_check, "Smoke-test the LLM fallback chain and Gemini search"),
 }
 
@@ -144,6 +214,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--issue", help="Shikiho issue (YYYY-MM) the ticker research is based on (default: latest released)"
     )
     commands["docs"].add_argument("--run", help="Run id (default: the latest run)")
+    commands["review"].add_argument("--run", help="Run id (default: the latest run)")
+    commands["review"].add_argument(
+        "--tickers", help="Comma-separated tickers to review (default: the unreviewed candidates)"
+    )
     return parser
 
 

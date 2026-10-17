@@ -144,7 +144,11 @@ llm:
   timeout_s: 60                  # Per-request timeout (seconds)
   temperature: 0
   max_calls_per_minute: 20       # Shared across providers
+  retries: 3                     # Extra attempts on the same provider after HTTP 429/5xx or a timeout (free tiers return 503 under load)
+  retry_wait_s: 10               # Wait before retry n: retry_wait_s x n seconds
   providers:                     # Tried in this order; a provider whose key_env variable is empty is skipped
+    # Free tier [2026-10-16]: gemini-3.5-flash-lite 379+ requests/day and 64k-token inputs, gemini-2.5-flash 20/day, Groq 8k tokens/min
+    - {name: gemini-lite, base_url: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-3.5-flash-lite", key_env: GEMINI_API_KEY}
     - {name: gemini, base_url: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-2.5-flash", key_env: GEMINI_API_KEY}
     - {name: groq, base_url: "https://api.groq.com/openai/v1", model: "openai/gpt-oss-120b", key_env: GROQ_API_KEY}
     - {name: deepseek, base_url: "https://api.deepseek.com", model: "deepseek-v4-flash", key_env: DEEPSEEK_API_KEY}  # paid, last resort
@@ -196,3 +200,24 @@ docs:
   search_prompt: >-
     {name}（証券コード{code}、東証上場）の最新の決算の結果、利益が増減した理由、
     および同社のIRページ・決算短信の掲載ページを調べてください。
+
+# ------------------------------------------
+# 14. review: stage 2 LLM research (`main.py review`, `review-eval`); `review` needs a passed `review-eval` for the first provider's model
+# ------------------------------------------
+review:
+  max_tickers: 50                # Candidates reviewed per run (best Priority_Rank first; --tickers is not limited)
+  min_verified_ratio: 0.7        # Verified claims / claims below this: the ticker needs attention (and fails review-eval)
+  prompt_dir: "prompts"          # system.md, t1.md..t5.md, retry.md; their content hash is the prompt version (review-eval passes are per version and model)
+  max_doc_chars: 20000           # Each document is cut to this many characters before the LLM sees it (and before quotes are checked)
+  export_dir: "reviews"          # Parquet export of reviews and review_evals (git-ignored: quotes of web articles)
+  context_metrics: ["Improvement_Class", "EPS_Q_YoY(%)", "OI_YoY(%)", "Op_Margin_Change(pt)", "Real_PSR", "PBR"]  # Stage 1 metrics shown to the LLM
+  tasks:                         # Answer items per task, in the order the tasks run (the last one sees the verified answers of the others)
+    T1: [source_type, demand_wave, tier, chokepoint, exposure_pct]
+    T2: [one_off_items, recurring_view]
+    T3: [capital_actions, n2_risk]
+    T4: [reason_forgotten]
+    T5: [suggestion, open_questions]
+  eval:                          # Pass conditions of `review-eval`
+    cases_file: "eval/stage2_cases.yaml"
+    min_hit_rate: 0.8            # Cases answered as expected / cases
+    max_parse_failures: 0        # Reviews whose reply was invalid JSON even after the re-ask
