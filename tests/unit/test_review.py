@@ -9,6 +9,9 @@ def test_review_settings_from_config():
             "max_doc_chars": 100,
             "tasks": {"T1": ["a"], "T2": ["b", "c"]},
             "context_metrics": ["PBR"],
+            "sources": ["edinet"],
         }
     }
-    assert ReviewSettings.from_config(cfg) == ReviewSettings(5, 0.6, 100, {"T1": ["a"], "T2": ["b", "c"]}, ["PBR"])
+    assert ReviewSettings.from_config(cfg) == ReviewSettings(
+        5, 0.6, 100, {"T1": ["a"], "T2": ["b", "c"]}, ["PBR"], ["edinet"]
+    )

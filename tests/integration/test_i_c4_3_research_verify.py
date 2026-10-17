@@ -12,7 +12,7 @@ DOCS = {"edinet:S1:Risk": "事業等のリスク。原材料価格の高騰。",
 
 
 def test_every_task_has_a_prompt_that_names_its_answer_items():
-    assert {SYSTEM, "retry", *(t.lower() for t in TASKS)} == set(PROMPTS)
+    assert {SYSTEM, "user", "retry", *(t.lower() for t in TASKS)} == set(PROMPTS)
     for task, fields in TASKS.items():
         prompt = PROMPTS[task.lower()]
         assert prompt.startswith(f"# {task} ")
@@ -36,7 +36,7 @@ def test_run_task_verifies_every_task_against_the_documents():
         assert {c["field"] for c in result.evidence} <= set(task_fields[1])
         assert result.providers == ["fake/fake-model"]
     first_user = llm.calls[0][1]["content"]
-    assert '<document id="edinet:S1:Risk">' in first_user and first_user.startswith(PROMPTS["t1"])
+    assert '<document id="edinet:S1:Risk">' in first_user and first_user.rstrip().endswith(PROMPTS["t1"].rstrip())
 
 
 def test_run_task_replaces_items_that_no_document_supports_with_unknown():
@@ -71,5 +71,5 @@ def test_run_task_gives_up_after_the_second_invalid_reply():
 
 
 def test_documents_are_what_the_model_sees():
-    system, user = build_messages(PROMPTS[SYSTEM], PROMPTS["t1"], DOCS, {"ticker": "1.T"})
+    system, user = build_messages(PROMPTS, "T1", DOCS, {"ticker": "1.T"})
     assert system["content"] == PROMPTS[SYSTEM] and "セメントの値上げ" in user["content"]

@@ -12,6 +12,7 @@ from .verify import check_claims
 
 VERSION_HEX = 12  # hex digits of the prompt hash kept as the version
 SYSTEM = "system"
+USER = "user"  # template of the user message: {documents}, {context}, {task}
 RETRY = "retry"
 CLAIM_KEYS = ("field", "claim", "quote", "doc_id")
 
@@ -31,7 +32,7 @@ class TaskResult:
 
 
 def load_prompts(prompt_dir: Path) -> dict[str, str]:
-    """File stem -> text of every ``*.md`` in ``prompt_dir`` (``system``, ``t1``..``t5``, ``retry``)."""
+    """File stem -> text of every ``*.md`` in ``prompt_dir`` (``system``, ``user``, ``t1``..``t5``, ``retry``)."""
     return {p.stem: p.read_text(encoding="utf-8") for p in sorted(prompt_dir.glob("*.md"))}
 
 
@@ -42,11 +43,15 @@ def prompt_version(prompts: dict[str, str]) -> str:
 
 
 def build_messages(
-    system: str, task_prompt: str, docs: dict[str, str], context: dict[str, Any]
+    prompts: dict[str, str], task: str, docs: dict[str, str], context: dict[str, Any]
 ) -> list[dict[str, str]]:
+    """System prompt, then the ``user`` template filled with the documents first and the task last (the shared
+    prefix of the five tasks lets the providers cache it)."""
     documents = "\n".join(f'<document id="{doc_id}">\n{text}\n</document>' for doc_id, text in docs.items())
-    user = f"{task_prompt}\n\n{json.dumps(context, ensure_ascii=False)}\n\n{documents}"
-    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    user = prompts[USER].format(
+        documents=documents, context=json.dumps(context, ensure_ascii=False), task=prompts[task.lower()]
+    )
+    return [{"role": "system", "content": prompts[SYSTEM]}, {"role": "user", "content": user}]
 
 
 def _claims_of(claims: Any) -> list[dict[str, str]]:
@@ -87,7 +92,7 @@ def run_task(
 ) -> TaskResult:
     """Run one task (name, answer items); ask once more with the error after an invalid reply, then ``ReplyError``."""
     task, fields = task_fields
-    messages = build_messages(prompts[SYSTEM], prompts[task.lower()], docs, context)
+    messages = build_messages(prompts, task, docs, context)
     reply = llm.chat(messages, json_mode=True)
     providers = [f"{reply.provider}/{reply.model}"]
     try:

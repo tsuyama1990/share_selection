@@ -25,6 +25,7 @@ class ReviewSettings:
     max_doc_chars: int
     task_fields: dict[str, list[str]]  # in running order
     context_metrics: list[str]
+    sources: list[str]  # document sources the tasks may use ("edinet", "web")
 
     @classmethod
     def from_config(cls, cfg: dict[str, Any]) -> "ReviewSettings":
@@ -35,6 +36,7 @@ class ReviewSettings:
             rev["max_doc_chars"],
             rev["tasks"],
             rev["context_metrics"],
+            rev["sources"],
         )
 
 
@@ -130,7 +132,9 @@ def _run_tasks(
 
 
 def _review_ticker(ticker: str, metrics: dict[str, Any], settings: ReviewSettings, deps: ReviewDeps) -> ReviewRow:
-    docs = {d.doc_id: d.text[: settings.max_doc_chars] for d in deps.store.documents(ticker)}
+    docs = {
+        d.doc_id: d.text[: settings.max_doc_chars] for d in deps.store.documents(ticker) if d.source in settings.sources
+    }
     out = _Outcome(F.ReviewStatus.NO_DOCUMENTS if not docs else F.ReviewStatus.OK)
     if docs:
         context = {"ticker": ticker, "name": metrics.get(F.NAME, "")}

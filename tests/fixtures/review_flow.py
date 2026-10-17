@@ -19,7 +19,7 @@ MODEL = "fake-model"
 FABRICATED = "NOT IN ANY DOCUMENT"
 GOOD_ANSWERS: dict[str, dict[str, Any]] = {
     "T1": {
-        "source_type": "P2 値上げの浸透",
+        "source_type": "P2 値上げ・価格転嫁の浸透",
         "demand_wave": "半導体",
         "tier": "unknown",
         "chokepoint": "unknown",
