@@ -147,11 +147,12 @@ llm:
   retries: 3                     # Extra attempts on the same provider after HTTP 429/5xx or a timeout (free tiers return 503 under load)
   retry_wait_s: 10               # Wait before retry n: retry_wait_s x n seconds
   providers:                     # Tried in this order; a provider whose key_env variable is empty is skipped
+    # deepseek (paid, ~$0.10 per 3-run eval [2026-10-17]) passed every review-eval; gemini-3.5-flash-lite (free) passed 1 of 3
     # Free tier [2026-10-16]: gemini-3.5-flash-lite 379+ requests/day and 64k-token inputs, gemini-2.5-flash 20/day, Groq 8k tokens/min
+    - {name: deepseek, base_url: "https://api.deepseek.com", model: "deepseek-v4-flash", key_env: DEEPSEEK_API_KEY}
     - {name: gemini-lite, base_url: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-3.5-flash-lite", key_env: GEMINI_API_KEY}
     - {name: gemini, base_url: "https://generativelanguage.googleapis.com/v1beta/openai", model: "gemini-2.5-flash", key_env: GEMINI_API_KEY}
     - {name: groq, base_url: "https://api.groq.com/openai/v1", model: "openai/gpt-oss-120b", key_env: GROQ_API_KEY}
-    - {name: deepseek, base_url: "https://api.deepseek.com", model: "deepseek-v4-flash", key_env: DEEPSEEK_API_KEY}  # paid, last resort
   search:                        # Gemini native generateContent + google_search tool
     base_url: "https://generativelanguage.googleapis.com/v1beta"
     model: "gemini-2.5-flash"
