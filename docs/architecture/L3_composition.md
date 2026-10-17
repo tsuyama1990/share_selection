@@ -162,7 +162,7 @@ def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresho
 |---|---|
 | `llm` | `retries`・`retry_wait_s`：429・5xx・タイムアウトは同じプロバイダーで再試行してから次へ（無料枠は負荷で 503 を返す [データ：2026-10-16]。評価はフォールバックで答えると不合格のため） |
 | `llm.providers` | 先頭に `gemini-3.5-flash-lite`（無料枠：1 日 379 回以上、64k トークンの入力 [データ：2026-10-16]）、次に `gemini-2.5-flash`、Groq、DeepSeek |
-| `review` | max_tickers、min_verified_ratio、prompt_dir、prompt_version、max_doc_chars、tasks（タスクごとの項目名）、export_dir、`eval:`（cases_file、min_hit_rate、max_parse_failures） |
+| `review` | max_tickers、min_verified_ratio、prompt_dir（版はプロンプトの内容のハッシュ）、max_doc_chars、tasks（タスクごとの項目名）、export_dir、`eval:`（cases_file、min_hit_rate、max_parse_failures） |
 | `sector` | metrics、min_peers |
 | `memo` | dir（`results/` の下）、filename |
 
@@ -171,12 +171,14 @@ def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresho
 | 順 | ブランチ | 中身 | 挙動 |
 |---|---|---|---|
 | A ✅ | `refactor/composition` | 4 章の既存モジュールの変更（`RunInfo`、`screen_universe`、`from_config`、`require_key`、`refresh_all`、`write_failures`、`collect.py`、`main.py` の `COMMANDS`）。E7 の流れのテストを `collect_documents` の結合テストへ | 変えない（ゴールデンと実データの全件が一致） |
-| B | `feat/review-command` | `verify.py`、`research.py`（`run_task` まで）、`review.py`、`review_eval.py`、`prompts/v1/`、`eval/stage2_cases.yaml`、`reviews`・`review_evals`、`review`・`review-eval` コマンド、プロバイダーの順番 | 新機能。ライブで評価を実行し、結果を報告して承認を受けてからマージ |
+| B | `feat/review-command` | `verify.py`、`research.py`（`run_task` まで）、`review.py`、`review_eval.py`、`prompts/`、`eval/stage2_cases.yaml`、`reviews`・`review_evals`、`review`・`review-eval` コマンド、プロバイダーの順番 | 新機能。ライブで評価を実行し、結果を報告して承認を受けてからマージ |
 | C | `feat/review-sector-memo` | `sector.py`、`memo.py` | 新機能 |
 
 各ブランチの後に bonsai。A の後、`main.py` は 150 行以下を目安にする [推論]。
 
 ## 9. 訂正履歴
+
+- 2026-10-17（ライブのシナリオ試験の結果）：上位 5 社の review で、判断の項目（T4・T5）の引用がプロンプト自身の型の説明文になり unknown になった → system に「判断の項目も文書の根拠の文を引用し、指示の説明文は引用しない」を追加。その後の評価でダイコクの T5 が unknown（「落選」と書かれた文を探した）→ T5 に「判断を決めた事実を引用する」を追加。版の名前と中身がずれる危険があるため、版をプロンプトの内容のハッシュにした（`review.prompt_version` を削除、`prompts/` を 1 つに）
 
 - 2026-10-17（ライブの評価 1 回目の結果による修正）：不合格（2/3、照合率の最小 0.40、フォールバック 1 件）。原因と対応：(1) 照合率の計算がタスクの平均で「unknown」と正直に答えたタスクを 0 と数えていた → 銘柄の全 claims に対する割合へ。(2) 一時的な 503 で次のモデルへ移っていた → 同じプロバイダーで再試行。(3) 住友大阪セメントの T1 で、決算短信にある「値上げ」ではなく中計の半導体の話を源泉にした → T1 のプロンプトを v2 に（源泉は決算で会社が書いた利益の増減の理由）。v1 は削除。評価の判定に `fallback_rows`（主のモデル以外が答えた銘柄の数）を追加
 

@@ -1,5 +1,6 @@
 """One research task: prompt, LLM call, JSON check with a single re-ask, and quote verification."""
 
+import hashlib
 import json
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,6 +10,7 @@ from . import fields as F
 from .llm import LLMClient
 from .verify import check_claims
 
+VERSION_HEX = 12  # hex digits of the prompt hash kept as the version
 SYSTEM = "system"
 RETRY = "retry"
 CLAIM_KEYS = ("field", "claim", "quote", "doc_id")
@@ -31,6 +33,12 @@ class TaskResult:
 def load_prompts(prompt_dir: Path) -> dict[str, str]:
     """File stem -> text of every ``*.md`` in ``prompt_dir`` (``system``, ``t1``..``t5``, ``retry``)."""
     return {p.stem: p.read_text(encoding="utf-8") for p in sorted(prompt_dir.glob("*.md"))}
+
+
+def prompt_version(prompts: dict[str, str]) -> str:
+    """Hash of the prompt texts: any edit is a new version that needs its own passed review-eval."""
+    digest = hashlib.sha256("\0".join(f"{name}\0{text}" for name, text in sorted(prompts.items())).encode())
+    return digest.hexdigest()[:VERSION_HEX]
 
 
 def build_messages(

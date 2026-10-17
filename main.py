@@ -20,7 +20,7 @@ from src.earnings_calendar import load_calendar, update_calendar_csv
 from src.llm import GeminiSearch, LLMClient
 from src.records import RecordStore, RunInfo, evaluate, git_sha, latest_issue
 from src.report import write_failures, write_report
-from src.research import load_prompts
+from src.research import load_prompts, prompt_version
 from src.review import ReviewDeps, ReviewSettings, review_candidates
 from src.review_eval import EvalCase, EvalResult, judge, load_eval_cases, score_case
 from src.screener import NO_CACHE, Screener, screen_universe
@@ -133,9 +133,9 @@ def open_review(cfg: Cfg, stack: ExitStack) -> ReviewDeps:
 
 
 def cmd_review(cfg: Cfg, args: Args) -> None:
-    version = cfg["review"]["prompt_version"]
     with ExitStack() as stack:
         deps = open_review(cfg, stack)
+        version = prompt_version(deps.prompts)
         model = deps.llm.primary.model
         if not deps.records.passed_eval(version, model):
             print(f"Error: no passed review-eval for prompt {version} / {model}; run `review-eval` first.")
@@ -176,7 +176,7 @@ def cmd_review_eval(cfg: Cfg, args: Args) -> None:
         model = deps.llm.primary.model
         result = judge(results, list(rows.values()), thresholds, f"{deps.llm.primary.name}/{model}")
         summary = [{"ticker": c.ticker, "task": c.task, "field": c.field, "hit": hit} for c, hit in results]
-        deps.records.record_eval(rev["prompt_version"], model, result, summary)
+        deps.records.record_eval(prompt_version(deps.prompts), model, result, summary)
     print_eval(results, result, model)
     if not result.passed:
         sys.exit(1)

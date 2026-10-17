@@ -10,10 +10,11 @@ from typing import Any
 import httpx
 
 from src.llm import Provider, Reply
+from src.research import load_prompts, prompt_version
 from tests.fixtures.config import CFG
 
 PROMPT_DIR = Path(__file__).resolve().parents[2] / CFG["review"]["prompt_dir"]
-PROMPT_VERSION = CFG["review"]["prompt_version"]
+PROMPT_VERSION = prompt_version(load_prompts(PROMPT_DIR))
 MODEL = "fake-model"
 FABRICATED = "NOT IN ANY DOCUMENT"
 GOOD_ANSWERS: dict[str, dict[str, Any]] = {

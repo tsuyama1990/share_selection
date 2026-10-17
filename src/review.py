@@ -10,7 +10,7 @@ from . import fields as F
 from .docstore import DocStore
 from .llm import LLMClient, LLMError
 from .records import RecordStore, ReviewRow
-from .research import ReplyError, run_task
+from .research import ReplyError, prompt_version, run_task
 
 VERIFIED_ANSWERS = "verified_answers"  # context key: what the last task sees of the tasks before it
 SUGGESTION = ("T5", "suggestion")  # (task, answer item) copied to the columns of the same name
@@ -23,7 +23,6 @@ class ReviewSettings:
     max_tickers: int
     min_verified_ratio: float
     max_doc_chars: int
-    prompt_version: str
     task_fields: dict[str, list[str]]  # in running order
     context_metrics: list[str]
 
@@ -34,7 +33,6 @@ class ReviewSettings:
             rev["max_tickers"],
             rev["min_verified_ratio"],
             rev["max_doc_chars"],
-            rev["prompt_version"],
             rev["tasks"],
             rev["context_metrics"],
         )
@@ -93,7 +91,7 @@ class _Outcome:
     providers: list[str] = field(default_factory=list)
 
 
-def _to_row(ticker: str, out: _Outcome, doc_ids: list[str], settings: ReviewSettings) -> ReviewRow:
+def _to_row(ticker: str, out: _Outcome, doc_ids: list[str], settings: ReviewSettings, version: str) -> ReviewRow:
     verified = sum(map(len, out.evidence.values()))
     ratio = verified / out.claims if out.claims else 0.0  # over all claims of the ticker (L2 C4 §5)
     return ReviewRow(
@@ -108,7 +106,7 @@ def _to_row(ticker: str, out: _Outcome, doc_ids: list[str], settings: ReviewSett
         out.status == F.ReviewStatus.OK and ratio < settings.min_verified_ratio,
         doc_ids,
         sorted(set(out.providers)),
-        settings.prompt_version,
+        version,
     )
 
 
@@ -138,4 +136,4 @@ def _review_ticker(ticker: str, metrics: dict[str, Any], settings: ReviewSetting
         context = {"ticker": ticker, "name": metrics.get(F.NAME, "")}
         context |= {m: metrics[m] for m in settings.context_metrics if m in metrics}
         _run_tasks(out, docs, context, settings, deps)
-    return _to_row(ticker, out, list(docs), settings)
+    return _to_row(ticker, out, list(docs), settings, prompt_version(deps.prompts))

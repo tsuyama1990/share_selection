@@ -22,7 +22,7 @@
 | `webfetch.py` | `extract_text`、`web_doc_id`、`fetch_document` | URL の取得（リダイレクト追従・サイズ上限）、HTML・PDF の本文抽出、保存 | ✅ |
 | `verify.py` | `normalize`、`check_claims` | 引用の照合と照合率、支えのない項目の unknown への置き換え | ✅ |
 | `sector.py` | `sector_medians`、`compare` | 業種ごとの中央値と、候補の同業比較 | 🆕 |
-| `research.py` | `ReplyError`、`TaskResult`、`load_prompts`、`build_messages`、`parse_reply`、`run_task` | T1〜T5 の実行（プロンプトの組み立て、JSON の検証と 1 回の再依頼、照合） | ✅ |
+| `research.py` | `ReplyError`、`TaskResult`、`load_prompts`、`prompt_version`、`build_messages`、`parse_reply`、`run_task` | T1〜T5 の実行（プロンプトの組み立て、JSON の検証と 1 回の再依頼、照合） | ✅ |
 | `memo.py` | `render_memo` | 1 銘柄の調査メモ（Markdown の文字列） | 🆕 |
 
 `records.py`（✅）には `reviews` テーブル、`candidates(run_id)`、`run_metrics(run_id)`、`reviewed(run_id)`、`record_review(run_id, row)` を足す。`main.py`（✅）には `docs [--run RUN_ID]`・`run_docs` と `review [--run RUN_ID]`・`run_review` を足す。
@@ -158,6 +158,7 @@ def render_memo(ticker: str, name: str, review: dict, sector_comparison: dict, s
 | U-sector-2 | `compare` | 比、中央値が None か 0 のとき |
 | U-research-1 | `build_messages` | 文書が doc_id 付きで入る、指示と指標 |
 | U-research-2 | `parse_reply` | 正しい JSON、JSON でない、項目の欠け、claims の形の誤り |
+| U-research-4 | `prompt_version` | プロンプトのどの文字が変わっても版が変わる、順番に依らない |
 | U-research-3 | `run_task`（偽の LLM） | 1 回目の不正 → 再依頼で成功、2 回とも不正で ReplyError、照合の反映 |
 | U-memo-1 | `render_memo` | 見出し・根拠と出典・unknown・要注意の表示 |
 
@@ -178,7 +179,7 @@ def render_memo(ticker: str, name: str, review: dict, sector_comparison: dict, s
 | `docs` | search、search_prompt、max_sources（1 銘柄で取る出典の数） |
 | `docstore` | db_file |
 | `sector` | metrics（`Real_PSR`、`PBR`、`Improvement_Yield(%)`）、min_peers |
-| `review` | max_tickers、min_verified_ratio、prompt_dir（`prompts/v1`）、prompt_version、max_doc_chars、tasks（タスクごとの項目名）、export_dir |
+| `review` | max_tickers、min_verified_ratio、prompt_dir（`prompts`。版は内容のハッシュ）、max_doc_chars、tasks（タスクごとの項目名）、export_dir |
 | `memo` | dir（`results/` の下）、filename |
 
 ## 7. 実装の順番
@@ -186,6 +187,8 @@ def render_memo(ticker: str, name: str, review: dict, sector_comparison: dict, s
 ブランチ 1・2（`feat/docs-edinet`、`feat/docs-web`）はマージ済み。以降は `L3_composition.md` 8 章（A 組み立ての見直し → B `review` と品質の関門 → C 業種の比較と調査メモ）。各ブランチは、足すコードの呼び出し元を同じブランチに含める（vulture は `src/` と `main.py` だけを見る）。
 
 ## 8. 訂正履歴
+
+- 2026-10-17：プロンプトの版を手で付ける番号（`prompts/v1/` など）から内容のハッシュへ。同じ版の名前で中身が違うと、評価の合格が別の文に付くため。
 
 - 2026-10-17（ライブの評価で判明）：照合率をタスクごとの平均（claims の無いタスクを 0 とする）から、銘柄の全 claims に対する割合へ（L2 C4 §5 のとおり）。`check_claims` は照合率を返さない。
 

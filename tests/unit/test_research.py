@@ -3,7 +3,7 @@ import json
 import pytest
 
 from src.llm import Reply
-from src.research import ReplyError, TaskResult, build_messages, load_prompts, parse_reply, run_task
+from src.research import ReplyError, TaskResult, build_messages, load_prompts, parse_reply, prompt_version, run_task
 
 PROMPTS = {"system": "SYSTEM", "t1": "# T1 task", "retry": "again: {error}"}
 DOCS = {"d1": "営業利益は46億円増加した。"}
@@ -108,3 +108,9 @@ def test_run_task_raises_when_the_second_reply_is_invalid_too():
     with pytest.raises(ReplyError):
         run_task(llm, PROMPTS, ("T1", FIELDS), DOCS, {})
     assert len(llm.calls) == 2
+
+
+def test_prompt_version_changes_with_any_prompt_text():
+    base = {"system": "S", "t1": "one"}
+    assert prompt_version(base) == prompt_version(dict(reversed(base.items())))
+    assert prompt_version(base) != prompt_version({**base, "t1": "one!"})

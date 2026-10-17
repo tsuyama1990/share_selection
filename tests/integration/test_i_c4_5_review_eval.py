@@ -14,11 +14,21 @@ from src.research import load_prompts
 from src.review import ReviewDeps, ReviewSettings, review_candidates
 from src.review_eval import EvalResult, judge, load_eval_cases, score_case
 from tests.fixtures.config import CFG
-from tests.fixtures.review_flow import GOOD_ANSWERS, MODEL, PROMPT_DIR, FakeLLM, clueless, fabricating, not_json, reply
+from tests.fixtures.review_flow import (
+    GOOD_ANSWERS,
+    MODEL,
+    PROMPT_DIR,
+    PROMPT_VERSION,
+    FakeLLM,
+    clueless,
+    fabricating,
+    not_json,
+    reply,
+)
 
 REV = CFG["review"]
 CASES = load_eval_cases(Path(__file__).resolve().parents[2] / REV["eval"]["cases_file"])
-VERSION = REV["prompt_version"]
+VERSION = PROMPT_VERSION
 THRESHOLDS = {**REV["eval"], "min_verified_ratio": REV["min_verified_ratio"]}
 RUN = "eval-1"
 TEXT = "セメントの値上げで営業利益が増加。半導体向けの需要。"
