@@ -72,9 +72,9 @@
 | C2 | データ取得 | 外部システムからの取得と保存（キャッシュ・文書） | `yahoo.py`、`cache.py`、`stock_data.py`、`earnings_calendar.py`、`edinet.py`、`webfetch.py`、`docstore.py`、`collect.py`（`docs` の流れ）、`throttle.py`（外部 API の呼び出し間隔。C4 の LLM も使う）（詳細は `L2_C2_data_acquisition.md`） | ✅ |
 | C3 | 一次スクリーニング | 足切り（R1）、指標、改善の兆し（R2）、質の旗（R4）、順位と二次候補 | `rules.py`、`indicators.py`、`improvement.py`、`quality.py`、`metrics.py`、`screener.py`、`selection.py`（順位と二次候補）、`fields.py`（結果行の項目名と値の語彙を 1 か所で定義） | ✅ |
 | C4 | 二次調査 | 業種の文脈、LLM による企業分析、引用の照合、調査メモ（R5） | `llm.py`、`sector.py`、`research.py`、`verify.py`、`review.py`（`review` の流れ）、`review_eval.py`（モデルの品質の関門）（詳細は `L2_C4_stage2_research.md`） | ✅ |
-| C5 | 記録と答え合わせ | 実行・全銘柄の判定・二次の調査結果の記録、結果の計算（R6） | `records.py`（実行・判定）、`outcomes.py`（答え合わせ）、`backup.py` 🆕（git 対象外の記録のバックアップ）、`review_store.py`（`reviews`・`review_evals`、別の DB ファイル `review.db_file`、バージョン管理の対象外） | ✅／🆕 |
+| C5 | 記録と答え合わせ | 実行・全銘柄の判定・二次の調査結果の記録、結果の計算（R6） | `records.py`（実行・判定）、`outcomes.py`（答え合わせ）、`backup.py`（git 対象外の記録のバックアップ）、`review_store.py`（`reviews`・`review_evals`、別の DB ファイル `review.db_file`、バージョン管理の対象外） | ✅ |
 | C6 | 出力 | 結果 CSV、二次候補の一覧、調査メモ | `report.py`、`memo.py`（調査メモ） | ✅ |
-| C7 | 設定と起動 | 設定の読み込み、`.env`、CLI、各コンポーネントの組み立て | `config.py`、`main.py`（CLI と組み立てだけ。処理の流れは各コンポーネントのモジュール。`L3_composition.md`） | ✅ |
+| C7 | 設定と起動 | 設定の読み込み、`.env`、CLI、各コンポーネントの組み立て | `config.py`、`flows.py`（複数のコンポーネントにまたがる `docs`・`review` の流れ）、`main.py`（CLI と組み立てだけ。処理の流れは各コンポーネントのモジュール。`L3_composition.md`） | ✅ |
 | C8 | 実験 | 過去の記録を別の設定で再現し比較する（R7） | 🆕（結果が貯まる 2027 年春以降） | 🆕 |
 
 ## 4. 処理の流れ（コマンド）
@@ -96,7 +96,7 @@ tickers ─▶ fetch ─▶ calendar ─▶ analyze ─▶ docs ─▶ review �
 | `review-eval` | 正解のある銘柄、文書ストア、LLM | 記録（`review_evals`）、合否（不合格は終了コード 1） | モデル・プロンプトを変えたとき（`review` の前提） |
 | `review` | 二次候補、文書ストア、LLM | 記録（`reviews`、同業比較つき）、調査メモ（`memo.dir`） | `docs` と `review-eval` の合格の後 |
 | `evaluate` | 記録、Yahoo の価格履歴 | 記録（`outcomes`） | 随時 |
-| `backup` 🆕 | `review.db_file`・`review.export_dir`・`memo.dir`・`docstore.db_file` | `backup.dir/<日時>/` の写し（新しい `backup.keep` 個だけ残す）。`backup.dir` がリポジトリの中なら拒否（公開リポジトリ） | `review` の後 |
+| `backup` | `review.db_file`・`review.export_dir`・`memo.dir`・`docstore.db_file` | `backup.dir/<日時>/` の写し（新しい `backup.keep` 個だけ残す）。`backup.dir` がリポジトリの中なら拒否（公開リポジトリ） | `review` の後 |
 | `llm-check` | LLM、検索 | 疎通の結果 | 任意（ライブ確認。CI では実行しない） |
 
 ## 5. データの受け渡し（コンポーネント間の約束）
@@ -135,7 +135,7 @@ E2E テストは、この表の形式が守られることを確かめる。
 | E5 | `--config` で別の設定 | 閾値が変わり、出力と記録が別の場所に書かれる | R7 | ある |
 | E6 | 文書ストアにある二次候補で `review`（LLM をモック） | `reviews` に記録され、照合できない引用の主張は捨てられ、調査メモが出る。キーが出力に現れない | R5・N2・N3・N4 | ある |
 | E7 | 二次候補で `docs`（EDINET・検索・Web をモック、一部失敗） | 候補ごとの文書が文書ストアに入り、失敗は記録されて全体は止まらない。キーが出力に現れない | R5・N2・N6 | ある |
-| E8 | 一時ディレクトリで `backup` | 4 つの対象が日時のフォルダに写り、古いものは `backup.keep` 個を超えると消える。`backup.dir` がリポジトリの中なら終了コード 1 で何も写さない | N1 | 🆕 |
+| E8 | 一時ディレクトリで `backup` | 4 つの対象が日時のフォルダに写り、古いものは `backup.keep` 個を超えると消える。`backup.dir` がリポジトリの中なら終了コード 1 で何も写さない | N1 | ある（`tests/e2e/test_e8_backup.py`） |
 
 ### 7.1 ライブ E2E（本物の API。CI に入れない）
 
@@ -213,3 +213,5 @@ E2E テストは、この表の形式が守られることを確かめる。
 - 2026-10-17：第 2 回の SOLID の見直し（`L3_composition.md` 10 章）。C5 を `records.py`・`outcomes.py`・`review_store.py` に分ける
 
 - 2026-10-17：`backup` コマンド（`backup.py`、E8）を追加。設計（L2 C4 §6）は「バックアップは公開リポジトリ以外に取る」と決めていたが、仕組みが無かった
+
+- 2026-10-17：`main.py` を 150 行以下にするため、`docs`・`review` の準備から表示までを `flows.py`（C7）へ、`evaluate` の流れを `outcomes.py` へ移した（挙動は変えない）

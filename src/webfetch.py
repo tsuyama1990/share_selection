@@ -1,6 +1,7 @@
 import datetime
 import hashlib
 import io
+import logging
 import re
 from html.parser import HTMLParser
 from urllib.parse import urlsplit
@@ -15,7 +16,10 @@ SKIPPED_TAGS = {"script", "style", "noscript", "nav", "header", "footer"}
 SNIFF_BYTES = 2048
 DEFAULT_CHARSET = "utf-8"
 NOT_ABOUT_COMPANY = "not about the company"
+PDF_LOG_LEVEL = logging.ERROR  # pypdf warns about fonts on many valid PDFs
 CHARSET = re.compile(rb"charset\s*=\s*[\"']?([\w-]+)", re.IGNORECASE)
+
+logging.getLogger("pypdf").setLevel(PDF_LOG_LEVEL)
 
 
 class _TextExtractor(HTMLParser):

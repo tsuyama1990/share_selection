@@ -47,6 +47,7 @@ def recording(responses: dict[str, httpx.Response | Exception]):
         httpx.ConnectTimeout("t"),
         httpx.ConnectError("c"),
         httpx.Response(200, json={"unexpected": 1}),
+        httpx.Response(200, json={"error": {"code": 502, "message": "Provider returned error"}}),
     ],
 )
 def test_falls_back_to_next_provider(failure):
