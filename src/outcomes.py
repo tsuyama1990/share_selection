@@ -2,10 +2,14 @@
 
 import datetime
 from collections.abc import Callable, Sequence
+from functools import partial
+from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
 from .records import RecordStore
+from .yahoo import YahooClient
 
 
 def _close_on_or_before(closes: pd.Series, date: pd.Timestamp) -> float | None:
@@ -56,3 +60,13 @@ def evaluate(
             store.add_outcomes(run_id, rows)
             added += len(rows)
     return added
+
+
+def evaluate_recorded(cfg: dict[str, Any], root: Path, client: YahooClient, now: datetime.datetime) -> int:
+    """`evaluate` over the runs in the record store; prices are fetched from the earliest run on."""
+    rec = cfg["records"]
+    with RecordStore.from_config(cfg, root) as store:
+        earliest = min((at for _, at in store.runs()), default=now)
+        start = (earliest - datetime.timedelta(days=rec["price_lookback_days"])).date()
+        history = partial(client.adjusted_close, start=start)
+        return evaluate(store, history, rec["horizons_months"], rec["benchmark_ticker"], now)

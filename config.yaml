@@ -240,3 +240,10 @@ sector:
 memo:
   dir: "results/memos"
   filename: "{run_id}_{ticker}.md"
+
+# ------------------------------------------
+# 17. backup: copies of the git-ignored records (`main.py backup`: review.db_file, review.export_dir, memo.dir, docstore.db_file)
+# ------------------------------------------
+backup:
+  dir: "~/share_selection_backup"   # Must be OUTSIDE the repository (it is public); `~` is expanded; one folder per run, named by date and time
+  keep: 5                           # Newest snapshots kept; older ones are deleted

@@ -50,6 +50,7 @@ Edit `config.yaml` to adjust criteria. Every tunable parameter, path and file na
 *   `docstore`: `db_file` of the document store.
 *   `llm`: ordered `providers` (the first with a key is the model `review` is gated on), `search`, `check`, limits (see "LLM" below).
 *   `review`: `max_tickers`, `min_verified_ratio`, `prompt_dir` (the prompt version is the hash of its files), `max_doc_chars` (a document is cut to this before the LLM sees it and quotes are checked), `db_file` (`reviews.duckdb`: `reviews` and `review_evals`, apart from `records.duckdb`), `export_dir` (Parquet of `reviews` / `review_evals`, git-ignored), `context_metrics`, `tasks` (answer items of T1-T5, in running order) and `eval` (`cases_file`, `min_hit_rate`, `max_parse_failures`).
+*   `backup`: `dir` (default `~/share_selection_backup`; must be outside the repository, which is public) and `keep` (snapshots kept) of the `backup` command.
 *   `records`: `db_file`, `export_dir` (Parquet backup per run), `shikiho_issue_months` / `shikiho_release_day` (default `--issue`), `horizons_months`, `benchmark_ticker`, `price_lookback_days` (history fetched before the earliest run by `evaluate`).
 *   `system`: `input_csv`, `db_file`, `sleep_time`, `cache_days`, `market_timezone` (timezone of the history timestamps, `Asia/Tokyo`), `daily_history_period`, `monthly_history_period`.
 
@@ -145,7 +146,13 @@ uv run python main.py evaluate
 ```
 For each recorded run and each `records.horizons_months` whose horizon has elapsed and has no outcomes yet, computes the return from freshly downloaded adjusted closes (last close on or before each date), the `benchmark_ticker` return and the excess; stores them in `outcomes` and writes `records/<run_id>/outcomes.parquet`.
 
-### 10. LLM Check (stage 2)
+### 10. Backup
+```bash
+uv run python main.py backup
+```
+Copies what version control does not hold and cannot be fetched again cheaply (`review.db_file`, `review.export_dir`, `memo.dir`, `docstore.db_file`) to `backup.dir/<YYYYMMDDTHHMMSS>/`, skips missing sources (listed in the output) and deletes the oldest snapshot folders beyond `backup.keep`; other folders in `backup.dir` are never touched. It refuses (exit 1) when `backup.dir` is inside the repository. `records.duckdb` is not copied: its Parquet export is committed.
+
+### 11. LLM Check (stage 2)
 ```bash
 uv run python main.py llm-check
 ```
@@ -193,6 +200,7 @@ Runs the CLI end to end against the real JPX, Yahoo, EDINET, Gemini and LLM APIs
 *   `src/cache.py`: `StockCache` (DuckDB), `refresh` (download if stale) and `refresh_all` (returns the failed tickers).
 *   `src/yahoo.py`: `YahooClient` downloads raw data from Yahoo Finance.
 *   `src/records.py`: `RecordStore` (runs, screen_results, outcomes in `records.duckdb`, exported to Parquet; `candidates` in `Priority_Rank` order, `resolve_run`); `RunInfo` holds the run metadata (`latest_issue`, `git_sha` gather it) and `record_run(RunInfo, results)` builds the columns from `ScreenResult` rows.
+*   `src/backup.py`: `backup` (timestamped snapshots of the ignored records outside the repository, pruned to `backup.keep`) and `backup_from_config`.
 *   `src/outcomes.py`: `evaluate` computes the outcomes of the recorded runs whose horizons have elapsed.
 *   `src/review_store.py`: `ReviewStore` (`reviews` and `review_evals` in `reviews.duckdb`, Parquet to `review.export_dir`) and `ReviewRow`.
 *   `src/edinet.py`: `EdinetClient` (EDINET API v2), the filing index update and `fetch_annual_report` (text sections of the latest annual securities report).

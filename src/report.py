@@ -12,10 +12,11 @@ from .review_eval import EvalCase, EvalResult, combine
 
 
 def write_failures(failures: dict[str, str], out_dir: Path, filename: str) -> Path:
-    """Write the failed tickers and their errors to ``filename`` with ``{date}`` filled in."""
+    """Write the failed tickers and their errors to ``filename`` with ``{date}`` filled in, print where."""
     path = out_dir / filename.format(date=datetime.date.today())
     path.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(list(failures.items()), columns=["ticker", "error"]).to_csv(path, index=False, encoding="utf-8")
+    print(f"{len(failures)} fetch failures saved to {path}")
     return path
 
 

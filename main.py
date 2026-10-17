@@ -4,29 +4,27 @@ import os
 import sys
 from collections.abc import Callable
 from contextlib import ExitStack
-from functools import partial
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 
-from src import collect
+from src.backup import BackupInsideRepoError, backup_from_config
 from src.cache import StockCache, refresh_all
 from src.collect import CollectClients, CollectSettings, collect_documents
 from src.config import CONFIG_FILE, ROOT, MissingKeyError, load_config
-from src.docstore import DocStore
 from src.earnings_calendar import load_calendar, update_calendar_csv
+from src.flows import EvalNotPassedError, collect_run, review_run
 from src.llm import smoke_check
-from src.outcomes import evaluate
+from src.outcomes import evaluate_recorded
 from src.records import RecordStore, RunInfo, git_sha, latest_issue
 from src.report import format_eval, write_failures, write_report
 from src.research import prompt_version
-from src.review import ReviewDeps, ReviewSettings, review_candidates
+from src.review import ReviewDeps
 from src.review_eval import evaluate_model, load_eval_cases
 from src.screener import NO_CACHE, Screener, screen_universe
-from src.sector import Peers
 from src.selection import prioritize
-from src.tickers import read_column, read_tickers, update_ticker_csv
+from src.tickers import read_tickers, update_ticker_csv
 from src.yahoo import YahooClient
 
 Args = argparse.Namespace
@@ -66,9 +64,7 @@ def cmd_fetch(cfg: Cfg, args: Args) -> None:
         failures = refresh_all(cache, YahooClient.from_config(cfg), tickers, cfg["system"]["cache_days"])
     print(f"fetched {len(tickers) - len(failures)} / {len(tickers)}")
     if failures:
-        output_cfg = cfg["output"]
-        path = write_failures(failures, ROOT / output_cfg["dir"], output_cfg["failures_filename"])
-        print(f"{len(failures)} fetch failures saved to {path}")
+        write_failures(failures, ROOT / cfg["output"]["dir"], cfg["output"]["failures_filename"])
 
 
 def cmd_analyze(cfg: Cfg, args: Args) -> None:
@@ -95,50 +91,16 @@ def cmd_analyze(cfg: Cfg, args: Args) -> None:
 
 
 def cmd_evaluate(cfg: Cfg, args: Args) -> None:
-    rec, client = cfg["records"], YahooClient.from_config(cfg)
-    with RecordStore.from_config(cfg, ROOT) as store:
-        earliest = min((at for _, at in store.runs()), default=datetime.datetime.now())
-        start = (earliest - datetime.timedelta(days=rec["price_lookback_days"])).date()
-        history = partial(client.adjusted_close, start=start)
-        added = evaluate(store, history, rec["horizons_months"], rec["benchmark_ticker"], datetime.datetime.now())
+    added = evaluate_recorded(cfg, ROOT, YahooClient.from_config(cfg), datetime.datetime.now())
     print(f"Added {added} outcome rows.")
 
 
 def cmd_docs(cfg: Cfg, args: Args) -> None:
-    with ExitStack() as stack:
-        clients = CollectClients.from_config(cfg, os.environ, stack, cfg["docs"]["search"])
-        with RecordStore.from_config(cfg, ROOT) as records:
-            run_id = records.resolve_run(args.run)
-            candidates = records.candidates(run_id)
-        print(f"Collecting documents of {len(candidates)} candidates of run {run_id}...")
-        companies = collect.companies(candidates, read_column(ROOT / cfg["system"]["input_csv"], "name"))
-        store = stack.enter_context(DocStore.from_config(cfg, ROOT))
-        summary = collect_documents(companies, CollectSettings.from_config(cfg), clients, store, datetime.date.today())
-    if summary.searches_left:
-        print(f"Search quota used up: {summary.searches_left} candidates left for the next `docs` run.")
-    text = f"{summary.edinet_docs} documents stored for {len(candidates) - summary.edinet_failed} tickers; "
-    text += f"{summary.edinet_failed} tickers failed."
-    print(f"{text} {summary.web_docs} web documents stored." if clients.search else text)
+    collect_run(cfg, ROOT, os.environ, args.run, datetime.date.today())
 
 
 def cmd_review(cfg: Cfg, args: Args) -> None:
-    sectors = read_column(ROOT / cfg["system"]["input_csv"], "sector33")
-    with RecordStore.from_config(cfg, ROOT) as records:
-        run_id = records.resolve_run(args.run)
-        candidates = records.candidates(run_id)
-        peers = Peers.from_run(records, run_id, sectors, cfg)
-    with ExitStack() as stack:
-        deps = ReviewDeps.from_config(cfg, ROOT, os.environ, stack, peers)
-        version, model = prompt_version(deps.prompts), deps.llm.primary.model
-        if not deps.reviews.passed_eval(version, model):
-            print(f"Error: no passed review-eval for prompt {version} / {model}; run `review-eval` first.")
-            sys.exit(1)
-        tickers = args.tickers.split(",") if args.tickers else None
-        summary = review_candidates(run_id, candidates, tickers, ReviewSettings.from_config(cfg), deps)
-    print(
-        f"Run {run_id}: {summary.reviewed} reviewed, {summary.failed} failed, {summary.needs_attention} need attention."
-    )
-    print(f"Memos written to {deps.memo_dir}.")
+    review_run(cfg, ROOT, os.environ, args.run, args.tickers.split(",") if args.tickers else None)
 
 
 def cmd_review_eval(cfg: Cfg, args: Args) -> None:
@@ -158,6 +120,17 @@ def cmd_review_eval(cfg: Cfg, args: Args) -> None:
         sys.exit(1)
 
 
+def cmd_backup(cfg: Cfg, args: Args) -> None:
+    try:
+        snapshot = backup_from_config(cfg, ROOT, datetime.datetime.now())
+    except BackupInsideRepoError:
+        print("Error: backup.dir must be outside the repository (it is public).")
+        sys.exit(1)
+    print(f"Backed up {len(snapshot.copied)} sources to {snapshot.path}.")
+    for source in snapshot.skipped:
+        print(f"Skipped (missing): {source}")
+
+
 def cmd_llm_check(cfg: Cfg, args: Args) -> None:
     for line in smoke_check(cfg, os.environ):
         print(line)
@@ -172,6 +145,7 @@ COMMANDS: dict[str, tuple[Callable[[Cfg, Args], None], str]] = {
     "docs": (cmd_docs, "Collect EDINET annual report sections and web sources of a run's stage 2 candidates"),
     "review": (cmd_review, "LLM research on a run's stage 2 candidates (needs a passed review-eval)"),
     "review-eval": (cmd_review_eval, "Score the model and prompt version on tickers with known answers"),
+    "backup": (cmd_backup, "Copy the ignored records (reviews, memos, document store) outside the repository"),
     "llm-check": (cmd_llm_check, "Smoke-test the LLM fallback chain and Gemini search"),
 }
 
@@ -202,7 +176,7 @@ def main() -> None:
         return
     try:
         COMMANDS[args.command][0](cfg, args)
-    except MissingKeyError as e:
+    except (MissingKeyError, EvalNotPassedError) as e:
         print(f"Error: {e}.")
         sys.exit(1)
 
