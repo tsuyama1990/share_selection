@@ -72,7 +72,7 @@
 | C2 | データ取得 | 外部システムからの取得と保存（キャッシュ・文書） | `yahoo.py`、`cache.py`、`stock_data.py`、`earnings_calendar.py`、`edinet.py`、`webfetch.py`、`docstore.py`、`collect.py`（`docs` の流れ）、`throttle.py`（外部 API の呼び出し間隔。C4 の LLM も使う）（詳細は `L2_C2_data_acquisition.md`） | ✅ |
 | C3 | 一次スクリーニング | 足切り（R1）、指標、改善の兆し（R2）、質の旗（R4）、順位と二次候補 | `rules.py`、`indicators.py`、`improvement.py`、`quality.py`、`metrics.py`、`screener.py`、`selection.py`（順位と二次候補）、`fields.py`（結果行の項目名と値の語彙を 1 か所で定義） | ✅ |
 | C4 | 二次調査 | 業種の文脈、LLM による企業分析、引用の照合、調査メモ（R5） | `llm.py`、`sector.py`、`research.py`、`verify.py`、`review.py`（`review` の流れ）、`review_eval.py`（モデルの品質の関門）（詳細は `L2_C4_stage2_research.md`） | ✅ |
-| C5 | 記録と答え合わせ | 実行・全銘柄の判定・二次の調査結果の記録、結果の計算（R6） | `records.py`（`reviews`・`review_evals` テーブル） | ✅ |
+| C5 | 記録と答え合わせ | 実行・全銘柄の判定・二次の調査結果の記録、結果の計算（R6） | `records.py`（実行・判定）、`outcomes.py` 🆕（答え合わせ）、`review_store.py` 🆕（`reviews`・`review_evals`、git 対象外） | ✅／🆕 |
 | C6 | 出力 | 結果 CSV、二次候補の一覧、調査メモ | `report.py`、`memo.py`（調査メモ） | ✅ |
 | C7 | 設定と起動 | 設定の読み込み、`.env`、CLI、各コンポーネントの組み立て | `config.py`、`main.py`（CLI と組み立てだけ。処理の流れは各コンポーネントのモジュール。`L3_composition.md`） | ✅ |
 | C8 | 実験 | 過去の記録を別の設定で再現し比較する（R7） | 🆕（結果が貯まる 2027 年春以降） | 🆕 |
@@ -109,7 +109,7 @@ E2E テストは、この表の形式が守られることを確かめる。
 | C2 → C3 | `earnings_calendar.csv` | code、announce_date、period_en、fiscal_year_end | ✅ |
 | C3 → C6 | 結果 CSV | `output.columns` の列（順位、二次候補、改善区分、質の旗、指標、次回決算日） | ✅ |
 | C3 → C5 | `screen_results` | 全銘柄の通過・落ちた条件・改善区分・二次候補（`stage2_candidate` 列）・質の旗（リスト）・次回決算日・全指標（JSON）。項目名は `fields.py` が唯一の定義 | ✅ |
-| C5 → C2・C4 | `RecordStore.candidates` | 実行の二次候補（`stage2_candidate` 列で選ぶ）と指標 | ✅ |
+| C5 → C2・C4 | `RecordStore.candidates` | 実行の二次候補（`stage2_candidate` 列で選び、`Priority_Rank` の順）と指標 | ✅ |
 | C2 → C4 | 文書ストア | 文書 ID、出典（URL・EDINET の書類 ID）、取得日時、本文 | ✅ |
 | C4 → C5 | `reviews` | 調査結果、照合できた根拠、照合率、モデル・プロンプトの版（Parquet は `review.export_dir`、git 対象外：公開リポジトリに引用を載せない） | ✅ |
 | C5 → C8 | 記録（Parquet） | `runs`・`screen_results`・`outcomes`（`records/`、コミット）、`reviews`・`review_evals`（`review.export_dir`、git 対象外） | ✅ |
@@ -207,3 +207,5 @@ E2E テストは、この表の形式が守られることを確かめる。
 - 2026-10-17（承認済み）：組み立ての見直し（`L3_composition.md`）。`main.py` を CLI と組み立てだけにし、`docs`・`review` の流れを `collect.py`・`review.py` へ。モデルの品質の関門 `review_eval.py` と `review-eval` コマンドを追加
 
 - 2026-10-17：E1〜E4 の状態を実態（テストあり）に直した。ライブ E2E（7.1 節、LV1〜LV13）を追加
+
+- 2026-10-17：第 2 回の SOLID の見直し（`L3_composition.md` 10 章）。C5 を `records.py`・`outcomes.py`・`review_store.py` に分ける

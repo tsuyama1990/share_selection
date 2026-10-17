@@ -203,7 +203,27 @@ def evaluate_model(cases, candidates, settings, deps, gate) -> list[EvalResult] 
 
 結論：流れと関門は期待どおり。軽いモデルは評価の合否が揺れるため、関門に「k 回続けて合格」を足し（ユーザー承認、次のブランチ）、DeepSeek を同じ関門で試す。
 
+## 10. 第 2 回の SOLID の見直し（2026-10-17、ブランチ C の後）
+
+監査：vulture（信頼度 0）で未使用なし。調整値は config、それ以外の文字列・数値は名前付きの定数。問題は組み立てと記録に集中していた。
+
+| # | 問題 | 対応 |
+|---|---|---|
+| M1 | `main.py`（264 行）に処理の流れが戻った（実行の選択、候補 → 会社の変換、評価用の設定の書き換え、閾値の組み立て、`Peers` の組み立て） | 各モジュールの関数・`from_config` へ移す。`main.py` は 150 行以下 |
+| M2 | 処理する銘柄が `(ticker, 指標)` と `Company` の 2 つの形。評価は両方へ変換 | `RecordStore.candidates` は `Priority_Rank` の順で返す（並べ替えは 1 か所）。`collect.companies(candidates, names)` が会社の一覧を作る。評価の銘柄は `EvalCase.company`・`EvalCase` から作る |
+| M3 | 評価の閾値が文字列キーの辞書 | `review_eval.EvalThresholds`（dataclass、`from_config`） |
+| M4 | `open_review` が `ReviewDeps` を None 2 つで作り `replace` で埋める | `ReviewDeps.from_config(cfg, root, env, stack, peers, memo_dir)`、`Peers.from_run(records, run_id, sectors, cfg)` |
+| M5 | 「指定の実行、無ければ最新」が 2 か所 | `RecordStore.resolve_run(run_id)` |
+| M6 | `records.py`（304 行）が 5 つの役割 | `records.py`：実行・全銘柄の判定・候補・指標・答え合わせの保存と `RunInfo`。`outcomes.py` 🆕：答え合わせの計算（`evaluate`）。`review_store.py` 🆕：`ReviewStore`・`ReviewRow`（`reviews`・`review_evals`、別ファイル `review.db_file`、git 対象外。公開リポジトリに引用を載せない記録を物理的にも分ける） |
+| M7 | 評価で検索を止めるのに設定の辞書を書き換える | `CollectClients.from_config(cfg, env, stack, search)`（検索の有無を引数で明示） |
+| M8 | 評価の結果の整形が `main.py` | `report.format_eval`（出力は C6） |
+| M9 | テストが通らない行が 7 モジュールに 18 行 | 1 行ずつ「テストを足す」か「消す」 |
+
+挙動は変えない（ゴールデン、実データの全件の一致、ライブ E2E）。実運用の `records.duckdb` の空の `reviews`・`review_evals` テーブルは一度だけ消す（行は 0）。
+
 ## 9. 訂正履歴
+
+- 2026-10-17：第 2 回の SOLID の見直し（10 章）
 
 - 2026-10-17：評価の文書を EDINET だけにした（`review.eval.sources`）。エブレンの正解を「半導体の需要」（決算説明会・報道。直近の利益の理由としては一次情報で確かめていない）から、有価証券報告書の経営成績の分析にある「価格転嫁」へ。2 つのモデルとも、きれいな文書でこの文を引用した。プロンプトの並び（文書を先、タスクを後）を `prompts/user.md` に置き、版のハッシュに含める（同じ文書を 5 タスクで送るため、プロバイダーの前方一致のキャッシュが効く）
 
