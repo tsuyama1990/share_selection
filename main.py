@@ -15,7 +15,7 @@ from src import fields as F
 from src.cache import StockCache, refresh_all
 from src.collect import CollectClients, CollectSettings, collect_documents
 from src.config import CONFIG_FILE, ROOT, MissingKeyError, load_config
-from src.docstore import DocStore
+from src.docstore import Company, DocStore
 from src.earnings_calendar import load_calendar, update_calendar_csv
 from src.llm import GeminiSearch, LLMClient
 from src.records import RecordStore, RunInfo, evaluate, git_sha, latest_issue
@@ -25,7 +25,7 @@ from src.review import ReviewDeps, ReviewSettings, review_candidates
 from src.review_eval import EvalCase, EvalGate, EvalResult, combine, evaluate_model, load_eval_cases
 from src.screener import NO_CACHE, Screener, screen_universe
 from src.selection import prioritize
-from src.tickers import read_tickers, update_ticker_csv
+from src.tickers import read_names, read_tickers, update_ticker_csv
 from src.yahoo import YahooClient
 
 Args = argparse.Namespace
@@ -110,8 +110,11 @@ def cmd_docs(cfg: Cfg, args: Args) -> None:
             run_id = args.run or records.runs()[-1][0]
             candidates = records.candidates(run_id)
         print(f"Collecting documents of {len(candidates)} candidates of run {run_id}...")
+        names = read_names(ROOT / cfg["system"]["input_csv"])
+        ranked = sorted(candidates, key=lambda c: c[1][F.PRIORITY_RANK])
+        companies = [Company(t, names.get(t, m[F.NAME])) for t, m in ranked]
         store = stack.enter_context(DocStore.from_config(cfg, ROOT))
-        summary = collect_documents(candidates, CollectSettings.from_config(cfg), clients, store, datetime.date.today())
+        summary = collect_documents(companies, CollectSettings.from_config(cfg), clients, store, datetime.date.today())
     if summary.searches_left:
         print(f"Search quota used up: {summary.searches_left} candidates left for the next `docs` run.")
     text = f"{summary.edinet_docs} documents stored for {len(candidates) - summary.edinet_failed} tickers; "
@@ -176,7 +179,8 @@ def cmd_review_eval(cfg: Cfg, args: Args) -> None:
     with ExitStack() as stack:
         clients = CollectClients.from_config(cfg, os.environ, stack)
         deps = open_review(cfg, stack)
-        collect_documents(candidates, CollectSettings.from_config(cfg), clients, deps.store, datetime.date.today())
+        companies = [Company(c.ticker, c.name) for c in cases]
+        collect_documents(companies, CollectSettings.from_config(cfg), clients, deps.store, datetime.date.today())
         model = deps.llm.primary.model
         thresholds = {**rev["eval"], "min_verified_ratio": rev["min_verified_ratio"]}
         run_id = datetime.datetime.now().strftime(EVAL_RUN_ID)

@@ -5,6 +5,7 @@ import datetime
 import httpx
 
 from src import fields as F
+from src.docstore import Company
 from src.records import RecordStore, RunInfo
 from src.screener import ScreenResult
 from tests.fixtures.config import CFG
@@ -18,16 +19,19 @@ GEMINI_HOST = "generativelanguage.googleapis.com"
 EDINET_HOST = "api.edinet-fsa.go.jp"
 HTML_HEADERS = {"content-type": "text/html; charset=utf-8"}
 FAILING_DOC = "S2"
-CANDIDATES = [(f"{n}.T", {F.NAME: f"Company {n}.T", F.PRIORITY_RANK: n}) for n in (1, 2, 3)]
+COMPANIES = [Company(f"{n}.T", f"会社{n}") for n in (1, 2, 3)]
+CANDIDATES = [(c.ticker, {F.NAME: c.name, F.PRIORITY_RANK: n}) for n, c in enumerate(COMPANIES, 1)]
 INFO = RunInfo("2026-10", "abc", {}, datetime.date(2026, 10, 1), None, None)
 
 
 def record_candidates(root) -> str:
-    """Record a run in which the three CANDIDATES are the stage 2 candidates; returns its run id."""
+    """Record a run with the three CANDIDATES as stage 2 candidates and write their names to the ticker CSV."""
     results = {
         ticker: ScreenResult(True, None, {**metrics, F.IMPROVEMENT_CLASS: "clear", F.STAGE2_CANDIDATE: True})
         for ticker, metrics in CANDIDATES
     }
+    rows = "".join(f"{c.ticker.removesuffix('.T')},{c.name}\n" for c in COMPANIES)
+    (root / CFG["system"]["input_csv"]).write_text("code,name\n" + rows, encoding="utf-8")
     with RecordStore.from_config(CFG, root) as store:
         return store.record_run(INFO, results)
 
@@ -47,12 +51,13 @@ def edinet_handler(request: httpx.Request) -> httpx.Response:
 def gemini_response(request: httpx.Request) -> httpx.Response:
     assert request.headers["x-goog-api-key"] == GEMINI_KEY
     prompt = request.content.decode()
-    if "Company 3.T" in prompt:
+    if "会社3" in prompt:
         return httpx.Response(500)
-    code = "1" if "Company 1.T" in prompt else "2"
+    code = "1" if "会社1" in prompt else "2"
     uris = [
         f"https://redirect.example/{code}/page",
         f"https://redirect.example/{code}/broken",
+        f"https://redirect.example/{code}/other",
         "https://ir.example/3rd",
     ]
     chunks = [{"web": {"title": "t", "uri": uri}} for uri in uris]
@@ -68,6 +73,8 @@ def page_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, headers=HTML_HEADERS, content=html_page("IR 1", "<p>profit of 1</p>").encode())
     if url.path == "/2/page":
         return httpx.Response(200, headers={"content-type": "application/pdf"}, content=pdf_bytes("profit of 2"))
+    if url.path.endswith("/other"):
+        return httpx.Response(200, headers=HTML_HEADERS, content=html_page("Other", "<p>Another firm</p>").encode())
     return httpx.Response(404)
 
 

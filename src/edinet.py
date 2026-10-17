@@ -109,14 +109,17 @@ def update_index(client: EdinetClient, store: DocStore, today: datetime.date, in
 def fetch_annual_report(
     client: EdinetClient, store: DocStore, ticker: str, doc_type_code: str, elements: list[str]
 ) -> list[str]:
-    """Store the listed sections of the ticker's latest report; returns their doc_ids (empty after a failure)."""
+    """Store the listed sections of the ticker's latest report; returns their doc_ids (empty after a failure).
+
+    A report with every listed section stored is not downloaded again.
+    """
     doc_id = store.latest_annual_report(sec_code(ticker), doc_type_code)
     if doc_id is None:
         store.record_error(ticker, "edinet", sec_code(ticker), "not in index")
         return []
-    stored = [f"edinet:{doc_id}:{e}" for e in elements if store.has(f"edinet:{doc_id}:{e}")]
-    if stored:
-        return stored
+    wanted = [f"edinet:{doc_id}:{e}" for e in elements]
+    if all(map(store.has, wanted)):
+        return wanted
     try:
         sections = extract_sections(client.download_csv_zip(doc_id), elements)
     except (RuntimeError, zipfile.BadZipFile, UnicodeError, KeyError) as e:

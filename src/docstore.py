@@ -8,6 +8,9 @@ from typing import Any
 
 import duckdb
 
+from .tickers import TICKER_SUFFIX
+from .verify import normalize
+
 SCHEMA = (
     """CREATE TABLE IF NOT EXISTS documents (
         doc_id TEXT PRIMARY KEY, ticker TEXT, source TEXT, source_ref TEXT, title TEXT, fetched_at TIMESTAMP,
@@ -17,6 +20,17 @@ SCHEMA = (
         submit_date DATE)""",
     """CREATE TABLE IF NOT EXISTS fetch_errors (ticker TEXT, source TEXT, ref TEXT, error TEXT, "at" TIMESTAMP)""",
 )
+
+
+@dataclass(frozen=True)
+class Company:
+    ticker: str
+    name: str  # Japanese name
+
+    def mentioned_in(self, text: str) -> bool:
+        """Whether the normalized text holds the normalized name or the code of the ticker."""
+        normalized = normalize(text)
+        return normalize(self.name) in normalized or normalize(self.ticker.removesuffix(TICKER_SUFFIX)) in normalized
 
 
 @dataclass(frozen=True)

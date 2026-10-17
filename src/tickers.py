@@ -33,6 +33,12 @@ def update_ticker_csv(out_csv: Path, url: str, markets: Sequence[str], timeout_s
     return len(tickers)
 
 
+def read_names(csv_path: Path) -> dict[str, str]:
+    """Japanese name by ticker from the ``code`` and ``name`` columns of the ticker CSV."""
+    df = pd.read_csv(csv_path, dtype=str)
+    return {code.strip() + TICKER_SUFFIX: name for code, name in zip(df["code"], df["name"], strict=True)}
+
+
 def read_tickers(csv_path: Path) -> list[str]:
     """Tickers (code + suffix) from the ``code`` column of the ticker CSV."""
     return [code.strip() + TICKER_SUFFIX for code in pd.read_csv(csv_path, dtype=str)["code"]]

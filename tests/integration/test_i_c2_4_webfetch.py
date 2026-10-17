@@ -3,13 +3,14 @@
 import httpx
 import pytest
 
-from src.docstore import DocStore
+from src.docstore import Company, DocStore
 from src.webfetch import fetch_document, web_doc_id
 from tests.fixtures.web import html_page, pdf_bytes
 
 MAX_BYTES = 10_000
 REDIRECT = "https://vertexaisearch.example/redirect/abc"
 FINAL = "https://ir.example.co.jp/q1.html"
+COMPANY = Company("1.T", "エブレン")
 
 
 def pages(request: httpx.Request) -> httpx.Response:
@@ -18,9 +19,11 @@ def pages(request: httpx.Request) -> httpx.Response:
     if url == REDIRECT:
         return httpx.Response(302, headers={"location": FINAL})
     if url == FINAL:
-        return httpx.Response(200, headers=html, content=html_page("Q1", "<p>Profit rose</p>").encode())
+        return httpx.Response(200, headers=html, content=html_page("Q1", "<p>エブレン Profit rose</p>").encode())
     if url.endswith("/report.pdf"):
-        return httpx.Response(200, headers={"content-type": "application/pdf"}, content=pdf_bytes("PDF profit"))
+        return httpx.Response(200, headers={"content-type": "application/pdf"}, content=pdf_bytes("PDF profit of 1"))
+    if url.endswith("/other.html"):
+        return httpx.Response(200, headers=html, content=html_page("Report", "<p>荏原製作所 Profit rose</p>").encode())
     if url.endswith("/huge.html"):
         return httpx.Response(200, headers=html, content=b"x" * (MAX_BYTES + 1))
     if url.endswith("/data.json"):
@@ -39,7 +42,7 @@ def env(tmp_path):
 
 def fetch(env, url: str) -> str | None:
     http, store = env
-    return fetch_document(url, "1.T", http, store, MAX_BYTES)
+    return fetch_document(url, COMPANY, http, store, MAX_BYTES)
 
 
 def rows(env, sql: str) -> list:
@@ -52,14 +55,14 @@ def test_redirect_is_followed_and_the_final_url_stored(env):
 
     assert doc_id == web_doc_id(FINAL)
     assert rows(env, "SELECT doc_id, ticker, source, source_ref, title, text FROM documents") == [
-        (doc_id, "1.T", "web", FINAL, "Q1", "Profit rose")
+        (doc_id, "1.T", "web", FINAL, "Q1", "エブレン Profit rose")
     ]
 
 
 def test_pdf_text_is_stored(env):
     doc_id = fetch(env, "https://ir.example.co.jp/report.pdf")
 
-    assert rows(env, f"SELECT text FROM documents WHERE doc_id = '{doc_id}'") == [("PDF profit",)]
+    assert rows(env, f"SELECT text FROM documents WHERE doc_id = '{doc_id}'") == [("PDF profit of 1",)]
 
 
 @pytest.mark.parametrize(
@@ -69,6 +72,7 @@ def test_pdf_text_is_stored(env):
         ("huge.html", "too large"),
         ("data.json", "unsupported content type"),
         ("empty.html", "empty text"),
+        ("other.html", "not about the company"),
     ],
 )
 def test_failures_are_recorded_and_nothing_stored(env, path, reason):
@@ -85,7 +89,7 @@ def test_transport_error_is_recorded_by_class_name(tmp_path):
 
     http = httpx.Client(transport=httpx.MockTransport(refuse))
     with DocStore(tmp_path / "d.duckdb") as store:
-        assert fetch_document("https://x.example/a", "1.T", http, store, MAX_BYTES) is None
+        assert fetch_document("https://x.example/a", COMPANY, http, store, MAX_BYTES) is None
         assert store.con.execute("SELECT error FROM fetch_errors").fetchall() == [("ConnectError",)]
 
 
@@ -100,6 +104,6 @@ def test_existing_doc_id_is_not_rewritten(env):
         )
     )
 
-    assert fetch_document(FINAL, "2.T", changed, store, MAX_BYTES) == first
-    assert rows(env, "SELECT ticker, text FROM documents") == [("1.T", "Profit rose")]
+    assert fetch_document(FINAL, Company("2.T", "別会社"), changed, store, MAX_BYTES) == first
+    assert rows(env, "SELECT ticker, text FROM documents") == [("1.T", "エブレン Profit rose")]
     assert rows(env, "SELECT count(*) FROM fetch_errors") == [(0,)]

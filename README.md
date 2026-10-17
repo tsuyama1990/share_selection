@@ -44,7 +44,7 @@ Edit `config.yaml` to adjust criteria. Every tunable parameter, path and file na
 *   `output`: report `dir`, `filename` and `failures_filename` (`{date}` = YYYY-MM-DD) and the CSV `columns`.
 *   `tickers`: `jpx_url`, the `markets` kept by the `tickers` command, and `timeout_s` of the download.
 *   `calendar`: `page_url`, `link_pattern` (regex for the workbook links), `user_agent`, `timeout_s`, `out_csv` of the `calendar` command.
-*   `edinet`: `base_url`, `key_env` (environment variable holding the EDINET API key), `index_days` (first-run index window), `doc_type_code`, `sections` (text blocks stored), `request_interval_s`, `timeout_s` of the `docs` command.
+*   `edinet`: `base_url`, `key_env` (environment variable holding the EDINET API key), `index_days` (first-run index window), `doc_type_code`, `sections` (text blocks stored, including the MD&A where the company explains the profit change; a stored report missing a configured section is downloaded again), `request_interval_s`, `timeout_s` of the `docs` command.
 *   `webfetch`: `timeout_s`, `max_bytes` (larger responses are dropped), `user_agent`, `request_interval_s` of the page fetches of `docs`.
 *   `docs`: `search` (also collect web sources), `search_prompt` (`{name}`, `{code}`), `max_sources` (per candidate).
 *   `docstore`: `db_file` of the document store.
@@ -83,7 +83,7 @@ uv run python main.py calendar
 ### 2c. Collect Documents (optional)
 Stores the text sections listed in `edinet.sections` of each stage 2 candidate's latest annual securities report (EDINET) in the document store (`docstore.db_file`, default `documents.duckdb`, ignored by version control). The EDINET API key is read from the `edinet.key_env` variable (`EDINET_API_KEY`, environment or `.env`). Run it after `analyze`; `--run RUN_ID` picks another run (default: the latest). The first run indexes the last `edinet.index_days` days of filings (one request of `request_interval_s` per day); later runs add only new days. A report already stored is not fetched again; failures are kept in the `fetch_errors` table and the command goes on.
 
-With `docs.search: true` (default) it also asks Gemini (grounded search, key in the `llm.search.key_env` variable, `GEMINI_API_KEY`) about each candidate's latest results and IR pages, then fetches the first `docs.max_sources` cited pages (redirects followed; HTML and PDF text) into the document store as `web:` documents. The search answer itself is not stored. A failed search or page is kept in `fetch_errors`.
+With `docs.search: true` (default) it also asks Gemini (grounded search, key in the `llm.search.key_env` variable, `GEMINI_API_KEY`) about each candidate's latest results and IR pages (the prompt names the company by its Japanese name from the ticker CSV, best `Priority_Rank` first), then fetches the first `docs.max_sources` cited pages (redirects followed; HTML and PDF text) into the document store as `web:` documents, but only pages whose title or text names the company (its Japanese name or securities code); other pages are kept in `fetch_errors` as `not about the company`. The search answer itself is not stored. A failed search or page is kept in `fetch_errors`.
 
 ```bash
 uv run python main.py docs [--run RUN_ID]
@@ -175,7 +175,7 @@ The same checks run in CI (`.github/workflows/ci.yml`) and, except pytest, in pr
 ## Architecture
 
 *   `main.py`: CLI and wiring only (argument parsing, config and `.env` loading, parts built by their `from_config`, one `cmd_<name>` per command in `COMMANDS`, summaries printed); the flows live in `src/`.
-*   `src/collect.py`: the `docs` flow (`collect_documents`): EDINET index and annual reports, then a Gemini search per candidate without web documents (best `Priority_Rank` first, stops at the search quota).
+*   `src/collect.py`: the `docs` flow (`collect_documents`): EDINET index and annual reports, then a Gemini search per candidate without web documents (given best `Priority_Rank` first by `main.py`, stops at the search quota).
 *   `src/review.py`: the `review` flow (`review_candidates`): documents -> T1-T5 -> `reviews` row, a failing ticker is recorded and the flow goes on. `src/research.py` runs one task (prompt files, JSON mode, one re-ask), `src/verify.py` checks quotes, `src/review_eval.py` scores and judges the eval cases.
 *   `src/stock_data.py`: `StockData`, the typed raw data of one ticker (normalizes histories to naive market-local dates).
 *   `src/fields.py`: The stage-1 result vocabulary (row keys, improvement classes and sources, `ma` / `downside_to_low`); no other module repeats these strings (architecture test).

@@ -125,6 +125,19 @@ def test_same_doc_id_is_not_fetched_again(store):
     assert len(server.downloads()) == 1
 
 
+def test_a_stored_report_missing_a_configured_section_is_downloaded_again_for_that_section_only(store):
+    server = Server({"2026-06-26": listing(listing_doc("NEW", "65990"))}, {"NEW": BODY})
+    client = make_client(server)
+    update_index(client, store, datetime.date(2026, 6, 26), index_days=0)
+    fetch_annual_report(client, store, "6599.T", "120", SECTIONS[:1])
+
+    ids = fetch_annual_report(client, store, "6599.T", "120", SECTIONS)
+
+    assert ids == [f"edinet:NEW:{e}" for e in SECTIONS]
+    assert len(server.downloads()) == 2
+    assert store.con.execute("SELECT count(*) FROM documents").fetchall() == [(2,)]
+
+
 @pytest.mark.parametrize(
     ("outcome", "error"),
     [
