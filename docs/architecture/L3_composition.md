@@ -1,6 +1,6 @@
 # L3 クラス設計：組み立てと処理の流れ、二次調査の実行と品質の関門
 
-作成：2026-10-17 ／ 状態：**承認待ち**　親：`L1_architecture.md` 3 章（C2〜C7）、`L2_C2_data_acquisition.md`、`L2_C4_stage2_research.md`　関連：`L3_stage2_classes.md`（各モジュールのクラス）　対応テスト：単体（5 章）、結合・E2E（6 章）
+作成：2026-10-17 ／ 状態：**承認（2026-10-17）**　親：`L1_architecture.md` 3 章（C2〜C7）、`L2_C2_data_acquisition.md`、`L2_C4_stage2_research.md`　関連：`L3_stage2_classes.md`（各モジュールのクラス）　対応テスト：単体（5 章）、結合・E2E（6 章）
 
 凡例：✅ 実装済み ／ 🆕 未実装。根拠：[データ：日付]＝実測、[推論]＝未検証の判断。
 

@@ -107,7 +107,7 @@ E2E（L1 E6）は、複数銘柄で `review` を通しで実行し、調査メ�
 
 ## 10. 訂正履歴
 
-- 2026-10-17（承認待ち）：`review` の流れを `review.py`、品質の関門を `review_eval.py`（I-C4-5）に置く設計（`L3_composition.md`）。
+- 2026-10-17（承認済み）：`review` の流れを `review.py`、品質の関門を `review_eval.py`（I-C4-5）に置く設計（`L3_composition.md`）。
 
 - 2026-10-16：`docs/stage2_automation_design.md`（本書に引き継ぎ済み）を削除し、その評価の正解表を 8.1 節へ移した。チャットの最初のモデルを `gemini-3.5-flash-lite` にする（無料枠の実測 [データ：2026-10-16]：1 日 379 回以上 429 なし、64k トークンの入力を受け付ける。`gemini-2.5-flash` は 1 日 20 回、Groq は毎分 8,000 トークンで候補 1 社分の文書が入らない。ユーザー承認）。
 

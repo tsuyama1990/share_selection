@@ -186,7 +186,7 @@ def render_memo(ticker: str, name: str, review: dict, sector_comparison: dict, s
 
 ## 8. 訂正履歴
 
-- 2026-10-17（承認待ち）：組み立てと処理の流れを `L3_composition.md` に移す。`research.review_ticker` を削除し（流れは `review.py`）、3.8 節の `main.run_docs`・`run_review` と 7 章の実装の順番は `L3_composition.md` の 4 章・8 章に置き換える。
+- 2026-10-17（承認済み）：組み立てと処理の流れを `L3_composition.md` に移す。`research.review_ticker` を削除し（流れは `review.py`）、3.8 節の `main.run_docs`・`run_review` と 7 章の実装の順番は `L3_composition.md` の 4 章・8 章に置き換える。
 
 - 2026-10-15（`feat/docs-edinet` の実装で確定）：`edinet.timeout_s` を追加。`parse_index` の戻り値の形と `update_index` の失敗時の動きを明記。ライブ確認 [データ：2026-10-15、二次候補 50 社]：50 社すべて最新の有価証券報告書を取得、191 節、失敗 0。セグメント情報が無い 9 社は単一セグメント。節の長さの最大は約 3 万字。
 
