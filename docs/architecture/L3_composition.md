@@ -91,7 +91,7 @@ def review_candidates(run_id, candidates, tickers, settings, deps) -> ReviewSumm
 ```
 
 - 対象：`tickers` が与えられればそれ（少数での確認用。`max_tickers` の対象外）、無ければ `candidates`（`RecordStore.candidates` の (ticker, 指標)。評価では正解の銘柄から作る）のうち `reviewed(run_id)` に無いものを `Priority_Rank` の順に `max_tickers` 件。
-- 1 銘柄：文書を `max_doc_chars` で切る → T1〜T4 → T5（T1〜T4 の照合済みの answer を文脈 `verified_answers` に。照合は `run_task` の中）→ `record_review`（B）→ `render_memo` を書き出す（C）。文脈は銘柄コード・名前と `review.context_metrics` の指標。銘柄の照合率はタスクごとの照合率の平均。`needs_attention` は成功した銘柄の照合率が `min_verified_ratio` 未満のとき。業種の比較（`sector.py`）と調査メモ（`memo.py`）はブランチ C で足す：`ReviewDeps` に `peers: Peers | None` と `memo_dir: Path | None` を足す。`main.py` が実行の全銘柄の指標（`records.run_metrics`）と銘柄一覧の業種（`tickers.read_column(csv, "sector33")`）から `Peers` を 1 回作る。評価（`review-eval`）は両方 None（同業比較なし、メモなし）。銘柄ごとに `compare` を `reviews.sector_comparison` に記録し、`render_memo` を書き出す。`tickers.read_names` は `read_column(csv, "name")` に置き換える。失敗（文書が無い、全プロバイダーの失敗、JSON 不正）は status に残して次へ。
+- 1 銘柄：文書を `max_doc_chars` で切る → T1〜T4 → T5（T1〜T4 の照合済みの answer を文脈 `verified_answers` に。照合は `run_task` の中）→ `record_review`（B）→ `render_memo` を書き出す（C）。文脈は銘柄コード・名前と `review.context_metrics` の指標。銘柄の照合率はタスクごとの照合率の平均。`needs_attention` は成功した銘柄の照合率が `min_verified_ratio` 未満のとき。業種の比較（`sector.py`）と調査メモ（`memo.py`）はブランチ C で足す：`ReviewDeps` に `peers: Peers | None` と `memo_dir: Path | None` を足す。`main.py` が実行の全銘柄の指標（`records.run_metrics`）と銘柄一覧の業種（`tickers.read_column(csv, "sector33")`）から `Peers` を 1 回作る。評価（`review-eval`）は両方 None（同業比較なし、メモなし）。銘柄ごとに `compare` を `reviews.sector_comparison` に記録し、`render_memo` を書き出す。会社名・業種は `tickers.read_column(csv, 列名)` で読む。失敗（文書が無い、全プロバイダーの失敗、JSON 不正）は status に残して次へ。
 - **品質の関門**：`records.passed_eval(prompt_version, first_model)` が偽なら、評価以外の実行を拒む（`main.py` が「先に `review-eval` を」と表示して終了コード 1）。
 
 ### 5.3 `review_eval.py`（モデルの品質の関門）
@@ -114,7 +114,7 @@ def score_case(case: EvalCase, review_row: dict) -> bool
 def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresholds: EvalThresholds, primary: str) -> EvalResult   # EvalThresholds.from_config(cfg)：min_hit_rate・max_parse_failures・min_verified_ratio
 ```
 
-`review-eval` コマンド：評価の銘柄は二次候補ではないので、まず `collect_documents` で評価の銘柄（名前は `EvalCase.name`）の文書を集め、次に `review_candidates(tickers=...)` を実行し（記録先は通常と同じ `reviews` だが run_id は評価用に `eval-<日時>`）、`judge` の結果を `review_evals` に記録して表示する。不合格なら終了コード 1。
+`review-eval` コマンド（`evaluate_model`）：評価の銘柄（二次候補ではない）について、`review.eval.sources` の文書だけを集め（EDINET。検索しない）、調査を `review.eval.repeats` 回繰り返し、回ごとに `judge` し、`combine` で合否を決めて `review_store` の `review_evals` に 1 行を記録して表示する（run_id は `eval-<日時>-<回>`）。不合格なら終了コード 1。
 
 **評価の文書は EDINET だけ**（2026-10-17 追加、ユーザー承認）：Web 検索の出典は実行ごと・日ごとに変わり、検索の割り当て（1 日約 20 回）も使う。評価は `review.eval.sources`（`[edinet]`）の文書だけで行い、Web 検索をしない。毎回同じ文書でモデルだけを比べられる。本番の `review` は `review.sources`（`[edinet, web]`）。
 
@@ -213,7 +213,7 @@ def evaluate_model(cases, cfg, deps, run_id) -> list[tuple[scored, EvalResult]] 
 | M1 | `main.py`（264 行）に処理の流れが戻った（実行の選択、候補 → 会社の変換、評価用の設定の書き換え、閾値の組み立て、`Peers` の組み立て） | 各モジュールの関数・`from_config` へ移す。`main.py` は 150 行以下 |
 | M2 | 処理する銘柄が `(ticker, 指標)` と `Company` の 2 つの形。評価は両方へ変換 | `RecordStore.candidates` は `Priority_Rank` の順で返す（並べ替えは 1 か所）。`collect.companies(candidates, names)` が会社の一覧を作る。評価の銘柄は `EvalCase.company`・`EvalCase` から作る |
 | M3 | 評価の閾値が文字列キーの辞書 | `review_eval.EvalThresholds`（dataclass、`from_config`） |
-| M4 | `open_review` が `ReviewDeps` を None 2 つで作り `replace` で埋める | `ReviewDeps.from_config(cfg, root, env, stack, peers, memo_dir)`、`Peers.from_run(records, run_id, sectors, cfg)` |
+| M4 | `open_review` が `ReviewDeps` を None 2 つで作り `replace` で埋める | `ReviewDeps.from_config(cfg, root, env, stack, peers)`（実装は 5 引数、9 章）、`Peers.from_run(records, run_id, sectors, cfg)` |
 | M5 | 「指定の実行、無ければ最新」が 2 か所 | `RecordStore.resolve_run(run_id)` |
 | M6 | `records.py`（304 行）が 5 つの役割 | `records.py`：実行・全銘柄の判定・候補・指標・答え合わせの保存と `RunInfo`。`outcomes.py` ✅：答え合わせの計算（`evaluate`）。`review_store.py` ✅：`ReviewStore`・`ReviewRow`（`reviews`・`review_evals`、別ファイル `review.db_file`、git 対象外。公開リポジトリに引用を載せない記録を物理的にも分ける） |
 | M7 | 評価で検索を止めるのに設定の辞書を書き換える | `CollectClients.from_config(cfg, env, stack, search)`（検索の有無を引数で明示） |
@@ -223,6 +223,8 @@ def evaluate_model(cases, cfg, deps, run_id) -> list[tuple[scored, EvalResult]] 
 挙動は変えない（ゴールデン、実データの全件の一致、ライブ E2E）。実運用の `records.duckdb` の空の `reviews`・`review_evals` テーブルは一度だけ消す（行は 0）。
 
 ## 9. 訂正履歴
+
+- 2026-10-17（文書と実装の照合）：5.3 節の `review-eval` の流れを実装（`evaluate_model`、EDINET だけ、反復、`review_store`）に合わせた。5.2 節の `read_names` の記述と 10 章 M4 の引数の数を実装に合わせた
 
 - 2026-10-17：第 2 回の SOLID の見直し（10 章）
 - 2026-10-17（第 2 回の見直しの実装、`refactor/solid-pass-2-impl`）：M1〜M9 を実装。10 章との差：(1) `ReviewDeps.from_config(cfg, root, env, stack, peers, memo_dir)` は引数が 6 個で ruff の PLR0913（5 個まで）を超えるため `memo_dir` を外し、`peers` を渡したときだけ `root/memo.dir` を memo_dir にした（peers と memo_dir は常に一緒に有効・無効）。(2) `ReviewDeps` は `RecordStore` を持たない：`review.py` が使うのは `ReviewStore` だけで、`main.cmd_review` が `RecordStore` を短く開いて実行の解決・候補・`Peers.from_run` を済ませてから `ReviewDeps.from_config` を呼ぶ。そのため `review` では実行の読み出しが LLM キーの確認より前になる（実行が 1 件も無く、キーも無いときだけエラーの種類が変わる）。(3) `ReviewDeps.records` を `reviews`（`ReviewStore`）に改名。(4) `evaluate_model(cases, cfg, deps, run_id)`：`EvalGate`・評価用の `ReviewSettings`・評価の `candidates` の組み立てを `main.py` から移した（`EvalGate.from_config(cfg, primary, run_id)` を追加）。(5) `report.format_eval(outcomes, model) -> (lines, overall)`、`eval_line` も `report.py`。(6) `llm.smoke_check(cfg, env)`（`llm-check` の流れ）を `main.py` から移した（M1 のため）。(7) `RecordStore` と `ReviewStore` の Parquet 出力は別々の小さな実装（共通化は 3 つ目が出てから）。(8) `main.py` の非空行は目標の 150 行以下に届かなかった（実測は下の通り報告）：残りは引数の解析・コマンド表・各 `cmd_*` の表示と `from_config` の呼び出し。(9) M9：テストが通らない行はテストを足して通るようにした（消した行は無い）。(10) 実運用の `records.duckdb` の空の `reviews`・`review_evals` テーブルは移行コードを書かず、手で一度だけ消す。

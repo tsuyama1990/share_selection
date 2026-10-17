@@ -7,7 +7,7 @@
 ## 1. 方針
 
 - 外部とやりとりする部分（HTTP、DB、ファイル）と、純粋な処理（解析・抽出・照合・集計・整形）を分ける。純粋な処理は単体テスト、つなぎは L2 の結合テストで確かめる。
-- 組み立ては既存と同じく `main.py`（`run_review`）が行う。設定値は引数で渡し、`src/` は設定を読まない（`tests/unit/test_architecture.py`）。
+- 組み立ては `main.py`（CLI と各部品の `from_config`）、処理の流れは `collect.py`・`review.py`（`L3_composition.md`）。設定値は引数で渡し、`src/` は設定を読まない（`tests/unit/test_architecture.py`）。
 - 抽象化は 2 つ目の実例が出るまで作らない。HTTP の間隔の制御は `throttle.RateLimiter`（`max_calls=1`、`window_s=間隔`）を EDINET・Web・LLM で共有する（2026-10-16 に `llm.py` から移した）。
 - 新しい依存は `pypdf`（PDF の本文抽出）の 1 つだけ。HTML は標準ライブラリの `html.parser` で抜く（L2 C2 §8 の先送りをここで決定）。
 
@@ -129,7 +129,7 @@ class TaskResult:
     verified_ratio: float; providers: list[str]
 
 def load_prompts(prompt_dir: Path) -> dict[str, str]         # system と t1〜t5（prompts/<版>/*.md）
-def build_messages(system: str, task_prompt: str, docs: dict[str, str], context: dict) -> list[dict[str, str]]
+def build_messages(prompts: dict[str, str], task: str, docs: dict[str, str], context: dict) -> list[dict[str, str]]   # system と prompts/user.md（文書を先、タスクを後）
 def parse_reply(text: str, fields: list[str]) -> dict         # JSON・answer の項目・claims の形を検証。合わなければ ReplyError
 def run_task(llm: LLMClient, prompts: dict[str, str], task_fields: tuple[str, list[str]],
              docs: dict[str, str], context: dict) -> TaskResult   # task_fields＝(タスク名, 項目名)。1 回だけ再依頼。それでも ReplyError なら送出
@@ -204,6 +204,8 @@ Markdown：見出し（銘柄・名前・提案）→ 要注意 → タスクご
 ブランチ 1・2（`feat/docs-edinet`、`feat/docs-web`）はマージ済み。以降は `L3_composition.md` 8 章（A 組み立ての見直し → B `review` と品質の関門 → C 業種の比較と調査メモ）。各ブランチは、足すコードの呼び出し元を同じブランチに含める（vulture は `src/` と `main.py` だけを見る）。
 
 ## 8. 訂正履歴
+
+- 2026-10-17（文書と実装の照合）：1 章の組み立ての場所（`main.run_review` は無い）と 3.6 節の `build_messages` の引数を実装に合わせた
 
 - 2026-10-17（ブランチ C の前の見直し）：`sector_medians` は「Ticker を含む行」ではなく ticker → 指標の辞書を受け取る（足切りで落ちた銘柄の行には Ticker が無く、全銘柄を母集団にする決定と合わない）。`Peers` を追加し、`compare` は `Peers` を受け取る。`render_memo` の同業比較は無い場合がある（評価の実行）
 

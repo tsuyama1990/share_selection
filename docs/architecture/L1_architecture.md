@@ -94,7 +94,7 @@ tickers ─▶ fetch ─▶ calendar ─▶ analyze ─▶ docs ─▶ review �
 | `analyze` | キャッシュ、決算日 | 結果 CSV、記録（`runs`・`screen_results`・Parquet） | 同上 |
 | `docs` | 二次候補、EDINET、Web 検索 | 文書ストア（本文と出典）、取得の失敗 | `analyze` の後 |
 | `review-eval` | 正解のある銘柄、文書ストア、LLM | 記録（`review_evals`）、合否（不合格は終了コード 1） | モデル・プロンプトを変えたとき（`review` の前提） |
-| `review` | 二次候補、文書ストア、LLM | 記録（`reviews`。調査メモは C で追加） | `docs` と `review-eval` の合格の後 |
+| `review` | 二次候補、文書ストア、LLM | 記録（`reviews`、同業比較つき）、調査メモ（`memo.dir`） | `docs` と `review-eval` の合格の後 |
 | `evaluate` | 記録、Yahoo の価格履歴 | 記録（`outcomes`） | 随時 |
 | `llm-check` | LLM、検索 | 疎通の結果 | 任意（ライブ確認。CI では実行しない） |
 
