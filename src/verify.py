@@ -13,8 +13,8 @@ def normalize(text: str) -> str:
 
 def check_claims(
     answer: dict[str, Any], claims: list[dict[str, str]], docs: dict[str, str]
-) -> tuple[dict[str, Any], list[dict[str, str]], float]:
-    """Verified claims, their share of all claims, and ``answer`` with unsupported items set to unknown.
+) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    """``answer`` with unsupported items set to unknown, and the verified claims.
 
     An item stays only when a verified claim names it in ``field``. ``docs`` maps doc_id to the text the model saw.
     """
@@ -26,4 +26,4 @@ def check_claims(
     ]
     supported = {c["field"] for c in verified}
     checked = {item: value if item in supported else F.UNKNOWN for item, value in answer.items()}
-    return checked, verified, len(verified) / len(claims) if claims else 0.0
+    return checked, verified

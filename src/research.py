@@ -24,7 +24,7 @@ class TaskResult:
     answer: dict[str, Any]
     evidence: list[dict[str, str]]
     unknown: list[str]
-    verified_ratio: float
+    claims: int  # claims made, verified or not (``evidence`` holds the verified ones)
     providers: list[str]  # "<provider>/<model>" of every call made, in order
 
 
@@ -92,5 +92,5 @@ def run_task(
         reply = llm.chat(messages, json_mode=True)
         providers.append(f"{reply.provider}/{reply.model}")
         data = parse_reply(reply.text, fields)
-    answer, evidence, ratio = check_claims(data["answer"], data["claims"], docs)
-    return TaskResult(task, answer, evidence, data[F.UNKNOWN], ratio, providers)
+    answer, evidence = check_claims(data["answer"], data["claims"], docs)
+    return TaskResult(task, answer, evidence, data[F.UNKNOWN], len(data["claims"]), providers)

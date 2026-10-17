@@ -90,7 +90,7 @@ def test_run_task_verifies_claims_and_records_the_provider():
 def test_run_task_drops_claims_not_in_the_documents():
     llm = Scripted(reply_json(claims=[{"field": "a", "claim": "c", "quote": "存在しない", "doc_id": "d1"}]))
     result = run_task(llm, PROMPTS, ("T1", FIELDS), DOCS, {})
-    assert (result.answer, result.evidence, result.verified_ratio) == ({"a": "unknown", "b": "unknown"}, [], 0.0)
+    assert (result.answer, result.evidence, result.claims) == ({"a": "unknown", "b": "unknown"}, [], 1)
 
 
 def test_run_task_asks_once_more_with_the_error_after_an_invalid_reply():

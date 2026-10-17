@@ -32,7 +32,7 @@ def test_run_task_verifies_every_task_against_the_documents():
     llm = FakeLLM(good)
     for task_fields in TASKS.items():
         result = run_task(llm, PROMPTS, task_fields, DOCS, {"name": "A"})
-        assert result.verified_ratio == 1.0
+        assert result.claims == len(result.evidence) > 0
         assert {c["field"] for c in result.evidence} <= set(task_fields[1])
         assert result.providers == ["fake/fake-model"]
     first_user = llm.calls[0][1]["content"]
@@ -41,13 +41,13 @@ def test_run_task_verifies_every_task_against_the_documents():
 
 def test_run_task_replaces_items_that_no_document_supports_with_unknown():
     result = run_task(FakeLLM(fabricating), PROMPTS, ("T1", TASKS["T1"]), DOCS, {})
-    assert result.evidence == [] and result.verified_ratio == 0.0
+    assert result.evidence == [] and result.claims > 0
     assert set(result.answer.values()) == {"unknown"}
 
 
 def test_run_task_with_unknown_answers_has_no_claims_to_verify():
     result = run_task(FakeLLM(clueless), PROMPTS, ("T4", TASKS["T4"]), DOCS, {})
-    assert (result.answer, result.evidence, result.verified_ratio) == ({"reason_forgotten": "unknown"}, [], 0.0)
+    assert (result.answer, result.evidence, result.claims) == ({"reason_forgotten": "unknown"}, [], 0)
 
 
 def test_run_task_asks_again_once_with_the_error():

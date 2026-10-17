@@ -160,6 +160,7 @@ def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresho
 
 | 節 | 追加・変更 |
 |---|---|
+| `llm` | `retries`・`retry_wait_s`：429・5xx・タイムアウトは同じプロバイダーで再試行してから次へ（無料枠は負荷で 503 を返す [データ：2026-10-16]。評価はフォールバックで答えると不合格のため） |
 | `llm.providers` | 先頭に `gemini-3.5-flash-lite`（無料枠：1 日 379 回以上、64k トークンの入力 [データ：2026-10-16]）、次に `gemini-2.5-flash`、Groq、DeepSeek |
 | `review` | max_tickers、min_verified_ratio、prompt_dir、prompt_version、max_doc_chars、tasks（タスクごとの項目名）、export_dir、`eval:`（cases_file、min_hit_rate、max_parse_failures） |
 | `sector` | metrics、min_peers |
@@ -176,6 +177,8 @@ def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresho
 各ブランチの後に bonsai。A の後、`main.py` は 150 行以下を目安にする [推論]。
 
 ## 9. 訂正履歴
+
+- 2026-10-17（ライブの評価 1 回目の結果による修正）：不合格（2/3、照合率の最小 0.40、フォールバック 1 件）。原因と対応：(1) 照合率の計算がタスクの平均で「unknown」と正直に答えたタスクを 0 と数えていた → 銘柄の全 claims に対する割合へ。(2) 一時的な 503 で次のモデルへ移っていた → 同じプロバイダーで再試行。(3) 住友大阪セメントの T1 で、決算短信にある「値上げ」ではなく中計の半導体の話を源泉にした → T1 のプロンプトを v2 に（源泉は決算で会社が書いた利益の増減の理由）。v1 は削除。評価の判定に `fallback_rows`（主のモデル以外が答えた銘柄の数）を追加
 
 - 2026-10-17（ブランチ B の実装）：(1) `run_task` の引数が 6 個で PLR0913 を超えるため、`task` と `fields` を 1 つの組 `task_fields: tuple[str, list[str]]`（`ReviewSettings.task_fields.items()` の 1 要素）にして 5 個にした。(2) `review_candidates` も同じ理由で依存を `ReviewDeps` にまとめ、評価の銘柄を渡せるよう `candidates` を引数にした（`tickers` は絞り込み）。(3) `ReviewSettings` に `context_metrics`（LLM に見せる一次の指標。`review.context_metrics`）を足し、sector の値と `ReviewSummary.memo_paths` は C に送った。(4) 再依頼の文面は `prompts/<版>/retry.md`（`{error}`）。(5) 状態の語彙は `fields.ReviewStatus`（`ok`・`no_documents`・`llm_failed`・`bad_json`）。(6) 応答の `unknown` キーと答えの値 `unknown` は同じ語で `fields.UNKNOWN`（既存の `CLASS_UNKNOWN` はこれを指す）。(7) `review.tasks` の下はタスク名で動的に読むため、アーキテクチャテストの `DYNAMIC_PARENTS` に加えた。(8) `RecordStore.reviews(run_id)`（評価の採点が読む）と `LLMClient.primary_model`（最初のキーのあるプロバイダーのモデル。無ければ `MissingKeyError`）を足した。
 

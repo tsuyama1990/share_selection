@@ -43,7 +43,7 @@ CFG_REVIEW = {
     "review": {**CFG["review"], "prompt_dir": str(PROMPT_DIR), "export_dir": "reviews_test"},
 }
 MODEL = "gemini-3.5-flash-lite"
-REFUSAL = f"Error: no passed review-eval for prompt v1 / {MODEL}; run `review-eval` first.\n"
+REFUSAL = f"Error: no passed review-eval for prompt v2 / {MODEL}; run `review-eval` first.\n"
 
 
 @pytest.fixture
@@ -100,7 +100,7 @@ def test_review_eval_passes_with_correct_answers_and_review_then_records(setup, 
     assert "hit  1.T T1.source_type" in out and "hit  3.T T5.suggestion" in out
     summary = f"review-eval {MODEL}: 2/2 cases, 0 parse failures, lowest verified ratio 1.00, 0 answered by a fallback"
     assert f"{summary}: PASSED" in out
-    assert project.query("SELECT prompt_version, model, passed FROM review_evals", cfg) == [("v1", MODEL, True)]
+    assert project.query("SELECT prompt_version, model, passed FROM review_evals", cfg) == [("v2", MODEL, True)]
 
     assert run_cmd(project, cfg, "review") == 0
     assert "2 reviewed, 1 failed, 0 need attention." in capsys.readouterr().out

@@ -88,12 +88,12 @@ def fetch_document(url: str, ticker: str, http: httpx.Client, store: DocStore,
 
 ```python
 def normalize(text: str) -> str      # NFKC、空白・改行の除去
-def check_claims(answer: dict, claims: list[dict], docs: dict[str, str]) -> tuple[dict, list[dict], float]
-    # → (支えのない項目を "unknown" にした answer, 照合できた claims, 照合率)
+def check_claims(answer: dict, claims: list[dict], docs: dict[str, str]) -> tuple[dict, list[dict]]
+    # → (支えのない項目を "unknown" にした answer, 照合できた claims)
 ```
 
 - 照合できる claim：`doc_id` が `docs` にあり、正規化した `quote` が正規化した本文の部分文字列。空の quote は不一致。
-- 照合率 = 照合できた数 ÷ claims の数（claims が 0 件なら 0.0）。
+- 照合率は銘柄ごとに `review.py` が計算する：全タスクの照合できた数 ÷ 全タスクの claims の数（0 件なら 0.0）。「unknown」と正直に答えて claims の無いタスクは、照合率を下げない。
 - `answer` の項目は、照合できた claim のどれかの `field` がその項目名のときだけ残す（下の 5 章の変更 1）。
 
 ### 3.5 `sector.py`
@@ -186,6 +186,8 @@ def render_memo(ticker: str, name: str, review: dict, sector_comparison: dict, s
 ブランチ 1・2（`feat/docs-edinet`、`feat/docs-web`）はマージ済み。以降は `L3_composition.md` 8 章（A 組み立ての見直し → B `review` と品質の関門 → C 業種の比較と調査メモ）。各ブランチは、足すコードの呼び出し元を同じブランチに含める（vulture は `src/` と `main.py` だけを見る）。
 
 ## 8. 訂正履歴
+
+- 2026-10-17（ライブの評価で判明）：照合率をタスクごとの平均（claims の無いタスクを 0 とする）から、銘柄の全 claims に対する割合へ（L2 C4 §5 のとおり）。`check_claims` は照合率を返さない。
 
 - 2026-10-17（承認済み）：組み立てと処理の流れを `L3_composition.md` に移す。`research.review_ticker` を削除し（流れは `review.py`）、3.8 節の `main.run_docs`・`run_review` と 7 章の実装の順番は `L3_composition.md` の 4 章・8 章に置き換える。
 

@@ -1,6 +1,7 @@
 import time
 from collections import deque
 from collections.abc import Callable
+from dataclasses import dataclass
 
 SECONDS_PER_MINUTE = 60
 
@@ -30,3 +31,12 @@ class RateLimiter:
             self._sleep(self._window_s - (now - self._stamps[0]))
             self._stamps.popleft()
         self._stamps.append(self._clock())
+
+
+@dataclass(frozen=True)
+class Retry:
+    """Extra attempts after a transient failure, waiting ``wait_s`` x attempt number before each."""
+
+    times: int
+    wait_s: float
+    sleep: Callable[[float], None] = time.sleep

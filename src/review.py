@@ -89,12 +89,13 @@ class _Outcome:
     status: F.ReviewStatus = F.ReviewStatus.OK
     answers: dict[str, dict[str, Any]] = field(default_factory=dict)
     evidence: dict[str, list[dict[str, str]]] = field(default_factory=dict)
-    ratios: list[float] = field(default_factory=list)
+    claims: int = 0
     providers: list[str] = field(default_factory=list)
 
 
 def _to_row(ticker: str, out: _Outcome, doc_ids: list[str], settings: ReviewSettings) -> ReviewRow:
-    ratio = sum(out.ratios) / len(out.ratios) if out.ratios else 0.0
+    verified = sum(map(len, out.evidence.values()))
+    ratio = verified / out.claims if out.claims else 0.0  # over all claims of the ticker (L2 C4 §5)
     return ReviewRow(
         ticker,
         out.status,
@@ -122,7 +123,7 @@ def _run_tasks(
             task_context = {**context, VERIFIED_ANSWERS: out.answers} if task == last else context
             result = run_task(deps.llm, deps.prompts, task_fields, docs, task_context)
             out.answers[task], out.evidence[task] = result.answer, result.evidence
-            out.ratios.append(result.verified_ratio)
+            out.claims += result.claims
             out.providers += result.providers
     except LLMError:
         out.status = F.ReviewStatus.LLM_FAILED

@@ -20,17 +20,16 @@ def test_check_claims_keeps_verified_claims_and_ratio():
         claim("b", "", "d1"),
         claim("b", "x", "zz"),
     ]
-    checked, verified, ratio = check_claims(answer, claims, DOCS)
+    checked, verified = check_claims(answer, claims, DOCS)
     assert verified == [claims[0]]
-    assert ratio == 1 / 5
     assert checked == {"a": "x", "b": "unknown"}
 
 
-def test_check_claims_without_claims_is_ratio_zero_and_all_unknown():
-    assert check_claims({"a": "x"}, [], DOCS) == ({"a": "unknown"}, [], 0.0)
+def test_check_claims_without_claims_leaves_everything_unknown():
+    assert check_claims({"a": "x"}, [], DOCS) == ({"a": "unknown"}, [])
 
 
 def test_check_claims_support_is_by_field_name():
-    checked, _, ratio = check_claims({"a": "x", "b": "y"}, [claim("b", "値上げの効果")], DOCS)
+    checked, verified = check_claims({"a": "x", "b": "y"}, [claim("b", "値上げの効果")], DOCS)
     assert checked == {"a": "unknown", "b": "y"}
-    assert ratio == 1.0
+    assert len(verified) == 1

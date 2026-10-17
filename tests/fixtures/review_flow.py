@@ -11,7 +11,7 @@ import httpx
 
 from src.llm import Provider, Reply
 
-PROMPT_DIR = Path(__file__).resolve().parents[2] / "prompts" / "v1"
+PROMPT_DIR = Path(__file__).resolve().parents[2] / "prompts" / "v2"
 MODEL = "fake-model"
 FABRICATED = "NOT IN ANY DOCUMENT"
 GOOD_ANSWERS: dict[str, dict[str, Any]] = {

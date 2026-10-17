@@ -79,7 +79,7 @@ def test_a_candidate_gets_one_row_with_the_verified_answers_and_evidence(stores)
     assert {c["doc_id"] for claims in evidence.values() for c in claims} == {"edinet:1.T:X"}
     assert (ratio, attention, sector) == (1.0, False, None)
     assert json.loads(doc_ids) == ["edinet:1.T:X"] and json.loads(providers) == ["fake/fake-model"]
-    assert version == "v1"
+    assert version == "v2"
 
 
 def test_fabricated_quotes_leave_nothing_but_unknown_and_flag_the_ticker(stores):
