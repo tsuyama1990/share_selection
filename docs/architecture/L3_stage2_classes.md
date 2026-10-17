@@ -21,7 +21,7 @@
 | `edinet.py` | `EdinetClient`、`parse_index`、`extract_sections`、`sec_code`、`update_index`、`fetch_annual_report` | EDINET API v2 の呼び出し、書類一覧の解析、ZIP の本文 CSV からの節の抽出、索引の差分更新、最新の有価証券報告書の保存 | ✅ |
 | `webfetch.py` | `extract_text`、`web_doc_id`、`fetch_document` | URL の取得（リダイレクト追従・サイズ上限）、HTML・PDF の本文抽出、保存 | ✅ |
 | `verify.py` | `normalize`、`check_claims` | 引用の照合と照合率、支えのない項目の unknown への置き換え | ✅ |
-| `sector.py` | `sector_medians`、`compare` | 業種ごとの中央値と、候補の同業比較 | 🆕 |
+| `sector.py` | `Peers`、`sector_medians`、`compare` | 業種ごとの中央値と、候補の同業比較 | 🆕 |
 | `research.py` | `ReplyError`、`TaskResult`、`load_prompts`、`prompt_version`、`build_messages`、`parse_reply`、`run_task` | T1〜T5 の実行（プロンプトの組み立て、JSON の検証と 1 回の再依頼、照合） | ✅ |
 | `memo.py` | `render_memo` | 1 銘柄の調査メモ（Markdown の文字列） | 🆕 |
 
@@ -101,14 +101,22 @@ def check_claims(answer: dict, claims: list[dict], docs: dict[str, str]) -> tupl
 - 照合率は銘柄ごとに `review.py` が計算する：全タスクの照合できた数 ÷ 全タスクの claims の数（0 件なら 0.0）。「unknown」と正直に答えて claims の無いタスクは、照合率を下げない。
 - `answer` の項目は、照合できた claim のどれかの `field` がその項目名のときだけ残す（下の 5 章の変更 1）。
 
-### 3.5 `sector.py`
+### 3.5 `sector.py`（2026-10-17 見直し）
 
 ```python
-def sector_medians(rows: list[dict], sectors: dict[str, str], metrics: list[str], min_peers: int) -> dict[str, dict[str, float | None]]
-    # rows：実行の全銘柄の metrics（"Ticker" を含む）。sectors：ticker → 33 業種。値のある銘柄が min_peers 未満の指標は None
-def compare(row: dict, sector: str, medians: dict[str, dict[str, float | None]], metrics: list[str]) -> dict
-    # {"sector": ..., "metrics": {指標: {"value": ..., "median": ..., "ratio": value/median}}}
+@dataclass(frozen=True)
+class Peers:                      # 実行ごとに 1 回作る
+    medians: dict[str, dict[str, float | None]]   # 業種 → 指標 → 中央値
+    sectors: dict[str, str]                        # ticker → 33 業種
+    metrics: list[str]
+
+def sector_medians(metrics_by_ticker: dict[str, dict], sectors: dict[str, str], metrics: list[str], min_peers: int) -> dict[str, dict[str, float | None]]
+    # 実行の全銘柄（足切りの前、L2 C4 §9）。値のある銘柄が min_peers 未満の指標は None
+def compare(ticker: str, row: dict, peers: Peers) -> dict
+    # {"sector": ..., "metrics": {指標: {"value": ..., "median": ..., "ratio": value/median}}}。中央値が None か 0 なら ratio は None
 ```
+
+指標の名前は `sector.metrics`（`fields.py` の項目であることを architecture テストが確かめる）。業種は銘柄一覧の `sector33`（`tickers.read_column`）。
 
 ### 3.6 `research.py`
 
@@ -132,12 +140,15 @@ def run_task(llm: LLMClient, prompts: dict[str, str], task_fields: tuple[str, li
 - 各タスクの項目名（`task_fields`）は config の `review.tasks` に置く（L2 C4 §4 の表と同じ項目）。
 - 文書が長すぎないよう、`review.py` が 1 文書を `review.max_doc_chars` 文字で切ってから渡す。照合も切った後の本文に対して行う（LLM に見せた本文と照合の対象を一致させる）。
 
-### 3.7 `memo.py`
+### 3.7 `memo.py`（2026-10-17 見直し）
 
 ```python
-def render_memo(ticker: str, name: str, review: dict, sector_comparison: dict, sources: dict[str, str]) -> str
-    # sources：doc_id → 出典（URL か EDINET の docID）。照合率が下限未満なら冒頭に「要注意」
+def render_memo(ticker: str, name: str, review: dict, comparison: dict | None, sources: dict[str, str]) -> str
+    # review：reviews の 1 行（answers・evidence・verified_ratio・needs_attention・suggestion）
+    # sources：doc_id → 出典（URL か EDINET の docID:要素名）。照合率が下限未満なら冒頭に「要注意」
 ```
+
+Markdown：見出し（銘柄・名前・提案）→ 要注意 → タスクごとの答えと、照合できた引用（出典つき）→ unknown の一覧 → 同業比較の表。ファイルは `memo.dir`（`results/` の下、git 対象外）に `memo.filename`（`{run_id}_{ticker}.md`）。
 
 ### 3.8 `records.py` と `main.py` の追加
 
@@ -193,6 +204,8 @@ def render_memo(ticker: str, name: str, review: dict, sector_comparison: dict, s
 ブランチ 1・2（`feat/docs-edinet`、`feat/docs-web`）はマージ済み。以降は `L3_composition.md` 8 章（A 組み立ての見直し → B `review` と品質の関門 → C 業種の比較と調査メモ）。各ブランチは、足すコードの呼び出し元を同じブランチに含める（vulture は `src/` と `main.py` だけを見る）。
 
 ## 8. 訂正履歴
+
+- 2026-10-17（ブランチ C の前の見直し）：`sector_medians` は「Ticker を含む行」ではなく ticker → 指標の辞書を受け取る（足切りで落ちた銘柄の行には Ticker が無く、全銘柄を母集団にする決定と合わない）。`Peers` を追加し、`compare` は `Peers` を受け取る。`render_memo` の同業比較は無い場合がある（評価の実行）
 
 - 2026-10-17：プロンプトの版を手で付ける番号（`prompts/v1/` など）から内容のハッシュへ。同じ版の名前で中身が違うと、評価の合格が別の文に付くため。
 

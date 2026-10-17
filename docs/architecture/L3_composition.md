@@ -88,7 +88,7 @@ def review_candidates(run_id, candidates, tickers, settings, deps) -> ReviewSumm
 ```
 
 - 対象：`tickers` が与えられればそれ（少数での確認用。`max_tickers` の対象外）、無ければ `candidates`（`RecordStore.candidates` の (ticker, 指標)。評価では正解の銘柄から作る）のうち `reviewed(run_id)` に無いものを `Priority_Rank` の順に `max_tickers` 件。
-- 1 銘柄：文書を `max_doc_chars` で切る → T1〜T4 → T5（T1〜T4 の照合済みの answer を文脈 `verified_answers` に。照合は `run_task` の中）→ `record_review`（B）→ `render_memo` を書き出す（C）。文脈は銘柄コード・名前と `review.context_metrics` の指標。銘柄の照合率はタスクごとの照合率の平均。`needs_attention` は成功した銘柄の照合率が `min_verified_ratio` 未満のとき。業種の比較（`sector.py`）と調査メモ（`memo.py`）はブランチ C で足す（B では `sector_comparison` は空、メモは出さない。`ReviewSettings` の sector の値と `sectors`・`memo_dir` の引数も C で足す）。失敗（文書が無い、全プロバイダーの失敗、JSON 不正）は status に残して次へ。
+- 1 銘柄：文書を `max_doc_chars` で切る → T1〜T4 → T5（T1〜T4 の照合済みの answer を文脈 `verified_answers` に。照合は `run_task` の中）→ `record_review`（B）→ `render_memo` を書き出す（C）。文脈は銘柄コード・名前と `review.context_metrics` の指標。銘柄の照合率はタスクごとの照合率の平均。`needs_attention` は成功した銘柄の照合率が `min_verified_ratio` 未満のとき。業種の比較（`sector.py`）と調査メモ（`memo.py`）はブランチ C で足す：`ReviewDeps` に `peers: Peers | None` と `memo_dir: Path | None` を足す。`main.py` が実行の全銘柄の指標（`records.run_metrics`）と銘柄一覧の業種（`tickers.read_column(csv, "sector33")`）から `Peers` を 1 回作る。評価（`review-eval`）は両方 None（同業比較なし、メモなし）。銘柄ごとに `compare` を `reviews.sector_comparison` に記録し、`render_memo` を書き出す。`tickers.read_names` は `read_column(csv, "name")` に置き換える。失敗（文書が無い、全プロバイダーの失敗、JSON 不正）は status に残して次へ。
 - **品質の関門**：`records.passed_eval(prompt_version, first_model)` が偽なら、評価以外の実行を拒む（`main.py` が「先に `review-eval` を」と表示して終了コード 1）。
 
 ### 5.3 `review_eval.py`（モデルの品質の関門）
