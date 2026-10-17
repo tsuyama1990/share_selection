@@ -25,8 +25,9 @@ from src.research import load_prompts, prompt_version
 from src.review import ReviewDeps, ReviewSettings, review_candidates
 from src.review_eval import EvalCase, EvalGate, EvalResult, combine, evaluate_model, load_eval_cases
 from src.screener import NO_CACHE, Screener, screen_universe
+from src.sector import Peers, sector_medians
 from src.selection import prioritize
-from src.tickers import read_names, read_tickers, update_ticker_csv
+from src.tickers import read_column, read_tickers, update_ticker_csv
 from src.yahoo import YahooClient
 
 Args = argparse.Namespace
@@ -111,7 +112,7 @@ def cmd_docs(cfg: Cfg, args: Args) -> None:
             run_id = args.run or records.runs()[-1][0]
             candidates = records.candidates(run_id)
         print(f"Collecting documents of {len(candidates)} candidates of run {run_id}...")
-        names = read_names(ROOT / cfg["system"]["input_csv"])
+        names = read_column(ROOT / cfg["system"]["input_csv"], "name")
         ranked = sorted(candidates, key=lambda c: c[1][F.PRIORITY_RANK])
         companies = [Company(t, names.get(t, m[F.NAME])) for t, m in ranked]
         store = stack.enter_context(DocStore.from_config(cfg, ROOT))
@@ -133,6 +134,8 @@ def open_review(cfg: Cfg, stack: ExitStack) -> ReviewDeps:
         prompts,
         stack.enter_context(RecordStore.from_config(cfg, ROOT)),
         stack.enter_context(DocStore.from_config(cfg, ROOT)),
+        None,
+        None,
     )
 
 
@@ -147,10 +150,16 @@ def cmd_review(cfg: Cfg, args: Args) -> None:
         run_id = args.run or deps.records.runs()[-1][0]
         tickers = args.tickers.split(",") if args.tickers else None
         candidates = deps.records.candidates(run_id)
+        sectors = read_column(ROOT / cfg["system"]["input_csv"], "sector33")
+        sec = cfg["sector"]
+        medians = sector_medians(deps.records.run_metrics(run_id), sectors, sec["metrics"], sec["min_peers"])
+        memo_dir = ROOT / cfg["memo"]["dir"]
+        deps = dataclasses.replace(deps, peers=Peers(medians, sectors, sec["metrics"]), memo_dir=memo_dir)
         summary = review_candidates(run_id, candidates, tickers, ReviewSettings.from_config(cfg), deps)
     print(
         f"Run {run_id}: {summary.reviewed} reviewed, {summary.failed} failed, {summary.needs_attention} need attention."
     )
+    print(f"Memos written to {memo_dir}.")
 
 
 def print_eval(outcomes: list[tuple[list[tuple[EvalCase, bool]], EvalResult]], model: str) -> EvalResult:

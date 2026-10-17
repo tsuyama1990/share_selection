@@ -59,6 +59,7 @@ class ReviewRow:
     evidence: dict[str, list[dict[str, str]]]  # task -> verified claims
     verified_ratio: float
     needs_attention: bool
+    sector_comparison: dict[str, Any] | None
     doc_ids: list[str]
     llm_providers: list[str]
     prompt_version: str
@@ -158,6 +159,11 @@ class RecordStore:
         sql = "SELECT ticker, metrics FROM screen_results WHERE run_id = ? AND stage2_candidate ORDER BY ticker"
         return [(t, json.loads(m)) for t, m in self.con.execute(sql, [run_id]).fetchall()]
 
+    def run_metrics(self, run_id: str) -> dict[str, dict[str, Any]]:
+        """Ticker -> metrics of every ticker of the run that has metrics (the sector medians' population)."""
+        sql = "SELECT ticker, metrics FROM screen_results WHERE run_id = ? AND metrics IS NOT NULL"
+        return {t: json.loads(m) for t, m in self.con.execute(sql, [run_id]).fetchall()}
+
     def has_outcomes(self, run_id: str, horizon_months: int) -> bool:
         sql = "SELECT 1 FROM outcomes WHERE run_id = ? AND horizon_months = ? LIMIT 1"
         return self.con.execute(sql, [run_id, horizon_months]).fetchone() is not None
@@ -182,8 +188,8 @@ class RecordStore:
         """Store the review of a ticker, replacing an earlier one of the same run (a failed ticker is retried)."""
         self.con.execute(
             "INSERT OR REPLACE INTO reviews (run_id, ticker, status, suggestion, source_type, reason_forgotten,"
-            " answers, evidence, verified_ratio, needs_attention, doc_ids, llm_providers, prompt_version, reviewed_at)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " answers, evidence, verified_ratio, needs_attention, sector_comparison, doc_ids, llm_providers,"
+            " prompt_version, reviewed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
                 run_id,
                 row.ticker,
@@ -195,6 +201,7 @@ class RecordStore:
                 json.dumps(row.evidence, ensure_ascii=False),
                 row.verified_ratio,
                 row.needs_attention,
+                None if row.sector_comparison is None else json.dumps(row.sector_comparison, ensure_ascii=False),
                 json.dumps(row.doc_ids),
                 json.dumps(row.llm_providers),
                 row.prompt_version,

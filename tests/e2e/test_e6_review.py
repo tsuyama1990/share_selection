@@ -11,7 +11,7 @@ import yaml
 
 import main
 from tests.fixtures.config import CFG
-from tests.fixtures.docs_flow import GEMINI_KEY, KEY, all_handler, record_candidates
+from tests.fixtures.docs_flow import GEMINI_KEY, KEY, SECTOR, all_handler, record_candidates
 from tests.fixtures.review_flow import PROMPT_DIR, PROMPT_VERSION, chat_handler, clueless, good
 
 CASES = {
@@ -41,6 +41,7 @@ CFG_REVIEW = {
     "docs": {**CFG["docs"], "search": False},
     "llm": {**CFG["llm"], "max_calls_per_minute": 1000},
     "review": {**CFG["review"], "prompt_dir": str(PROMPT_DIR), "export_dir": "reviews_test"},
+    "sector": {**CFG["sector"], "min_peers": 1},
 }
 MODEL = "gemini-3.5-flash-lite"
 REFUSAL = f"Error: no passed review-eval for prompt {PROMPT_VERSION} / {MODEL}; run `review-eval` first.\n"
@@ -108,12 +109,28 @@ def test_review_eval_passes_with_correct_answers_and_review_then_records(setup, 
     ]
 
     assert run_cmd(project, cfg, "review") == 0
-    assert "2 reviewed, 1 failed, 0 need attention." in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "2 reviewed, 1 failed, 0 need attention." in out
+    assert f"Memos written to {project.root / CFG['memo']['dir']}." in out
     assert review_rows(project, cfg, run_id) == [("1.T", "ok"), ("2.T", "no_documents"), ("3.T", "ok")]
     sql = f"SELECT ticker, suggestion, verified_ratio FROM reviews WHERE run_id = '{run_id}' AND status = 'ok'"
     assert project.query(sql, cfg) == [("1.T", "採用", 1.0), ("3.T", "採用", 1.0)]
     assert sorted(p.name for p in (project.root / "reviews_test" / run_id).iterdir()) == ["reviews.parquet"]
     assert (project.root / "reviews_test" / "review_evals.parquet").exists()
+    memos = project.root / CFG["memo"]["dir"]
+    assert sorted(p.name for p in memos.iterdir()) == [
+        CFG["memo"]["filename"].format(run_id=run_id, ticker=t) for t in ("1.T", "3.T")
+    ]
+    text = (memos / CFG["memo"]["filename"].format(run_id=run_id, ticker="1.T")).read_text(encoding="utf-8")
+    assert text.startswith("# 1.T 会社1") and "提案: 採用" in text and f"## 同業比較 ({SECTOR})" in text
+    assert KEY not in text and GEMINI_KEY not in text
+
+
+def test_review_eval_writes_no_memos(setup):
+    project, cfg, _, llm = setup
+    llm(good)
+    assert run_cmd(project, cfg, "review-eval") == 0
+    assert not (project.root / CFG["memo"]["dir"]).exists()
 
 
 def test_review_eval_fails_with_wrong_answers_and_review_stays_refused(setup, capsys):
