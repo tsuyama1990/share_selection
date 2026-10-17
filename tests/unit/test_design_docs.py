@@ -7,7 +7,7 @@ unit test plan target of a built module appears in tests/unit/test_<module>.py.
 
 Rules (L1 section 9): modules listed in section 3 match src/ one to one; every requirement is traced to an E2E or a
 gate in section 8; every E2E in section 7 has a test file (a not-yet-implemented one must be strict xfail);
-no open-decision section remains.
+no open-decision section remains; every live scenario LVn of section 7.1 has a test_lv<n>_* in tests/live/.
 """
 
 import ast
@@ -96,6 +96,23 @@ def test_section7_every_e2e_has_a_test_file():
                 if plain or not tests:
                     problems.append(f"{e_id} is 🆕 but {path.name} has tests that are not strict xfail: {plain}")
     assert not problems, "L1 section 7 vs tests/e2e: " + "; ".join(problems)
+
+
+LIVE_ROW = re.compile(r"\|\s*LV(\d+)\s*\|")
+
+
+def test_section7_every_live_scenario_has_a_test():
+    """L1 section 7.1: each live scenario LVn has a test function test_lv<n>_* under tests/live/."""
+    ids = [int(m.group(1)) for line in section(7) if (m := LIVE_ROW.match(line))]
+    names = {
+        node.name
+        for path in (ROOT / "tests" / "live").glob("test_*.py")
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8")))
+        if isinstance(node, ast.FunctionDef)
+    }
+    missing = [f"LV{n}" for n in ids if not any(name.startswith(f"test_lv{n}_") for name in names)]
+    assert ids, "L1 section 7.1 lists no live scenario"
+    assert not missing, f"live scenarios without a tests/live/test_*.py function test_lv<n>_*: {missing}"
 
 
 def test_no_open_decisions_section():

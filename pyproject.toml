@@ -33,11 +33,12 @@ dev = [
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
-addopts = "--cov=src --cov-report=term-missing --strict-markers"
+addopts = "--cov=src --cov-report=term-missing --strict-markers -m \"not live\""
 markers = [
     "unit: one class or function, no DB, files or network",
     "integration: a component with real collaborators (temp DuckDB, temp files, mocked HTTP)",
     "e2e: CLI command flows through main.py",
+    "live: real external APIs, manual (uv run pytest -m live --no-cov tests/live)",
 ]
 
 [tool.coverage.report]

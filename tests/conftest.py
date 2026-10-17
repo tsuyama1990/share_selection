@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-LEVELS = ("unit", "integration", "e2e")
+LEVELS = ("unit", "integration", "e2e", "live")
 TESTS_DIR = Path(__file__).parent
 
 

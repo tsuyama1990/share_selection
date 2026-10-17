@@ -17,7 +17,7 @@ Japanese stock screener (Emin Yurumazu's theory). Python 3.12, managed with `uv`
 - NumPy-style docstrings only on public module-level functions/classes whose behavior is not obvious from name and signature. Everywhere else at most a one-line docstring; never restate names or types. Ruff line length 120, no magic numbers in comparisons (PLR2004).
 
 ## Test levels
-- `tests/unit/`, `tests/integration/`, `tests/e2e/` (marker added from the directory by `tests/conftest.py`; `--strict-markers`). A test module directly under `tests/` fails the run. unit = one class/function, no DB/files/network; integration = component with real collaborators; e2e = CLI flows through `main.py` (L1 §7).
+- `tests/unit/`, `tests/integration/`, `tests/e2e/` (marker added from the directory by `tests/conftest.py`; `--strict-markers`). A test module directly under `tests/` fails the run. unit = one class/function, no DB/files/network; integration = component with real collaborators; e2e = CLI flows through `main.py` (L1 §7). `tests/live/` = real-API E2E (L1 §7.1), manual (`uv run pytest -m live --no-cov tests/live`), deselected by default and never in the gate or CI.
 
 ## Commands
 - `uv sync`; `uv run python main.py [--config PATH] {tickers|fetch|analyze|evaluate}`
