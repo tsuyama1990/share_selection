@@ -148,6 +148,7 @@ SBI 証券のセキュリティのレポートは 2026-10-14（ユーザー確�
 
 - やのしん API で 2026-08-20 の一覧（179 件、うち業績修正 4 件）は取れたが、XBRL の URL の欄は空で、文書の URL は TDnet 本体への転送。その PDF は TDnet 本体でも 404（保存期間の外）。**過去の理由の文章は、やのしんでも取れない**
 - `jq_summary` は数値だけで、理由の文章は無い
+- Google Drive のバックアップ（`quants_data/jquants_data_raw/jquants_data_raw.duckdb`、3,605,540,864 バイト、更新 2026-06-13）は手元の `portfolio_arena` のファイルと同じ大きさで、Drive にはこれより新しい J-Quants のデータも TDnet の文書も無い（ファイル名に jquants・duckdb・tdnet・parquet を含むものを検索）
 
 したがって A を 2 つに分ける [推論]：
 
