@@ -7,6 +7,7 @@ from typing import Any
 import yaml
 
 from . import fields as F
+from .review import ReviewDeps, ReviewSettings, review_candidates
 
 
 @dataclass(frozen=True)
@@ -65,3 +66,41 @@ def judge(
         and not fallback_rows
     )
     return EvalResult(len(results), hits, parse_failures, lowest, fallback_rows, passed)
+
+
+def combine(results: list[EvalResult]) -> EvalResult:
+    """One result for repeated evaluations: passed only when every repetition passed."""
+    return EvalResult(
+        sum(r.cases for r in results),
+        sum(r.hits for r in results),
+        sum(r.parse_failures for r in results),
+        min((r.min_verified_ratio for r in results), default=0.0),
+        sum(r.fallback_rows for r in results),
+        bool(results) and all(r.passed for r in results),
+    )
+
+
+@dataclass(frozen=True)
+class EvalGate:
+    thresholds: dict[str, Any]  # min_hit_rate, max_parse_failures, min_verified_ratio
+    repeats: int
+    primary: str  # "<provider>/<model>" every review must come from
+    run_id: str  # repetition i is recorded under "<run_id>-<i>"
+
+
+def evaluate_model(
+    cases: list[EvalCase],
+    candidates: list[tuple[str, dict[str, Any]]],
+    settings: ReviewSettings,
+    deps: ReviewDeps,
+    gate: EvalGate,
+) -> list[tuple[list[tuple[EvalCase, bool]], EvalResult]]:
+    """Review the case tickers ``gate.repeats`` times; per repetition the scored cases and their judgement."""
+    outcomes = []
+    for i in range(1, gate.repeats + 1):
+        run_id = f"{gate.run_id}-{i}"
+        review_candidates(run_id, candidates, None, settings, deps)
+        rows = deps.records.reviews(run_id)
+        scored = [(c, score_case(c, rows[c.ticker])) for c in cases]
+        outcomes.append((scored, judge(scored, list(rows.values()), gate.thresholds, gate.primary)))
+    return outcomes

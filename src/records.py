@@ -6,14 +6,16 @@ import subprocess
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import duckdb
 import pandas as pd
 
 from . import fields as F
-from .review_eval import EvalResult
 from .screener import NO_CACHE, ScreenResult
+
+if TYPE_CHECKING:  # review_eval imports review, which imports this module
+    from .review_eval import EvalResult
 
 SCHEMA = (
     """CREATE TABLE IF NOT EXISTS runs (
@@ -220,7 +222,7 @@ class RecordStore:
             for t, status, a, e, ratio, providers in self.con.execute(sql, [run_id]).fetchall()
         }
 
-    def record_eval(self, prompt_version: str, model: str, result: EvalResult, summary: list[dict[str, Any]]) -> None:
+    def record_eval(self, prompt_version: str, model: str, result: "EvalResult", summary: list[dict[str, Any]]) -> None:
         """Store the outcome of a ``review-eval``; ``summary`` lists the cases with their hit."""
         self.con.execute(
             "INSERT INTO review_evals VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
