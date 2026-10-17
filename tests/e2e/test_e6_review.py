@@ -12,7 +12,7 @@ import yaml
 import main
 from tests.fixtures.config import CFG
 from tests.fixtures.docs_flow import GEMINI_KEY, KEY, all_handler, record_candidates
-from tests.fixtures.review_flow import PROMPT_DIR, chat_handler, clueless, good
+from tests.fixtures.review_flow import PROMPT_DIR, PROMPT_VERSION, chat_handler, clueless, good
 
 CASES = {
     "cases": [
@@ -43,7 +43,7 @@ CFG_REVIEW = {
     "review": {**CFG["review"], "prompt_dir": str(PROMPT_DIR), "export_dir": "reviews_test"},
 }
 MODEL = "gemini-3.5-flash-lite"
-REFUSAL = f"Error: no passed review-eval for prompt v2 / {MODEL}; run `review-eval` first.\n"
+REFUSAL = f"Error: no passed review-eval for prompt {PROMPT_VERSION} / {MODEL}; run `review-eval` first.\n"
 
 
 @pytest.fixture
@@ -100,7 +100,9 @@ def test_review_eval_passes_with_correct_answers_and_review_then_records(setup, 
     assert "hit  1.T T1.source_type" in out and "hit  3.T T5.suggestion" in out
     summary = f"review-eval {MODEL}: 2/2 cases, 0 parse failures, lowest verified ratio 1.00, 0 answered by a fallback"
     assert f"{summary}: PASSED" in out
-    assert project.query("SELECT prompt_version, model, passed FROM review_evals", cfg) == [("v2", MODEL, True)]
+    assert project.query("SELECT prompt_version, model, passed FROM review_evals", cfg) == [
+        (PROMPT_VERSION, MODEL, True)
+    ]
 
     assert run_cmd(project, cfg, "review") == 0
     assert "2 reviewed, 1 failed, 0 need attention." in capsys.readouterr().out
