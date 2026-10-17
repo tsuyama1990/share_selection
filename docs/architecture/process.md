@@ -47,5 +47,5 @@ L1 全体設計 ─▶ L2 詳細設計 ─▶ L3 クラス設計 ─▶ 実装
 | 実装（文書の取得 `docs`、二次調査 `review`、品質の関門 `review-eval`、業種の比較・調査メモ） | マージ済み |
 | SOLID の見直し（2 回、`L3_composition.md` 4 章・10 章） | マージ済み。挙動は不変（ゴールデンと実データの全件が一致） |
 | 主のモデル | `deepseek-v4-flash`（2026-10-17 ユーザー決定。Gemini Flash-Lite は評価の合否が揺れたため） |
-| 次のプロジェクト | 週 1 回の Tailwind Watch（追い風ウォッチ、`docs/tailwind_watch_design.md`。方針は決定、L1 の要件から別のセッションで始める） |
+| Tailwind Watch（週 1 回、追い風ウォッチ） | 方針は承認（`docs/tailwind_watch_design.md`）。L1（R8〜R13、N7、C9、E9〜E12）と L2（`L2_C9_tailwind.md`、I-C9-1〜7）は受け入れ待ち。テストは strict xfail の仮置き。実装は方針の文書の段階 0（過去の確かめ）を通ってから |
 | 残り | C8 実験は結果が貯まる 2027 年春以降 |
