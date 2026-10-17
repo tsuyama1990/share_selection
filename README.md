@@ -73,33 +73,14 @@ uv run python main.py tickers
 
 This writes the CSV given by `input_csv` (default `japan_tickers.csv`). A custom CSV also works if it has a `code` column (codes without the `.T` suffix). There is no demo list; a missing or invalid file is an error.
 
-### 2b. Earnings Calendar (optional)
+### 3. Earnings Calendar (optional)
 Downloads the JPX earnings announcement schedule (one workbook per quarter-end month, linked from the `calendar.page_url` page) and merges it into `calendar.out_csv` (default `earnings_calendar.csv`, git-ignored; columns `code, announce_date, period_en, fiscal_year_end`). A code in several workbooks keeps its earliest announcement date from today on; `announce_date` is empty while undecided. Re-run it before `analyze` (JPX updates the files as companies announce).
 
 ```bash
 uv run python main.py calendar
 ```
 
-### 2c. Collect Documents (optional)
-Stores the text sections listed in `edinet.sections` of each stage 2 candidate's latest annual securities report (EDINET) in the document store (`docstore.db_file`, default `documents.duckdb`, ignored by version control). The EDINET API key is read from the `edinet.key_env` variable (`EDINET_API_KEY`, environment or `.env`). Run it after `analyze`; `--run RUN_ID` picks another run (default: the latest). The first run indexes the last `edinet.index_days` days of filings (one request of `request_interval_s` per day); later runs add only new days. A report already stored is not fetched again; failures are kept in the `fetch_errors` table and the command goes on.
-
-With `docs.search: true` (default) it also asks Gemini (grounded search, key in the `llm.search.key_env` variable, `GEMINI_API_KEY`) about each candidate's latest results and IR pages (the prompt names the company by its Japanese name from the ticker CSV, best `Priority_Rank` first), then fetches the first `docs.max_sources` cited pages (redirects followed; HTML and PDF text) into the document store as `web:` documents, but only pages whose title or text names the company (its Japanese name or securities code); other pages are kept in `fetch_errors` as `not about the company`. The search answer itself is not stored. A failed search or page is kept in `fetch_errors`.
-
-```bash
-uv run python main.py docs [--run RUN_ID]
-```
-
-### 2d. Review Stage 2 Candidates (LLM)
-`review` asks the LLM five tasks per candidate, using only the stored documents (cut to `review.max_doc_chars`): T1 source of the improvement (types P1-P4), T2 one-off gains and losses, T3 use of capital, T4 why the stock is forgotten, then T5 overall (adopt / drop / watch) with the verified T1-T4 answers. Every claim must carry a verbatim quote of one of the documents; the quote is checked after Unicode and whitespace normalization, claims that fail are dropped and an answer item without a verified claim becomes `unknown`. An invalid JSON reply is asked again once with the error; after that the ticker is recorded as `bad_json`. Each ticker gets a row in `reviews` (`ok`, `no_documents`, `llm_failed`, `bad_json`; a failed ticker is retried by the next run), with `verified_ratio` and `needs_attention` (ratio below `review.min_verified_ratio`). The Parquet export goes to `review.export_dir` (`reviews/`, git-ignored: it quotes web articles; never commit it). `--run RUN_ID` picks a run (default: the latest), `--tickers T1,T2` reviews those tickers only (not capped by `max_tickers`). Prompts are files in `review.prompt_dir` (`system.md`, `t1.md`..`t5.md`, `retry.md`). Each reviewed candidate is compared with the median of its 33-sector over all tickers of the run (`sector.metrics`; a median needs `sector.min_peers` values), stored in `reviews.sector_comparison`, and a Markdown memo per `ok` ticker (answers with their verified quotes and sources, unknown items, the peer table, a warning when `needs_attention`) is written to `memo.dir` (`results/memos/`, not committed) as `memo.filename` (`{run_id}_{ticker}.md`). `review-eval` writes no memos.
-
-**Live gate**: `review` refuses to run (exit 1) until `review-eval` has passed for the current prompt version (the hash of the files in `review.prompt_dir`, so any prompt edit needs a new pass) and the model of the first provider that has a key. `review-eval` collects the documents of the tickers in `review.eval.cases_file` (`eval/stage2_cases.yaml`, answers checked against primary sources), reviews them under the run id `eval-<timestamp>`, scores them and records the result in `review_evals`; it passes when the hit rate is at least `review.eval.min_hit_rate`, parse failures are at most `max_parse_failures` and every ticker's verified ratio is at least `review.min_verified_ratio`. It uses the real APIs (EDINET, Gemini search if `docs.search`, the LLM providers), so it is run by hand, not in CI: rerun it after changing the provider order or models, `review.prompt_version` or the prompts.
-
-```bash
-uv run python main.py review-eval
-uv run python main.py review [--run RUN_ID] [--tickers 6599.T,5232.T]
-```
-
-### 3. Fetch Data (Accumulation)
+### 4. Fetch Data (Accumulation)
 This command downloads data for tickers whose cache is older than `cache_days` (or missing) and updates the DuckDB cache.
 *Run this periodically (e.g., weekly).*
 
@@ -108,7 +89,7 @@ uv run python main.py fetch
 ```
 Tickers that fail to download are listed with their error in `output.dir`/`output.failures_filename` (default `results/fetch_failures_YYYY-MM-DD.csv`); the path and count are printed. Only a run with failures writes the file.
 
-### 4. Analyze Data (Screening)
+### 5. Analyze Data (Screening)
 This command runs the screening logic using **only the local cache** (it never calls the API, even for stale entries; tickers without a cache are skipped and counted). It is instant.
 *Run this as many times as you like while tweaking `config.yaml`.*
 
@@ -116,7 +97,7 @@ This command runs the screening logic using **only the local cache** (it never c
 uv run python main.py analyze
 ```
 
-### 5. Output
+### 6. Output
 Results are saved to `results/emin_screening_result_YYYY-MM-DD.csv` (directory and file name set by `output` in `config.yaml`; `results/` is git-ignored) sorted by `Priority_Rank`; the `Stage2_Candidate` rows are displayed in the console.
 
 Every `analyze` also records the run (all tickers, including those that failed the gatekeeper with the failing rule, and tickers without cache as `no_cache`) in `records.duckdb` and exports it to `records/<run_id>/{runs,screen_results}.parquet`. Commit the `records/` Parquet files as the backup; `records.duckdb` is git-ignored. `--issue YYYY-MM` labels the run with the Shikiho issue used; without it, the latest issue released on or before today is used (issues in `records.shikiho_issue_months`, out on day `records.shikiho_release_day`). Every recorded ticker carries all metrics computable from its cached data (rules and indicators run for gatekeeper failures too, skipping what lacks inputs), so a run can be replayed under other thresholds.
@@ -139,13 +120,32 @@ Global option `--config PATH` (before the subcommand, e.g. `uv run python main.p
 *   **PBR**, **PSR**, **Dividend_Yield(%)**: Standard valuation metrics.
 
 
-### 6. Evaluate Outcomes
+### 7. Collect Documents (optional)
+Stores the text sections listed in `edinet.sections` of each stage 2 candidate's latest annual securities report (EDINET) in the document store (`docstore.db_file`, default `documents.duckdb`, ignored by version control). The EDINET API key is read from the `edinet.key_env` variable (`EDINET_API_KEY`, environment or `.env`). Run it after `analyze`; `--run RUN_ID` picks another run (default: the latest). The first run indexes the last `edinet.index_days` days of filings (one request of `request_interval_s` per day); later runs add only new days. A report already stored is not fetched again; failures are kept in the `fetch_errors` table and the command goes on.
+
+With `docs.search: true` (default) it also asks Gemini (grounded search, key in the `llm.search.key_env` variable, `GEMINI_API_KEY`) about each candidate's latest results and IR pages (the prompt names the company by its Japanese name from the ticker CSV, best `Priority_Rank` first), then fetches the first `docs.max_sources` cited pages (redirects followed; HTML and PDF text) into the document store as `web:` documents, but only pages whose title or text names the company (its Japanese name or securities code); other pages are kept in `fetch_errors` as `not about the company`. The search answer itself is not stored. A failed search or page is kept in `fetch_errors`.
+
+```bash
+uv run python main.py docs [--run RUN_ID]
+```
+
+### 8. Review Stage 2 Candidates (LLM)
+`review` asks the LLM five tasks per candidate, using only the stored documents (cut to `review.max_doc_chars`): T1 source of the improvement (types P1-P4), T2 one-off gains and losses, T3 use of capital, T4 why the stock is forgotten, then T5 overall (adopt / drop / watch) with the verified T1-T4 answers. Every claim must carry a verbatim quote of one of the documents; the quote is checked after Unicode and whitespace normalization, claims that fail are dropped and an answer item without a verified claim becomes `unknown`. An invalid JSON reply is asked again once with the error; after that the ticker is recorded as `bad_json`. Each ticker gets a row in `reviews` (`ok`, `no_documents`, `llm_failed`, `bad_json`; a failed ticker is retried by the next run), with `verified_ratio` and `needs_attention` (ratio below `review.min_verified_ratio`). The Parquet export goes to `review.export_dir` (`reviews/`, git-ignored: it quotes web articles; never commit it). `--run RUN_ID` picks a run (default: the latest), `--tickers T1,T2` reviews those tickers only (not capped by `max_tickers`). Prompts are files in `review.prompt_dir` (`system.md`, `t1.md`..`t5.md`, `retry.md`). Each reviewed candidate is compared with the median of its 33-sector over all tickers of the run (`sector.metrics`; a median needs `sector.min_peers` values), stored in `reviews.sector_comparison`, and a Markdown memo per `ok` ticker (answers with their verified quotes and sources, unknown items, the peer table, a warning when `needs_attention`) is written to `memo.dir` (`results/memos/`, not committed) as `memo.filename` (`{run_id}_{ticker}.md`). `review-eval` writes no memos.
+
+**Live gate**: `review` refuses to run (exit 1) until `review-eval` has passed for the current prompt version (the hash of the files in `review.prompt_dir`, including the `user.md` layout, so any prompt edit needs a new pass) and the model of the first provider that has a key. `review-eval` collects only the sources in `review.eval.sources` (EDINET: the same documents every run, no search quota) for the tickers in `review.eval.cases_file` (`eval/stage2_cases.yaml`, answers checked against primary sources), reviews them `review.eval.repeats` times and passes only when every repetition passes: hit rate at least `min_hit_rate`, parse failures at most `max_parse_failures`, every ticker's verified ratio at least `review.min_verified_ratio`, and no answer from a fallback provider. The result goes to `review_evals` in `review.db_file`. It uses the real APIs, so it is run by hand, not in CI: rerun it after changing the provider order, the models or any prompt file.
+
+```bash
+uv run python main.py review-eval
+uv run python main.py review [--run RUN_ID] [--tickers 6599.T,5232.T]
+```
+
+### 9. Evaluate Outcomes
 ```bash
 uv run python main.py evaluate
 ```
 For each recorded run and each `records.horizons_months` whose horizon has elapsed and has no outcomes yet, computes the return from freshly downloaded adjusted closes (last close on or before each date), the `benchmark_ticker` return and the excess; stores them in `outcomes` and writes `records/<run_id>/outcomes.parquet`.
 
-### 7. LLM Check (stage 2)
+### 10. LLM Check (stage 2)
 ```bash
 uv run python main.py llm-check
 ```

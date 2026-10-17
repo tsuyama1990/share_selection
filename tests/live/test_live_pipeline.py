@@ -154,7 +154,9 @@ def review_rows(scratch: Scratch, run_id: str) -> int:
 
 
 def eval_rows(scratch: Scratch) -> list[tuple]:
-    return query(scratch.path("review", "db_file"), 'SELECT passed FROM review_evals ORDER BY "at"')
+    """Recorded evals; none before the first review-eval creates the review database."""
+    db = scratch.path("review", "db_file")
+    return query(db, 'SELECT passed FROM review_evals ORDER BY "at"') if db.exists() else []
 
 
 @scenario()
@@ -244,8 +246,9 @@ def test_lv8_review_eval(scratch):
     result = run(scratch, "review-eval")
     assert result.code in (0, 1), result.err
     rows = eval_rows(scratch)
-    assert len(rows) == before + 1
-    assert rows[-1][0] is (result.code == 0)
+    assert len(rows) == before + 1, result.out + result.err
+    assert rows[-1][0] is (result.code == 0), result.out
+    print(result.out)  # per-run hits and the overall line, kept in the -rA / -s report
     STATE["eval_passed"] = result.code == 0
 
 

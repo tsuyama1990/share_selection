@@ -19,7 +19,8 @@
 | `review.py` | `review` の流れ：候補ごとに文書 → T1〜T5 → 照合 → 記録 → 調査メモ、失敗は状態として残す | ✅ |
 | `review_eval.py` | モデルの品質の関門：正解のある銘柄の採点と合否（`L3_composition.md` 5.3） | ✅ |
 | `memo.py`（C6） | 調査メモ（銘柄ごとの Markdown）の出力 | ✅ |
-| `records.py`（C5） | 実行記録。`reviews`・`review_evals` テーブル（ブランチ B）。Parquet は `review.export_dir` へ | ✅ |
+| `records.py`（C5） | 実行記録（候補・全銘柄の指標を C4 に渡す） | ✅ |
+| `review_store.py`（C5） | `reviews`・`review_evals`（別の DB ファイル `review.db_file`、Parquet は `review.export_dir`。どちらも git 対象外） | ✅ |
 
 ## 3. 処理の流れ（`review` コマンド）
 
@@ -29,7 +30,7 @@
  2. 文書の読み出し：文書ストアから候補の文書（`docs` コマンドが事前に取得。L2 C2 2.1 節）
  3. 調査（research.py）：T1 改善の源泉、T2 一時的な損益、T3 資本の使い方、T4 忘れられている理由 → T5 総合
  4. 照合（verify.py）：各主張の引用が、渡した文書の本文に含まれるか
- 5. 記録（records.py `reviews`）と調査メモ（memo.py）
+ 5. 記録（review_store.py `reviews`）と調査メモ（memo.py）
 ```
 
 銘柄の失敗（文書が取れない、全プロバイダーの失敗、JSON 不正）は、その銘柄の `reviews` に状態として残し、次の銘柄へ進む。
@@ -69,7 +70,7 @@
 
 主キー（run_id, ticker）。列：status（完了／失敗の種類）、suggestion、source_type、reason_forgotten、answers（T1〜T5 の JSON）、evidence（照合できた主張の JSON）、verified_ratio、needs_attention、sector_comparison（JSON）、doc_ids、llm_providers、prompt_version、reviewed_at。人の判断の記録は、調査メモを使い始めてから設計する（先送り）。
 
-Parquet の書き出し先は `review.export_dir`（git 対象外）。**リポジトリは公開のため、`reviews` と調査メモはコミットしない**（Web 記事の逐語引用と銘柄ごとの提案を含むため。2026-10-15 決定）。バックアップは公開リポジトリ以外に取る。
+保存先は `review.db_file`（`reviews.duckdb`、実行の記録とは別のファイル）、Parquet の書き出し先は `review.export_dir`（どちらも git 対象外）。**リポジトリは公開のため、`reviews` と調査メモはコミットしない**（Web 記事の逐語引用と銘柄ごとの提案を含むため。2026-10-15 決定）。バックアップは公開リポジトリ以外に取る。
 
 ## 7. 設定（`config.yaml` に追加する節）
 
@@ -106,6 +107,8 @@ E2E（L1 E6）は、複数銘柄で `review` を通しで実行し、調査メ�
 - `feat/llm-client`：本設計の `llm.py` の責務と一致。テストを結合テストの階層へ移し、設計の関門を通してマージした（2026-10-14）。
 
 ## 10. 訂正履歴
+
+- 2026-10-17（文書と実装の照合）：`reviews`・`review_evals` の置き場所を `records.py` から `review_store.py`（`review.db_file`）へ直した（第 2 回の SOLID の見直しの反映）。
 
 - 2026-10-17（ブランチ B）：`verify.py`・`research.py`・`review.py`・`review_eval.py` を実装し I-C4-3〜5 を結合テストにした（変更点は `L3_composition.md` 9 章）。
 
