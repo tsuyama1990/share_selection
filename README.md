@@ -172,6 +172,13 @@ The same checks run in CI (`.github/workflows/ci.yml`) and, except pytest, in pr
 *   **Code budget** (`tests/unit/test_code_budget.py`): non-blank, non-comment lines of `src/**/*.py` + `main.py` (docstrings count) must not exceed `[tool.code_budget] max_source_lines` in `pyproject.toml`, and must not fall more than 10 below it (lower the budget when you delete code, so reductions are kept). Raising the budget needs a `Budget-Increase: <reason>` line in a commit message; `scripts/check_budget_increase.sh <base-ref>` checks this in CI (base = merge-base with `origin/main`).
 *   **Timezone**: Yahoo history timestamps are Asia/Tokyo; the cache stores them as UTC. `StockCache.get` converts them back so `StockData` histories always have naive local dates (a monthly bar for October is dated `YYYY-10-01`).
 
+## Live E2E
+
+```bash
+uv run pytest -m live --no-cov tests/live
+```
+Runs the CLI end to end against the real JPX, Yahoo, EDINET, Gemini and LLM APIs (scenarios LV1-LV13 of L1 section 7.1). All outputs, records and the document store go to a temporary directory; the repo's `.env` is only read and `stocks_cache.duckdb` only read by `analyze`. It spends API quota (Gemini search is limited to about 20 requests a day) and takes tens of minutes, so it is deselected by default and never runs in CI or `scripts/gate.sh`.
+
 ## Architecture
 
 *   `main.py`: CLI and wiring only (argument parsing, config and `.env` loading, parts built by their `from_config`, one `cmd_<name>` per command in `COMMANDS`, summaries printed); the flows live in `src/`.
