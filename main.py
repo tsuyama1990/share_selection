@@ -124,14 +124,14 @@ def cmd_llm_check(cfg: Cfg, args: Args) -> None:
         print(f"search: answer {len(answer.text)} chars, {len(answer.sources)} sources, {len(answer.queries)} queries")
 
 
-COMMANDS: dict[str, Callable[[Cfg, Args], None]] = {
-    "tickers": cmd_tickers,
-    "calendar": cmd_calendar,
-    "fetch": cmd_fetch,
-    "analyze": cmd_analyze,
-    "evaluate": cmd_evaluate,
-    "docs": cmd_docs,
-    "llm-check": cmd_llm_check,
+COMMANDS: dict[str, tuple[Callable[[Cfg, Args], None], str]] = {
+    "tickers": (cmd_tickers, "Update the ticker CSV from the JPX listed company list"),
+    "calendar": (cmd_calendar, "Update the earnings calendar CSV from the JPX announcement schedule"),
+    "fetch": (cmd_fetch, "Fetch data from Yahoo Finance"),
+    "analyze": (cmd_analyze, "Analyze cached data and record the run"),
+    "evaluate": (cmd_evaluate, "Compute outcomes of recorded runs whose horizons have elapsed"),
+    "docs": (cmd_docs, "Collect EDINET annual report sections and web sources of a run's stage 2 candidates"),
+    "llm-check": (cmd_llm_check, "Smoke-test the LLM fallback chain and Gemini search"),
 }
 
 
@@ -139,17 +139,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Emin Yurumazu Screener")
     parser.add_argument("--config", type=Path, default=CONFIG_FILE, help="Config file (default: config.yaml)")
     sub = parser.add_subparsers(dest="command", help="Commands")
-    sub.add_parser("tickers", help="Update the ticker CSV from the JPX listed company list")
-    sub.add_parser("calendar", help="Update the earnings calendar CSV from the JPX announcement schedule")
-    sub.add_parser("fetch", help="Fetch data from Yahoo Finance")
-    analyze = sub.add_parser("analyze", help="Analyze cached data and record the run")
-    analyze.add_argument(
+    commands = {name: sub.add_parser(name, help=text) for name, (_, text) in COMMANDS.items()}
+    commands["analyze"].add_argument(
         "--issue", help="Shikiho issue (YYYY-MM) the ticker research is based on (default: latest released)"
     )
-    sub.add_parser("evaluate", help="Compute outcomes of recorded runs whose horizons have elapsed")
-    docs = sub.add_parser("docs", help="Collect EDINET annual report sections of a run's stage 2 candidates")
-    docs.add_argument("--run", help="Run id (default: the latest run)")
-    sub.add_parser("llm-check", help="Smoke-test the LLM fallback chain and Gemini search")
+    commands["docs"].add_argument("--run", help="Run id (default: the latest run)")
     return parser
 
 
@@ -162,7 +156,7 @@ def main() -> None:
         parser.print_help()
         return
     try:
-        COMMANDS[args.command](cfg, args)
+        COMMANDS[args.command][0](cfg, args)
     except MissingKeyError as e:
         print(f"Error: {e}.")
         sys.exit(1)

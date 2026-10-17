@@ -12,7 +12,7 @@ from tqdm import tqdm
 from . import fields as F
 from .docstore import DocStore
 from .edinet import EdinetClient, fetch_annual_report, update_index
-from .llm import SECONDS_PER_MINUTE, GeminiSearch, LLMError, QuotaExceeded
+from .llm import GeminiSearch, LLMError, QuotaExceeded
 from .throttle import RateLimiter
 from .tickers import TICKER_SUFFIX
 from .webfetch import fetch_document
@@ -69,7 +69,7 @@ class CollectClients:
             search = GeminiSearch.from_config(cfg, stack.enter_context(httpx.Client(timeout=llm["timeout_s"])), env)
         headers = {"User-Agent": web["user_agent"]}
         web_http = stack.enter_context(httpx.Client(timeout=web["timeout_s"], headers=headers))
-        search_limiter = RateLimiter(llm["max_calls_per_minute"], SECONDS_PER_MINUTE)
+        search_limiter = RateLimiter.per_minute(llm["max_calls_per_minute"])
         return cls(edinet, search, web_http, search_limiter, RateLimiter(1, web["request_interval_s"]))
 
 

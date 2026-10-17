@@ -8,8 +8,6 @@ import httpx
 from .config import require_key
 from .throttle import RateLimiter
 
-SECONDS_PER_MINUTE = 60
-
 
 class LLMError(RuntimeError):
     pass
@@ -55,7 +53,7 @@ class LLMClient:
         providers = [
             Provider(p["name"], p["base_url"], p["model"], env.get(p["key_env"], "")) for p in llm["providers"]
         ]
-        limiter = RateLimiter(llm["max_calls_per_minute"], SECONDS_PER_MINUTE)
+        limiter = RateLimiter.per_minute(llm["max_calls_per_minute"])
         return cls(providers, http, llm["temperature"], limiter)
 
     def chat(self, messages: list[dict[str, str]], json_mode: bool = False) -> Reply:

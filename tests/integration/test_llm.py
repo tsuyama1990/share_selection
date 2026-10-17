@@ -145,7 +145,7 @@ def test_search_failure_raises(response):
 def test_dotenv_fills_missing_vars_but_keeps_existing(tmp_path, monkeypatch):
     (tmp_path / ".env").write_text("LLM_TEST_EXISTING=from_file\nLLM_TEST_NEW=from_file\n", encoding="utf-8")
     monkeypatch.setattr(main, "ROOT", tmp_path)
-    monkeypatch.setitem(main.COMMANDS, "llm-check", lambda cfg, args: None)
+    monkeypatch.setitem(main.COMMANDS, "llm-check", (lambda cfg, args: None, "test"))
     monkeypatch.setattr("sys.argv", ["main.py", "llm-check"])
     monkeypatch.setenv("LLM_TEST_EXISTING", "from_shell")
     monkeypatch.delenv("LLM_TEST_NEW", raising=False)
