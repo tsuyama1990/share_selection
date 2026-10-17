@@ -1,8 +1,13 @@
-# Emin Yurumazu Investment Theory Screener (Hybrid v2.0)
+# share_selection: Value Turn and Tailwind Watch
 
-This is a Python-based stock screener implementing the investment philosophy of Emin Yurumazu. It screens Japanese stocks with a gatekeeper and ranks them by improvement of earnings (stage 2 priority).
+A Japanese stock selection pipeline with two screening methods:
 
-The system uses a **Hybrid Architecture** with **DuckDB** to separate data accumulation from analysis, ensuring high performance and offline capability.
+| Method | Cadence | Idea | Status |
+|---|---|---|---|
+| **Value Turn**（割安改善スクリーン） | monthly | Cheap and safe on the downside, with an operating-income improvement that already shows in the results: buy after it is confirmed. Based on Emin Yurumazu's screening theory, with our own thresholds and stage 2 research. | built (this README) |
+| **Tailwind Watch**（追い風ウォッチ） | weekly | Political, economic, social and technological events (PEST) likely to lift operating income for 6+ months: spot the beneficiaries before it shows in the results, then check them with Value Turn's stage 1 gate and stage 2 research and alert. | planned (`docs/tailwind_watch_design.md`) |
+
+Value Turn screens all listed stocks with a gatekeeper, ranks them by improvement of earnings, and researches the top candidates with an LLM whose claims must quote the documents. Data accumulation (Yahoo Finance into DuckDB) is separate from analysis, so screening runs offline on the local cache.
 
 ## Features
 
@@ -217,7 +222,7 @@ Runs the CLI end to end against the real JPX, Yahoo, EDINET, Gemini and LLM APIs
 *   `screening_criteria.md`: current first-screen criteria vs. the original book, decisions and corrections.
 *   `hypothesis_map.md`: why-why hypothesis map of what makes prices jump, validated against past cases.
 *   `selection_flow.md`: target selection flow (downside safety -> signs of improvement -> catalyst within 6-12 months); open decisions.
-*   `pest_watch_design.md`: planned weekly PEST watch (events likely to lift operating income for 6+ months -> beneficiary companies -> stage 1 gate -> alerts), decided 2026-10-18, to be designed and built in a separate session.
+*   `tailwind_watch_design.md`: Tailwind Watch, the planned weekly method (PEST events likely to lift operating income for 6+ months -> beneficiary companies -> Value Turn stage 1 gate -> alerts), decided 2026-10-18, to be designed and built in a separate session.
 *   `selection_tuning.md`: 2026-10-14 tuning of the gate (op margin 5%, PSR 1.2), improvement rule (quarterly-first, 40%), stage-2 ranking by improvement yield, review fixes, with the data behind each decision.
 *   `record_design.md`: stage 7 records (runs, screen_results, outcomes, reviews) derived from the verification questions.
 *   `architecture/process.md`: the gated modified-waterfall process (design -> tests -> implementation -> bonsai, each with a blocking gate).
