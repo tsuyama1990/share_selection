@@ -69,12 +69,12 @@
 | ID | コンポーネント | 責務 | モジュール（現状） | 状態 |
 |---|---|---|---|---|
 | C1 | 銘柄一覧 | JPX の一覧から対象銘柄 CSV を作る | `tickers.py` | ✅ |
-| C2 | データ取得 | 外部システムからの取得と保存（キャッシュ・文書） | `yahoo.py`、`cache.py`、`stock_data.py`、`earnings_calendar.py`、`edinet.py`、`webfetch.py`、`docstore.py`、`throttle.py`（外部 API の呼び出し間隔。C4 の LLM も使う）（詳細は `L2_C2_data_acquisition.md`） | ✅ |
+| C2 | データ取得 | 外部システムからの取得と保存（キャッシュ・文書） | `yahoo.py`、`cache.py`、`stock_data.py`、`earnings_calendar.py`、`edinet.py`、`webfetch.py`、`docstore.py`、`collect.py` 🆕（`docs` の流れ）、`throttle.py`（外部 API の呼び出し間隔。C4 の LLM も使う）（詳細は `L2_C2_data_acquisition.md`） | ✅／🆕 |
 | C3 | 一次スクリーニング | 足切り（R1）、指標、改善の兆し（R2）、質の旗（R4）、順位と二次候補 | `rules.py`、`indicators.py`、`improvement.py`、`quality.py`、`metrics.py`、`screener.py`、`selection.py`（順位と二次候補）、`fields.py`（結果行の項目名と値の語彙を 1 か所で定義） | ✅ |
-| C4 | 二次調査 | 業種の文脈、LLM による企業分析、引用の照合、調査メモ（R5） | `llm.py`、`sector.py` 🆕、`research.py` 🆕、`verify.py` 🆕（詳細は `L2_C4_stage2_research.md`） | ✅／🆕 |
+| C4 | 二次調査 | 業種の文脈、LLM による企業分析、引用の照合、調査メモ（R5） | `llm.py`、`sector.py` 🆕、`research.py` 🆕、`verify.py` 🆕、`review.py` 🆕（`review` の流れ）、`review_eval.py` 🆕（モデルの品質の関門）（詳細は `L2_C4_stage2_research.md`） | ✅／🆕 |
 | C5 | 記録と答え合わせ | 実行・全銘柄の判定・二次の調査結果の記録、結果の計算（R6） | `records.py`（`reviews` テーブル 🆕） | ✅／🆕 |
 | C6 | 出力 | 結果 CSV、二次候補の一覧、調査メモ | `report.py`、`memo.py` 🆕（調査メモ） | ✅／🆕 |
-| C7 | 設定と起動 | 設定の読み込み、`.env`、CLI、各コンポーネントの組み立て | `config.py`、`main.py` | ✅ |
+| C7 | 設定と起動 | 設定の読み込み、`.env`、CLI、各コンポーネントの組み立て | `config.py`、`main.py`（CLI と組み立てだけ。処理の流れは各コンポーネントのモジュール。`L3_composition.md`） | ✅ |
 | C8 | 実験 | 過去の記録を別の設定で再現し比較する（R7） | 🆕（結果が貯まる 2027 年春以降） | 🆕 |
 
 ## 4. 処理の流れ（コマンド）
@@ -93,7 +93,8 @@ tickers ─▶ fetch ─▶ calendar ─▶ analyze ─▶ docs ─▶ review �
 | `calendar` | JPX 決算発表予定日 | `earnings_calendar.csv` | `analyze` の前 |
 | `analyze` | キャッシュ、決算日 | 結果 CSV、記録（`runs`・`screen_results`・Parquet） | 同上 |
 | `docs` | 二次候補、EDINET、Web 検索 | 文書ストア（本文と出典）、取得の失敗 | `analyze` の後 |
-| `review` 🆕 | 二次候補、文書ストア、LLM | 記録（`reviews`）、調査メモ | `docs` の後 |
+| `review-eval` 🆕 | 正解のある銘柄、文書ストア、LLM | 記録（`review_evals`）、合否（不合格は終了コード 1） | モデル・プロンプトを変えたとき（`review` の前提） |
+| `review` 🆕 | 二次候補、文書ストア、LLM | 記録（`reviews`）、調査メモ | `docs` と `review-eval` の合格の後 |
 | `evaluate` | 記録、Yahoo の価格履歴 | 記録（`outcomes`） | 随時 |
 | `llm-check` | LLM、検索 | 疎通の結果 | 任意（ライブ確認。CI では実行しない） |
 
@@ -178,3 +179,5 @@ E2E テストは、この表の形式が守られることを確かめる。
 - 2026-10-15（承認済み）：C3 の結果行の項目名を `fields.py` に集め（3 章・5 章）、文字列の重複を禁じる関門を追加（9 章 4）。理由：項目名が 2〜4 モジュールに文字列で重複し、つづりの違いが空の値になるだけで検出されなかった。`screen_results` に `stage2_candidate` 列を追加し、使われていない `types` 列を削除、質の旗はリストのまま記録する
 
 - 2026-10-16：SOLID の見直し。順位づけを `report.py` から `selection.py` へ（`report.py` は出力だけ）、呼び出し間隔の制御を `llm.py` から `throttle.py` へ（EDINET・Web・LLM が共有）
+
+- 2026-10-17（承認済み）：組み立ての見直し（`L3_composition.md`）。`main.py` を CLI と組み立てだけにし、`docs`・`review` の流れを `collect.py`・`review.py` へ。モデルの品質の関門 `review_eval.py` と `review-eval` コマンドを追加
