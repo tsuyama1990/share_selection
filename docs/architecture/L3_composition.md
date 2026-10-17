@@ -166,7 +166,7 @@ def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresho
 
 | 順 | ブランチ | 中身 | 挙動 |
 |---|---|---|---|
-| A | `refactor/composition` | 4 章の既存モジュールの変更（`RunInfo`、`screen_universe`、`from_config`、`require_key`、`refresh_all`、`write_failures`、`collect.py`、`main.py` の `COMMANDS`）。E7 の流れのテストを `collect_documents` の結合テストへ | 変えない（ゴールデンと実データの全件が一致） |
+| A ✅ | `refactor/composition` | 4 章の既存モジュールの変更（`RunInfo`、`screen_universe`、`from_config`、`require_key`、`refresh_all`、`write_failures`、`collect.py`、`main.py` の `COMMANDS`）。E7 の流れのテストを `collect_documents` の結合テストへ | 変えない（ゴールデンと実データの全件が一致） |
 | B | `feat/review-command` | `verify.py`、`research.py`（`run_task` まで）、`review.py`、`review_eval.py`、`prompts/v1/`、`eval/stage2_cases.yaml`、`reviews`・`review_evals`、`review`・`review-eval` コマンド、プロバイダーの順番 | 新機能。ライブで評価を実行し、結果を報告して承認を受けてからマージ |
 | C | `feat/review-sector-memo` | `sector.py`、`memo.py` | 新機能 |
 
