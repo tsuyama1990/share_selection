@@ -22,7 +22,7 @@
 | `webfetch.py` | `extract_text`、`web_doc_id`、`fetch_document` | URL の取得（リダイレクト追従・サイズ上限）、HTML・PDF の本文抽出、保存 | ✅ |
 | `verify.py` | `normalize`、`check_claims` | 引用の照合と照合率、支えのない項目の unknown への置き換え | 🆕 |
 | `sector.py` | `sector_medians`、`compare` | 業種ごとの中央値と、候補の同業比較 | 🆕 |
-| `research.py` | `ReplyError`、`TaskResult`、`load_prompts`、`build_messages`、`parse_reply`、`run_task`、`review_ticker` | T1〜T5 の実行（プロンプトの組み立て、JSON の検証と 1 回の再依頼、照合）と 1 銘柄分の結果の行 | 🆕 |
+| `research.py` | `ReplyError`、`TaskResult`、`load_prompts`、`build_messages`、`parse_reply`、`run_task` | T1〜T5 の実行（プロンプトの組み立て、JSON の検証と 1 回の再依頼、照合） | 🆕 |
 | `memo.py` | `render_memo` | 1 銘柄の調査メモ（Markdown の文字列） | 🆕 |
 
 `records.py`（✅）には `reviews` テーブル、`candidates(run_id)`、`run_metrics(run_id)`、`reviewed(run_id)`、`record_review(run_id, row)` を足す。`main.py`（✅）には `docs [--run RUN_ID]`・`run_docs` と `review [--run RUN_ID]`・`run_review` を足す。
@@ -120,11 +120,9 @@ def build_messages(system: str, task_prompt: str, docs: dict[str, str], context:
 def parse_reply(text: str, fields: list[str]) -> dict         # JSON・answer の項目・claims の形を検証。合わなければ ReplyError
 def run_task(llm: LLMClient, task: str, prompts: dict[str, str], fields: list[str],
              docs: dict[str, str], context: dict) -> TaskResult   # 1 回だけ再依頼。それでも ReplyError なら送出
-def review_ticker(llm, prompts, task_fields: dict[str, list[str]], docs: dict[str, str],
-                  context: dict, min_verified_ratio: float) -> dict   # reviews の 1 行（status 以外の列）
 ```
 
-- `review_ticker`：T1〜T4 を実行し、T5 の `context` にそれまでの照合済みの `answer` を足して T5 を実行する。全体の照合率は全タスクの claims を合わせて計算し、下限未満なら `needs_attention = True`。
+- T1〜T5 の順番、T5 への文脈の渡し方、全体の照合率と `needs_attention` は `review.py`（`L3_composition.md` 5.2 節）。
 - 各タスクの項目名（`task_fields`）は config の `review.tasks` に置く（L2 C4 §4 の表と同じ項目）。
 - 文書が長すぎないよう、`main.run_review` が 1 文書を `review.max_doc_chars` 文字で切ってから渡す。照合も切った後の本文に対して行う（LLM に見せた本文と照合の対象を一致させる）。
 
@@ -139,8 +137,7 @@ def render_memo(ticker: str, name: str, review: dict, sector_comparison: dict, s
 
 - `reviews`：主キー（run_id, ticker）。列は L2 C4 §6 から `human_decision`・`decided_at` を除き（5 章の変更 2）、`needs_attention`、`reviewed_at` を足す。書くたびに Parquet を git 対象外の `review.export_dir` に書き出す（公開リポジトリに引用と提案を載せない。`.gitignore` への追加は `feat/review-command` で設定と一緒に行う）。調査メモは `results/` の下（既に git 対象外）。
 - `candidates(run_id)`：`Stage2_Candidate` が真の銘柄の (ticker, metrics)。`run_metrics(run_id)`：全銘柄の metrics（業種の中央値の母集団）。`reviewed(run_id)`：status が `ok` の ticker（再実行のとき飛ばす。失敗した銘柄は取り直して上書き）。
-- `main.run_docs`：実行の選択（既定は最新）→ EDINET の索引の更新 → 候補ごとに（有価証券報告書の取得、`docs.search` が真なら検索 → 出典 `docs.max_sources` 件の取得）。検索の回答文そのものは LLM の生成なので保存しない（出典の本文だけ）。
-- `main.run_review`：実行の選択 → 業種の中央値 → 候補ごとに（`DocStore.documents` で文書の読み出し、`review_ticker`、`record_review`、`render_memo` の書き出し）。
+- `docs`・`review` の処理の流れは `collect.py`・`review.py`（`L3_composition.md` 5 章）。検索の回答文そのものは LLM の生成なので保存しない（出典の本文だけ）。
 
 ## 4. 単体テスト計画
 
@@ -163,7 +160,7 @@ def render_memo(ticker: str, name: str, review: dict, sector_comparison: dict, s
 | U-research-3 | `run_task`（偽の LLM） | 1 回目の不正 → 再依頼で成功、2 回とも不正で ReplyError、照合の反映 |
 | U-memo-1 | `render_memo` | 見出し・根拠と出典・unknown・要注意の表示 |
 
-`DocStore`、`EdinetClient`、`update_index`、`fetch_annual_report`、`fetch_document`、`review_ticker`、`records` の追加は、L2 の結合テスト（I-C2-3〜5、I-C4-2〜4）と E2E の E6 で確かめる。
+`DocStore`、`EdinetClient`、`update_index`、`fetch_annual_report`、`fetch_document`、`records` の追加、`collect.py`・`review.py` の流れは、L2 の結合テスト（I-C2-3〜5、I-C4-2〜4）と E2E の E6 で確かめる。
 
 ## 5. L2 の変更（L3 で分かったこと。2026-10-15 承認、L2 に反映済み）
 
@@ -183,20 +180,13 @@ def render_memo(ticker: str, name: str, review: dict, sector_comparison: dict, s
 | `review` | max_tickers、min_verified_ratio、prompt_dir（`prompts/v1`）、prompt_version、max_doc_chars、tasks（タスクごとの項目名）、export_dir |
 | `memo` | dir（`results/` の下）、filename |
 
-## 7. 実装の順番（1 ブランチ＝1 まとまり。各ブランチで単体テスト → 実装 → 結合テストの仮置きを本物に → bonsai）
+## 7. 実装の順番
 
-| 順 | ブランチ | 中身 | 結合・E2E |
-|---|---|---|---|
-| 1 | `feat/docs-edinet` | `docstore.py`、`edinet.py`、`RateLimiter` の共有、`records.candidates`、`main.py docs`（EDINET のみ） | I-C2-5、I-C2-3、E7（EDINET 分）、ライブで 1 社 |
-| 2 | `feat/docs-web` | `webfetch.py`、`pypdf`、`docs` に検索と出典の取得 | I-C2-4、E7 の検索分 |
-| 3 | `feat/review-command` | `verify.py`、`research.py`、`prompts/v1/`、`records.py` の `reviews`、`DocStore.documents`、`main.py review` | I-C4-3、I-C4-4、E6 |
-| 4 | `feat/review-sector-memo` | `sector.py`、`memo.py`、`run_review` に同業比較と調査メモ | I-C4-2、E6 の調査メモ分、ライブで 2〜3 社 |
-
-各ブランチは、足すコードの呼び出し元（`main.py` のコマンド）を同じブランチに含める。未使用コードの関門（vulture は `src/` と `main.py` だけを見る）を通すためで、クラスのメソッドも最初の呼び出し元と同じブランチで足す。
-
-コード予算の増え方の見込みは合計で約 450 行（docstore 60、edinet 80、webfetch 55、verify 30、sector 30、research 90、memo 35、records 30、main 40）[推論]。各ブランチで `Budget-Increase:` に理由を書き、実際の行数に合わせる。
+ブランチ 1・2（`feat/docs-edinet`、`feat/docs-web`）はマージ済み。以降は `L3_composition.md` 8 章（A 組み立ての見直し → B `review` と品質の関門 → C 業種の比較と調査メモ）。各ブランチは、足すコードの呼び出し元を同じブランチに含める（vulture は `src/` と `main.py` だけを見る）。
 
 ## 8. 訂正履歴
+
+- 2026-10-17（承認待ち）：組み立てと処理の流れを `L3_composition.md` に移す。`research.review_ticker` を削除し（流れは `review.py`）、3.8 節の `main.run_docs`・`run_review` と 7 章の実装の順番は `L3_composition.md` の 4 章・8 章に置き換える。
 
 - 2026-10-15（`feat/docs-edinet` の実装で確定）：`edinet.timeout_s` を追加。`parse_index` の戻り値の形と `update_index` の失敗時の動きを明記。ライブ確認 [データ：2026-10-15、二次候補 50 社]：50 社すべて最新の有価証券報告書を取得、191 節、失敗 0。セグメント情報が無い 9 社は単一セグメント。節の長さの最大は約 3 万字。
 
