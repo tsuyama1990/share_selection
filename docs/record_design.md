@@ -88,3 +88,4 @@
 - `rebuttal_flags` には段階 5 の旗（現在は `Quality_Flags` の一覧）を記録する。キャッシュがない銘柄は NULL。
 - 足切りで落ちた銘柄も、すべての条件・指標を計算して `metrics` に記録する（落ちた条件は最初の 1 つ）。過去の実行を別の閾値で再現する実験のため（`--config` で別の設定ファイルを使う）。
 - `stage2_candidate`（2026-10-15 追加）：その実行で二次候補に選ばれたか。追加より前の実行は NULL。使われていなかった `types` 列は同日に削除した（既存の `records.duckdb` は一度だけ移行。それ以前の Parquet には `types` が残る）。
+- `backup`（2026-10-17 追加）：git 対象外で取り直せない記録（`reviews.duckdb`、その Parquet、調査メモ）と、取り直しに日数がかかる文書ストアを、リポジトリの外の `backup.dir` に日時のフォルダで写す。新しい `backup.keep` 個を残す。`records.duckdb` は Parquet がコミットされるため対象外。
