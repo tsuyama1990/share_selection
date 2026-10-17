@@ -16,6 +16,11 @@ class YahooClient:
         self.daily_history_period = daily_history_period
         self.monthly_history_period = monthly_history_period
 
+    @classmethod
+    def from_config(cls, cfg: dict[str, Any]) -> "YahooClient":
+        sc = cfg["system"]
+        return cls(sc["sleep_time"], sc["daily_history_period"], sc["monthly_history_period"])
+
     def download(self, ticker: str) -> dict[str, Any]:
         """Raw data dict (as accepted by ``StockData.from_dict``); raises if the frames cannot be downloaded."""
         time.sleep(self.sleep_time)

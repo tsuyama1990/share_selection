@@ -162,24 +162,25 @@ The same checks run in CI (`.github/workflows/ci.yml`) and, except pytest, in pr
 
 ## Architecture
 
-*   `main.py`: CLI entry point (`tickers` / `fetch` / `analyze` / `evaluate` / `calendar` / `docs`).
+*   `main.py`: CLI and wiring only (argument parsing, config and `.env` loading, parts built by their `from_config`, one `cmd_<name>` per command in `COMMANDS`, summaries printed); the flows live in `src/`.
+*   `src/collect.py`: the `docs` flow (`collect_documents`): EDINET index and annual reports, then a Gemini search per candidate without web documents (best `Priority_Rank` first, stops at the search quota).
 *   `src/stock_data.py`: `StockData`, the typed raw data of one ticker (normalizes histories to naive market-local dates).
 *   `src/fields.py`: The stage-1 result vocabulary (row keys, improvement classes and sources, `ma` / `downside_to_low`); no other module repeats these strings (architecture test).
 *   `src/metrics.py`: Pure helpers (`to_num`, `latest_values`, `sales_cagr`, `avg_turnover`, ...).
 *   `src/rules.py`: Gatekeeper rules (one dataclass each) and `build_rules`.
 *   `src/indicators.py`: Metric providers (one class each) and `build_indicators`.
-*   `src/screener.py`: `Screener` runs rules then indicators and builds the result row.
-*   `src/cache.py`: `StockCache` (DuckDB) and `refresh` (download if stale).
+*   `src/screener.py`: `Screener` runs rules then indicators and builds the result row; `screen_universe` screens all tickers (`NO_CACHE` when not cached) and adds the earnings calendar fields.
+*   `src/cache.py`: `StockCache` (DuckDB), `refresh` (download if stale) and `refresh_all` (returns the failed tickers).
 *   `src/yahoo.py`: `YahooClient` downloads raw data from Yahoo Finance.
-*   `src/records.py`: `RecordStore` (runs, screen_results, outcomes in `records.duckdb`, exported to Parquet) and `evaluate`; run metadata (`latest_issue`, `git_sha`) is gathered in `main.py`.
+*   `src/records.py`: `RecordStore` (runs, screen_results, outcomes in `records.duckdb`, exported to Parquet) and `evaluate`; `RunInfo` holds the run metadata (`latest_issue`, `git_sha` gather it) and `record_run(RunInfo, results)` builds the columns from `ScreenResult` rows.
 *   `src/edinet.py`: `EdinetClient` (EDINET API v2), the filing index update and `fetch_annual_report` (text sections of the latest annual securities report).
 *   `src/webfetch.py`: `fetch_document` (a cited URL -> redirects followed, size limit, HTML/PDF text -> document store), `extract_text`, `web_doc_id`.
 *   `src/docstore.py`: `DocStore` (`documents.duckdb`: documents, EDINET index, fetch errors); a stored text is never rewritten.
 *   `src/tickers.py`: Builds the ticker CSV from the JPX listed company workbook (`update_ticker_csv`) and reads it (`read_tickers`).
 *   `src/selection.py`: `prioritize` adds `Priority_Rank` / `Stage2_Candidate` (class, then improvement yield, then Real_PSR).
 *   `src/throttle.py`: `RateLimiter` (sliding window) shared by the EDINET, web and LLM clients.
-*   `src/report.py`: `write_report` writes the dated CSV (location and columns passed in from `output`) and prints the candidates.
-*   `src/config.py`: `load_config(path)` reads a config file (default `config.yaml`; `main.py --config` overrides). Only `config.py` and `main.py` touch it; everything else receives values through `build_*` / `from_config` / dataclass fields.
+*   `src/report.py`: `write_failures` writes the fetch failures CSV; `write_report` writes the dated CSV (location and columns passed in from `output`) and prints the candidates.
+*   `src/config.py`: `load_config(path)` reads a config file (default `config.yaml`; `main.py --config` overrides); `require_key(env, name)` is the one place API keys are checked (`MissingKeyError`). Only `config.py` and `main.py` touch it; everything else receives values through `build_*` / `from_config` / dataclass fields.
 
 ## Design documents (`docs/`, Japanese)
 

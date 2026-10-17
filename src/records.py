@@ -2,12 +2,17 @@
 
 import datetime
 import json
-from collections.abc import Callable, Sequence
+import subprocess
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import duckdb
 import pandas as pd
+
+from . import fields as F
+from .screener import NO_CACHE, ScreenResult
 
 SCHEMA = (
     """CREATE TABLE IF NOT EXISTS runs (
@@ -21,7 +26,34 @@ SCHEMA = (
         run_id TEXT, ticker TEXT, horizon_months INTEGER, price_t0 DOUBLE, price_t1 DOUBLE, "return" DOUBLE,
         benchmark_return DOUBLE, excess DOUBLE, computed_at TIMESTAMP, PRIMARY KEY (run_id, ticker, horizon_months))""",
 )
-NO_CACHE = "no_cache"
+
+
+@dataclass(frozen=True)
+class RunInfo:
+    issue: str | None
+    git_sha: str | None
+    config: dict[str, Any]
+    ticker_list_date: datetime.date
+    data_fetched_min: datetime.datetime | None
+    data_fetched_max: datetime.datetime | None
+
+
+def latest_issue(today: datetime.date, months: Sequence[int], release_day: int) -> str:
+    """Latest Shikiho issue (``YYYY-MM``) out by ``today``; an issue is out on ``release_day`` of its month."""
+    released = [
+        (year, month)
+        for year in (today.year - 1, today.year)
+        for month in months
+        if datetime.date(year, month, release_day) <= today
+    ]
+    return "{}-{:02d}".format(*max(released))
+
+
+def git_sha() -> str | None:
+    try:
+        return subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return None
 
 
 class RecordStore:
@@ -33,19 +65,19 @@ class RecordStore:
         for ddl in SCHEMA:
             self.con.execute(ddl)
 
+    @classmethod
+    def from_config(cls, cfg: dict[str, Any], root: Path) -> "RecordStore":
+        rec = cfg["records"]
+        return cls(root / rec["db_file"], root / rec["export_dir"])
+
     def __enter__(self) -> "RecordStore":
         return self
 
     def __exit__(self, *_exc) -> None:
         self.con.close()
 
-    def record_run(self, info: dict[str, Any], results: list[dict[str, Any]]) -> str:
-        """Store one run (``info``: issue, git_sha, config, ticker_list_date, data_fetched_min/max) and its ticker rows.
-
-        Each result has ``ticker``, ``stage1_pass``, ``stage1_fail_rule``, ``improvement_class``,
-        ``stage2_candidate`` (bool), ``next_earnings_date`` (``YYYY-MM-DD`` or None),
-        ``quality_flags`` (list or None), ``metrics`` (dict).
-        """
+    def record_run(self, info: RunInfo, results: Mapping[str, ScreenResult]) -> str:
+        """Store one run and a row per ticker; ``quality_flags`` is NULL only for tickers without cached data."""
         run_at = datetime.datetime.now()
         run_id = run_at.strftime("%Y%m%dT%H%M%S%f")
         self.con.execute(
@@ -53,12 +85,12 @@ class RecordStore:
             [
                 run_id,
                 run_at,
-                info["issue"],
-                info["git_sha"],
-                json.dumps(info["config"], default=str),
-                info["ticker_list_date"],
-                info["data_fetched_min"],
-                info["data_fetched_max"],
+                info.issue,
+                info.git_sha,
+                json.dumps(info.config, default=str),
+                info.ticker_list_date,
+                info.data_fetched_min,
+                info.data_fetched_max,
             ],
         )
         self.con.executemany(
@@ -68,16 +100,16 @@ class RecordStore:
             [
                 [
                     run_id,
-                    r["ticker"],
-                    r["stage1_pass"],
-                    r["stage1_fail_rule"],
-                    r["improvement_class"],
-                    r["stage2_candidate"],
-                    r["next_earnings_date"],
-                    None if r["quality_flags"] is None else json.dumps(r["quality_flags"]),
-                    pd.Series(r["metrics"], dtype=object).to_json(),
+                    ticker,
+                    res.passed,
+                    res.fail_rule,
+                    res.row.get(F.IMPROVEMENT_CLASS),
+                    res.row.get(F.STAGE2_CANDIDATE, False),
+                    res.row.get(F.NEXT_EARNINGS_DATE),
+                    None if res.row.get(F.QUALITY_FLAGS) is None else json.dumps(res.row[F.QUALITY_FLAGS]),
+                    pd.Series(res.row, dtype=object).to_json(),
                 ]
-                for r in results
+                for ticker, res in results.items()
             ],
         )
         self._export(run_id, ["runs", "screen_results"])

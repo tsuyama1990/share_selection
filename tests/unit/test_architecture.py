@@ -38,6 +38,8 @@ CONFIG_NAMES = {
     "tk",
     "cal",
     "web",
+    "ed",
+    "check",
     "docs",
 }
 DYNAMIC_PARENTS = {"shock_lows"}

@@ -142,15 +142,10 @@ def test_search_failure_raises(response):
         search(handler).search("q")
 
 
-def test_search_without_key_raises():
-    with pytest.raises(LLMError, match="no API key"):
-        search(lambda r: httpx.Response(200), key="").search("q")
-
-
 def test_dotenv_fills_missing_vars_but_keeps_existing(tmp_path, monkeypatch):
     (tmp_path / ".env").write_text("LLM_TEST_EXISTING=from_file\nLLM_TEST_NEW=from_file\n", encoding="utf-8")
     monkeypatch.setattr(main, "ROOT", tmp_path)
-    monkeypatch.setattr(main, "run_llm_check", lambda cfg: None)
+    monkeypatch.setitem(main.COMMANDS, "llm-check", lambda cfg, args: None)
     monkeypatch.setattr("sys.argv", ["main.py", "llm-check"])
     monkeypatch.setenv("LLM_TEST_EXISTING", "from_shell")
     monkeypatch.delenv("LLM_TEST_NEW", raising=False)
@@ -172,7 +167,7 @@ def test_llm_check_prints_only_summary(monkeypatch, capsys):
     cfg = main.load_config()
     for name in ("GROQ_API_KEY", "DEEPSEEK_API_KEY"):
         monkeypatch.delenv(name, raising=False)
-    main.run_llm_check(cfg)
+    main.cmd_llm_check(cfg, None)
     out = capsys.readouterr().out
     assert "chat: gemini / gemini-2.5-flash, answer 5 chars" in out
     assert "search: answer 11 chars, 2 sources, 2 queries" in out

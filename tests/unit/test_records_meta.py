@@ -3,7 +3,7 @@ from unittest import mock
 
 import pytest
 
-import main
+import src.records as records
 from src.config import load_config
 
 CFG = load_config()
@@ -23,9 +23,9 @@ CFG = load_config()
 )
 def test_latest_issue_boundaries(today, issue):
     rec = CFG["records"]
-    assert main.latest_issue(today, rec["shikiho_issue_months"], rec["shikiho_release_day"]) == issue
+    assert records.latest_issue(today, rec["shikiho_issue_months"], rec["shikiho_release_day"]) == issue
 
 
 def test_head_commit_none_when_unavailable():
-    with mock.patch("main.subprocess.run", side_effect=OSError):
-        assert main.git_sha() is None
+    with mock.patch("src.records.subprocess.run", side_effect=OSError):
+        assert records.git_sha() is None

@@ -12,8 +12,9 @@ class FlakyYahoo:
 
     FAILING = {"2.T"}
 
-    def __init__(self, *_args):
-        pass
+    @classmethod
+    def from_config(cls, _cfg):
+        return cls()
 
     def download(self, ticker):
         if ticker in self.FAILING:
