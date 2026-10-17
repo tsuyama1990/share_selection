@@ -62,3 +62,9 @@ def test_adjusted_close_uses_adjusted_naive_dates():
         series = YahooClient(0.0, "1y", "max").adjusted_close("1.T", datetime.date(2025, 1, 1))
     ticker.history.assert_called_once_with(start=datetime.date(2025, 1, 1), auto_adjust=True)
     assert series.index.tz is None and list(series.index.strftime("%Y-%m-%d")) == ["2025-01-06", "2025-01-07"]
+
+
+def test_from_config_reads_the_system_section():
+    system = {"sleep_time": 0.5, "daily_history_period": "2y", "monthly_history_period": "5y"}
+    client = YahooClient.from_config({"system": system})
+    assert (client.sleep_time, client.daily_history_period, client.monthly_history_period) == (0.5, "2y", "5y")

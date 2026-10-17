@@ -185,7 +185,7 @@ def test_llm_check_prints_only_summary(monkeypatch, capsys):
         return httpx.Response(200, json=OK_BODY)
 
     real_client = httpx.Client
-    monkeypatch.setattr(main.httpx, "Client", lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw))
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw))
     monkeypatch.setenv("GEMINI_API_KEY", "SECRET")
     cfg = main.load_config()
     for name in ("GROQ_API_KEY", "DEEPSEEK_API_KEY"):

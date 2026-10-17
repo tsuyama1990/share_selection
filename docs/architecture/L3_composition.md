@@ -26,9 +26,9 @@
 
 | モジュール | 公開する名前 | 責務 | 状態 |
 |---|---|---|---|
-| `collect.py` | `CollectClients`、`CollectSettings`、`CollectSummary`、`collect_documents` | `docs` の流れ：EDINET の索引の更新と有価証券報告書、Web 文書がまだ無い候補だけを優先順に検索し出典を取得、検索の割り当てで停止 | ✅ |
+| `collect.py` | `CollectClients`、`CollectSettings`、`CollectSummary`、`collect_documents`、`companies` | `docs` の流れ：EDINET の索引の更新と有価証券報告書、Web 文書がまだ無い候補だけを優先順に検索し出典を取得、検索の割り当てで停止 | ✅ |
 | `review.py` | `ReviewDeps`、`ReviewSettings`、`ReviewSummary`、`review_candidates` | `review` の流れ：業種の中央値、候補ごとに文書の読み出し → T1〜T5（`research.py`）→ 照合（`verify.py`）→ 記録 → 調査メモ。銘柄の失敗は状態として記録して次へ（B：業種の中央値・調査メモはまだ無い） | ✅ |
-| `review_eval.py` | `EvalCase`、`EvalResult`、`EvalGate`、`load_eval_cases`、`score_case`、`judge`、`combine`、`evaluate_model` | モデルの品質の関門：正解のある銘柄の調査結果の採点と合否 | ✅ |
+| `review_eval.py` | `EvalCase`、`EvalResult`、`EvalThresholds`、`EvalGate`、`load_eval_cases`、`score_case`、`judge`、`combine`、`evaluate_model` | モデルの品質の関門：正解のある銘柄の調査結果の採点と合否 | ✅ |
 
 ## 4. 既存モジュールの変更
 
@@ -37,7 +37,7 @@
 | `config.py` | `MissingKeyError`、`require_key(env, name)` を追加 |
 | `main.py` | `run_*` の処理の流れを `src/` へ移し、`cmd_<コマンド>(cfg, args)`（各 10 行程度）と `COMMANDS` だけにする。`get_japan_tickers`・`require_env`・`collect_web_documents` を削除 |
 | `screener.py` | `screen_universe(tickers, cache, screener, calendar) -> dict[str, ScreenResult]`（キャッシュの無い銘柄、決算予定日の項目を含む）。`NO_CACHE` を `records.py` から移す |
-| `records.py` | `RunInfo`（dataclass）。`record_run(info: RunInfo, results: Mapping[str, ScreenResult])` が列を `fields.py` の項目から作る（文字列キーの辞書をやめる）。`from_config(cfg, root)`。`reviews`・`review_evals` テーブル、`record_review`、`reviewed`、`run_metrics`、`passed_eval` |
+| `records.py` | `RunInfo`（dataclass）。`record_run(info: RunInfo, results: Mapping[str, ScreenResult])` が列を `fields.py` の項目から作る（文字列キーの辞書をやめる）。`from_config(cfg, root)`。`run_metrics`（`reviews`・`review_evals`・`record_review`・`reviewed`・`passed_eval` は 10 章の M6 で `review_store.py` へ） |
 | `cache.py` | `from_config(cfg, root)`、`refresh_all(cache, client, tickers, max_age_days) -> dict[str, str]`（失敗した銘柄 → 理由） |
 | `report.py` | `write_failures(failures, out_dir, filename)` を追加（`fetch` の失敗 CSV） |
 | `yahoo.py`・`docstore.py`・`edinet.py`・`llm.py` | `from_config`（`edinet`・`llm` は `env` を受け取りキーを `require_key` で取る）。`LLMClient`・`GeminiSearch` の組み立ての重複を消す |
@@ -58,10 +58,11 @@ class CollectSummary:
     edinet_docs: int; edinet_failed: int; web_docs: int; searches_left: int   # 割り当てで止まったときの残り
 
 @dataclass(frozen=True)
-class CollectClients:           # from_config(cfg, env, stack)：HTTP クライアントを stack に開き、キーを require_key で確認
+class CollectClients:           # from_config(cfg, env, stack, search)：HTTP クライアントを stack に開き、キーを require_key で確認（search：Gemini 検索の有無。呼び出し側が決める）
     edinet: EdinetClient; search: GeminiSearch | None; web_http: httpx.Client
     search_limiter: RateLimiter; fetch_limiter: RateLimiter
 
+def companies(candidates, names) -> list[Company]   # 名前は names（japan_tickers.csv）の日本語、無ければ指標の Name
 def collect_documents(companies: list[Company], settings, clients, store, today) -> CollectSummary
 ```
 
@@ -82,9 +83,9 @@ class ReviewSummary:
     reviewed: int; failed: int; needs_attention: int      # メモの場所は main.py が memo.dir を表示する（memo_paths は作らない）
 
 @dataclass(frozen=True)
-class ReviewDeps:               # 引数を 5 個に収めるための束
-    llm: LLMClient; prompts: dict[str, str]; records: RecordStore; store: DocStore
-    peers: Peers | None; memo_dir: Path | None            # C。評価は両方 None
+class ReviewDeps:               # 引数を 5 個に収めるための束。from_config(cfg, root, env, stack, peers)：LLM・プロンプト・ReviewStore・文書ストアを stack に開く
+    llm: LLMClient; prompts: dict[str, str]; reviews: ReviewStore; store: DocStore
+    peers: Peers | None; memo_dir: Path | None            # C。peers を渡すと memo_dir は root/memo.dir。評価は peers=None（両方 None）
 
 def review_candidates(run_id, candidates, tickers, settings, deps) -> ReviewSummary
 ```
@@ -110,7 +111,7 @@ class EvalResult:
 
 def load_eval_cases(path: Path) -> list[EvalCase]
 def score_case(case: EvalCase, review_row: dict) -> bool
-def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresholds: dict) -> EvalResult
+def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresholds: EvalThresholds, primary: str) -> EvalResult   # EvalThresholds.from_config(cfg)：min_hit_rate・max_parse_failures・min_verified_ratio
 ```
 
 `review-eval` コマンド：評価の銘柄は二次候補ではないので、まず `collect_documents` で評価の銘柄（名前は `EvalCase.name`）の文書を集め、次に `review_candidates(tickers=...)` を実行し（記録先は通常と同じ `reviews` だが run_id は評価用に `eval-<日時>`）、`judge` の結果を `review_evals` に記録して表示する。不合格なら終了コード 1。
@@ -121,7 +122,7 @@ def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresho
 
 ```python
 def combine(results: list[EvalResult]) -> EvalResult
-def evaluate_model(cases, candidates, settings, deps, gate) -> list[EvalResult]   # 回ごとの結果。gate は閾値・回数・主のプロバイダー
+def evaluate_model(cases, cfg, deps, run_id) -> list[tuple[scored, EvalResult]]   # 回ごとの結果。設定から EvalGate（閾値・回数・主のプロバイダー）と評価用の sources を作り、評価の銘柄の candidates は cases から作る
 ```
 
 **合格の条件**（値はすべて `review.eval:` に置く。各回で満たし、全回で合格）：
@@ -203,7 +204,28 @@ def evaluate_model(cases, candidates, settings, deps, gate) -> list[EvalResult] 
 
 結論：流れと関門は期待どおり。軽いモデルは評価の合否が揺れるため、関門に「k 回続けて合格」を足し（ユーザー承認、次のブランチ）、DeepSeek を同じ関門で試す。
 
+## 10. 第 2 回の SOLID の見直し（2026-10-17、ブランチ C の後）
+
+監査：vulture（信頼度 0）で未使用なし。調整値は config、それ以外の文字列・数値は名前付きの定数。問題は組み立てと記録に集中していた。
+
+| # | 問題 | 対応 |
+|---|---|---|
+| M1 | `main.py`（264 行）に処理の流れが戻った（実行の選択、候補 → 会社の変換、評価用の設定の書き換え、閾値の組み立て、`Peers` の組み立て） | 各モジュールの関数・`from_config` へ移す。`main.py` は 150 行以下 |
+| M2 | 処理する銘柄が `(ticker, 指標)` と `Company` の 2 つの形。評価は両方へ変換 | `RecordStore.candidates` は `Priority_Rank` の順で返す（並べ替えは 1 か所）。`collect.companies(candidates, names)` が会社の一覧を作る。評価の銘柄は `EvalCase.company`・`EvalCase` から作る |
+| M3 | 評価の閾値が文字列キーの辞書 | `review_eval.EvalThresholds`（dataclass、`from_config`） |
+| M4 | `open_review` が `ReviewDeps` を None 2 つで作り `replace` で埋める | `ReviewDeps.from_config(cfg, root, env, stack, peers, memo_dir)`、`Peers.from_run(records, run_id, sectors, cfg)` |
+| M5 | 「指定の実行、無ければ最新」が 2 か所 | `RecordStore.resolve_run(run_id)` |
+| M6 | `records.py`（304 行）が 5 つの役割 | `records.py`：実行・全銘柄の判定・候補・指標・答え合わせの保存と `RunInfo`。`outcomes.py` ✅：答え合わせの計算（`evaluate`）。`review_store.py` ✅：`ReviewStore`・`ReviewRow`（`reviews`・`review_evals`、別ファイル `review.db_file`、git 対象外。公開リポジトリに引用を載せない記録を物理的にも分ける） |
+| M7 | 評価で検索を止めるのに設定の辞書を書き換える | `CollectClients.from_config(cfg, env, stack, search)`（検索の有無を引数で明示） |
+| M8 | 評価の結果の整形が `main.py` | `report.format_eval`（出力は C6） |
+| M9 | テストが通らない行が 7 モジュールに 18 行 | 1 行ずつ「テストを足す」か「消す」 |
+
+挙動は変えない（ゴールデン、実データの全件の一致、ライブ E2E）。実運用の `records.duckdb` の空の `reviews`・`review_evals` テーブルは一度だけ消す（行は 0）。
+
 ## 9. 訂正履歴
+
+- 2026-10-17：第 2 回の SOLID の見直し（10 章）
+- 2026-10-17（第 2 回の見直しの実装、`refactor/solid-pass-2-impl`）：M1〜M9 を実装。10 章との差：(1) `ReviewDeps.from_config(cfg, root, env, stack, peers, memo_dir)` は引数が 6 個で ruff の PLR0913（5 個まで）を超えるため `memo_dir` を外し、`peers` を渡したときだけ `root/memo.dir` を memo_dir にした（peers と memo_dir は常に一緒に有効・無効）。(2) `ReviewDeps` は `RecordStore` を持たない：`review.py` が使うのは `ReviewStore` だけで、`main.cmd_review` が `RecordStore` を短く開いて実行の解決・候補・`Peers.from_run` を済ませてから `ReviewDeps.from_config` を呼ぶ。そのため `review` では実行の読み出しが LLM キーの確認より前になる（実行が 1 件も無く、キーも無いときだけエラーの種類が変わる）。(3) `ReviewDeps.records` を `reviews`（`ReviewStore`）に改名。(4) `evaluate_model(cases, cfg, deps, run_id)`：`EvalGate`・評価用の `ReviewSettings`・評価の `candidates` の組み立てを `main.py` から移した（`EvalGate.from_config(cfg, primary, run_id)` を追加）。(5) `report.format_eval(outcomes, model) -> (lines, overall)`、`eval_line` も `report.py`。(6) `llm.smoke_check(cfg, env)`（`llm-check` の流れ）を `main.py` から移した（M1 のため）。(7) `RecordStore` と `ReviewStore` の Parquet 出力は別々の小さな実装（共通化は 3 つ目が出てから）。(8) `main.py` の非空行は目標の 150 行以下に届かなかった（実測は下の通り報告）：残りは引数の解析・コマンド表・各 `cmd_*` の表示と `from_config` の呼び出し。(9) M9：テストが通らない行はテストを足して通るようにした（消した行は無い）。(10) 実運用の `records.duckdb` の空の `reviews`・`review_evals` テーブルは移行コードを書かず、手で一度だけ消す。
 
 - 2026-10-17：評価の文書を EDINET だけにした（`review.eval.sources`）。エブレンの正解を「半導体の需要」（決算説明会・報道。直近の利益の理由としては一次情報で確かめていない）から、有価証券報告書の経営成績の分析にある「価格転嫁」へ。2 つのモデルとも、きれいな文書でこの文を引用した。プロンプトの並び（文書を先、タスクを後）を `prompts/user.md` に置き、版のハッシュに含める（同じ文書を 5 タスクで送るため、プロバイダーの前方一致のキャッシュが効く）
 

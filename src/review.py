@@ -1,18 +1,21 @@
 """The `review` flow: per candidate, documents -> tasks T1..T5 with verified quotes -> a record. A failing ticker is
 recorded with its status and the flow goes on."""
 
+from collections.abc import Mapping
+from contextlib import ExitStack
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+import httpx
 from tqdm import tqdm
 
 from . import fields as F
 from .docstore import DocStore
 from .llm import LLMClient, LLMError
 from .memo import render_memo
-from .records import RecordStore, ReviewRow
-from .research import ReplyError, prompt_version, run_task
+from .research import ReplyError, load_prompts, prompt_version, run_task
+from .review_store import ReviewRow, ReviewStore
 from .sector import Peers, compare
 
 VERIFIED_ANSWERS = "verified_answers"  # context key: what the last task sees of the tasks before it
@@ -56,10 +59,25 @@ class ReviewSummary:
 class ReviewDeps:
     llm: LLMClient
     prompts: dict[str, str]
-    records: RecordStore
+    reviews: ReviewStore
     store: DocStore
     peers: Peers | None  # sector comparison of each reviewed ticker
     memo_dir: Path | None  # where a memo per reviewed ticker is written
+
+    @classmethod
+    def from_config(
+        cls, cfg: dict[str, Any], root: Path, env: Mapping[str, str], stack: ExitStack, peers: Peers | None
+    ) -> "ReviewDeps":
+        """Open the LLM client and the stores on ``stack``; a missing LLM key raises before any store is opened.
+
+        With ``peers`` the reviews get a sector comparison and a memo in ``memo.dir``; without, neither (the eval).
+        """
+        http = stack.enter_context(httpx.Client(timeout=cfg["llm"]["timeout_s"]))
+        llm = LLMClient.from_config(cfg, http, env)
+        prompts = load_prompts(root / cfg["review"]["prompt_dir"])
+        reviews = stack.enter_context(ReviewStore.from_config(cfg, root))
+        memo_dir = root / cfg["memo"]["dir"] if peers else None
+        return cls(llm, prompts, reviews, stack.enter_context(DocStore.from_config(cfg, root)), peers, memo_dir)
 
 
 def review_candidates(
@@ -69,12 +87,11 @@ def review_candidates(
     settings: ReviewSettings,
     deps: ReviewDeps,
 ) -> ReviewSummary:
-    """Review the given ``tickers``, else the not yet reviewed ``candidates`` (best ``Priority_Rank`` first, capped)."""
+    """Review the given ``tickers``, else the not yet reviewed ``candidates`` (given best first; capped)."""
     metrics = dict(candidates)
     if tickers is None:
-        done = deps.records.reviewed(run_id)
-        todo = sorted((c for c in candidates if c[0] not in done), key=lambda c: c[1][F.PRIORITY_RANK])
-        targets = todo[: settings.max_tickers]
+        done = deps.reviews.reviewed(run_id)
+        targets = [c for c in candidates if c[0] not in done][: settings.max_tickers]
     else:
         targets = [(t, metrics.get(t, {})) for t in tickers]
     rows = [_process(run_id, ticker, ticker_metrics, settings, deps) for ticker, ticker_metrics in tqdm(targets)]
@@ -89,7 +106,7 @@ def _process(
     row = _review_ticker(ticker, metrics, settings, deps)
     if deps.peers:
         row = replace(row, sector_comparison=compare(ticker, metrics, deps.peers))
-    deps.records.record_review(run_id, row)
+    deps.reviews.record_review(run_id, row)
     if deps.memo_dir and row.status == F.ReviewStatus.OK:
         sources = {d.doc_id: d.source_ref for d in deps.store.documents(ticker) if d.doc_id in row.doc_ids}
         memo = render_memo(ticker, metrics.get(F.NAME, ""), asdict(row), row.sector_comparison, sources)

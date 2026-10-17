@@ -8,6 +8,7 @@ from typing import Any
 import pandas as pd
 
 from . import fields as F
+from .review_eval import EvalCase, EvalResult, combine
 
 
 def write_failures(failures: dict[str, str], out_dir: Path, filename: str) -> Path:
@@ -37,3 +38,26 @@ def write_report(results: list[dict[str, Any]], out_dir: Path, filename: str, co
     print(f"\nStage 2 Candidates ({len(candidates)}):")
     print(candidates.to_string(index=False))
     return path
+
+
+def eval_line(r: EvalResult) -> str:
+    return (
+        f"{r.hits}/{r.cases} cases, {r.parse_failures} parse failures, "
+        f"lowest verified ratio {r.min_verified_ratio:.2f}, {r.fallback_rows} answered by a fallback: "
+        f"{'PASSED' if r.passed else 'FAILED'}"
+    )
+
+
+def format_eval(
+    outcomes: list[tuple[list[tuple[EvalCase, bool]], EvalResult]], model: str
+) -> tuple[list[str], EvalResult]:
+    """The lines of a ``review-eval`` (cases per repetition, then the overall verdict) and the overall result."""
+    lines = []
+    for n, (scored, result) in enumerate(outcomes, 1):
+        for case, hit in scored:
+            mark = "hit " if hit else "MISS"
+            lines.append(f"  {n}: {mark} {case.ticker} {case.task}.{case.field} {case.expect_any}: {case.basis}")
+        lines.append(f"  {n}: {eval_line(result)}")
+    overall = combine([result for _, result in outcomes])
+    lines.append(f"review-eval {model}, {len(outcomes)} runs: {eval_line(overall)}")
+    return lines, overall

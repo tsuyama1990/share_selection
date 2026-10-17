@@ -9,7 +9,6 @@ import httpx
 import pytest
 import yaml
 
-import main
 from tests.fixtures.config import CFG
 from tests.fixtures.docs_flow import GEMINI_KEY, KEY, SECTOR, all_handler, record_candidates
 from tests.fixtures.review_flow import PROMPT_DIR, PROMPT_VERSION, chat_handler, clueless, good
@@ -40,7 +39,12 @@ CFG_REVIEW = {
     "docstore": {"db_file": "docs_test.duckdb"},
     "docs": {**CFG["docs"], "search": False},
     "llm": {**CFG["llm"], "max_calls_per_minute": 1000},
-    "review": {**CFG["review"], "prompt_dir": str(PROMPT_DIR), "export_dir": "reviews_test"},
+    "review": {
+        **CFG["review"],
+        "prompt_dir": str(PROMPT_DIR),
+        "db_file": "reviews_test.duckdb",
+        "export_dir": "reviews_test",
+    },
     "sector": {**CFG["sector"], "min_peers": 1},
 }
 MODEL = "gemini-3.5-flash-lite"
@@ -65,9 +69,7 @@ def setup(project, monkeypatch):
     def llm(respond):
         real_client = httpx.Client
         handler = chat_handler(respond, all_handler)
-        monkeypatch.setattr(
-            main.httpx, "Client", lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw)
-        )
+        monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw))
 
     return project, cfg, run_id, llm
 
@@ -82,7 +84,7 @@ def run_cmd(project, cfg, *args) -> int:
 
 def review_rows(project, cfg, run_id):
     sql = f"SELECT ticker, status FROM reviews WHERE run_id = '{run_id}' ORDER BY ticker"
-    return project.query(sql, cfg)
+    return project.query(sql, cfg, "review")
 
 
 def test_review_refuses_until_review_eval_has_passed(setup, capsys):
@@ -104,7 +106,7 @@ def test_review_eval_passes_with_correct_answers_and_review_then_records(setup, 
     )
     overall = f"review-eval {MODEL}, {runs} runs: {2 * runs}/{2 * runs} cases, 0 parse failures"
     assert f"{overall}, lowest verified ratio 1.00, 0 answered by a fallback: PASSED" in out
-    assert project.query("SELECT prompt_version, model, passed FROM review_evals", cfg) == [
+    assert project.query("SELECT prompt_version, model, passed FROM review_evals", cfg, "review") == [
         (PROMPT_VERSION, MODEL, True)
     ]
 
@@ -114,7 +116,7 @@ def test_review_eval_passes_with_correct_answers_and_review_then_records(setup, 
     assert f"Memos written to {project.root / CFG['memo']['dir']}." in out
     assert review_rows(project, cfg, run_id) == [("1.T", "ok"), ("2.T", "no_documents"), ("3.T", "ok")]
     sql = f"SELECT ticker, suggestion, verified_ratio FROM reviews WHERE run_id = '{run_id}' AND status = 'ok'"
-    assert project.query(sql, cfg) == [("1.T", "採用", 1.0), ("3.T", "採用", 1.0)]
+    assert project.query(sql, cfg, "review") == [("1.T", "採用", 1.0), ("3.T", "採用", 1.0)]
     assert sorted(p.name for p in (project.root / "reviews_test" / run_id).iterdir()) == ["reviews.parquet"]
     assert (project.root / "reviews_test" / "review_evals.parquet").exists()
     memos = project.root / CFG["memo"]["dir"]
@@ -139,7 +141,7 @@ def test_review_eval_fails_with_wrong_answers_and_review_stays_refused(setup, ca
     assert run_cmd(project, cfg, "review-eval") == 1
     out = capsys.readouterr().out
     assert "1: MISS 1.T T1.source_type" in out and "1: 0/2 cases" in out and out.rstrip().endswith("FAILED")
-    assert project.query("SELECT passed FROM review_evals", cfg) == [(False,)]
+    assert project.query("SELECT passed FROM review_evals", cfg, "review") == [(False,)]
 
     assert run_cmd(project, cfg, "review") == 1
     assert capsys.readouterr().out == REFUSAL
@@ -160,8 +162,8 @@ def test_no_key_reaches_the_output_databases_or_exports(setup, capsys):
     run_cmd(project, cfg, "review-eval")
     run_cmd(project, cfg, "review")
     captured = capsys.readouterr()
-    dump = captured.out + captured.err + repr(project.query("SELECT * FROM reviews", cfg))
-    dump += repr(project.query("SELECT * FROM review_evals", cfg))
+    dump = captured.out + captured.err + repr(project.query("SELECT * FROM reviews", cfg, "review"))
+    dump += repr(project.query("SELECT * FROM review_evals", cfg, "review"))
     dump += repr(project.query("SELECT * FROM runs", cfg))
     for path in (project.root / "reviews_test").rglob("*.parquet"):
         dump += path.read_bytes().decode("latin-1")

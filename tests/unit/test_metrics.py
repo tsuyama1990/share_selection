@@ -76,3 +76,8 @@ def test_avg_turnover():
     assert avg_turnover(hist, 60) == 2e7
     assert avg_turnover(None, 60) is None
     assert avg_turnover(pd.DataFrame(), 60) is None
+
+
+def test_sales_cagr_needs_positive_current_sales():
+    fin = pd.DataFrame({"2023": {"Total Revenue": 0.0}, "2022": {"Total Revenue": 150.0}})
+    assert sales_cagr(fin, 4, 1) == (None, None)

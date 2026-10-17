@@ -1,5 +1,4 @@
 import argparse
-import dataclasses
 import datetime
 import os
 import sys
@@ -9,23 +8,23 @@ from functools import partial
 from pathlib import Path
 from typing import Any
 
-import httpx
 from dotenv import load_dotenv
 
-from src import fields as F
+from src import collect
 from src.cache import StockCache, refresh_all
 from src.collect import CollectClients, CollectSettings, collect_documents
 from src.config import CONFIG_FILE, ROOT, MissingKeyError, load_config
-from src.docstore import Company, DocStore
+from src.docstore import DocStore
 from src.earnings_calendar import load_calendar, update_calendar_csv
-from src.llm import GeminiSearch, LLMClient
-from src.records import RecordStore, RunInfo, evaluate, git_sha, latest_issue
-from src.report import write_failures, write_report
-from src.research import load_prompts, prompt_version
+from src.llm import smoke_check
+from src.outcomes import evaluate
+from src.records import RecordStore, RunInfo, git_sha, latest_issue
+from src.report import format_eval, write_failures, write_report
+from src.research import prompt_version
 from src.review import ReviewDeps, ReviewSettings, review_candidates
-from src.review_eval import EvalCase, EvalGate, EvalResult, combine, evaluate_model, load_eval_cases
+from src.review_eval import evaluate_model, load_eval_cases
 from src.screener import NO_CACHE, Screener, screen_universe
-from src.sector import Peers, sector_medians
+from src.sector import Peers
 from src.selection import prioritize
 from src.tickers import read_column, read_tickers, update_ticker_csv
 from src.yahoo import YahooClient
@@ -107,14 +106,12 @@ def cmd_evaluate(cfg: Cfg, args: Args) -> None:
 
 def cmd_docs(cfg: Cfg, args: Args) -> None:
     with ExitStack() as stack:
-        clients = CollectClients.from_config(cfg, os.environ, stack)
+        clients = CollectClients.from_config(cfg, os.environ, stack, cfg["docs"]["search"])
         with RecordStore.from_config(cfg, ROOT) as records:
-            run_id = args.run or records.runs()[-1][0]
+            run_id = records.resolve_run(args.run)
             candidates = records.candidates(run_id)
         print(f"Collecting documents of {len(candidates)} candidates of run {run_id}...")
-        names = read_column(ROOT / cfg["system"]["input_csv"], "name")
-        ranked = sorted(candidates, key=lambda c: c[1][F.PRIORITY_RANK])
-        companies = [Company(t, names.get(t, m[F.NAME])) for t, m in ranked]
+        companies = collect.companies(candidates, read_column(ROOT / cfg["system"]["input_csv"], "name"))
         store = stack.enter_context(DocStore.from_config(cfg, ROOT))
         summary = collect_documents(companies, CollectSettings.from_config(cfg), clients, store, datetime.date.today())
     if summary.searches_left:
@@ -124,96 +121,46 @@ def cmd_docs(cfg: Cfg, args: Args) -> None:
     print(f"{text} {summary.web_docs} web documents stored." if clients.search else text)
 
 
-def open_review(cfg: Cfg, stack: ExitStack) -> ReviewDeps:
-    """The parts of a review run, opened on ``stack``; a missing LLM key raises before any record is read."""
-    http = stack.enter_context(httpx.Client(timeout=cfg["llm"]["timeout_s"]))
-    llm = LLMClient.from_config(cfg, http, os.environ)
-    prompts = load_prompts(ROOT / cfg["review"]["prompt_dir"])
-    return ReviewDeps(
-        llm,
-        prompts,
-        stack.enter_context(RecordStore.from_config(cfg, ROOT)),
-        stack.enter_context(DocStore.from_config(cfg, ROOT)),
-        None,
-        None,
-    )
-
-
 def cmd_review(cfg: Cfg, args: Args) -> None:
+    sectors = read_column(ROOT / cfg["system"]["input_csv"], "sector33")
+    with RecordStore.from_config(cfg, ROOT) as records:
+        run_id = records.resolve_run(args.run)
+        candidates = records.candidates(run_id)
+        peers = Peers.from_run(records, run_id, sectors, cfg)
     with ExitStack() as stack:
-        deps = open_review(cfg, stack)
-        version = prompt_version(deps.prompts)
-        model = deps.llm.primary.model
-        if not deps.records.passed_eval(version, model):
+        deps = ReviewDeps.from_config(cfg, ROOT, os.environ, stack, peers)
+        version, model = prompt_version(deps.prompts), deps.llm.primary.model
+        if not deps.reviews.passed_eval(version, model):
             print(f"Error: no passed review-eval for prompt {version} / {model}; run `review-eval` first.")
             sys.exit(1)
-        run_id = args.run or deps.records.runs()[-1][0]
         tickers = args.tickers.split(",") if args.tickers else None
-        candidates = deps.records.candidates(run_id)
-        sectors = read_column(ROOT / cfg["system"]["input_csv"], "sector33")
-        sec = cfg["sector"]
-        medians = sector_medians(deps.records.run_metrics(run_id), sectors, sec["metrics"], sec["min_peers"])
-        memo_dir = ROOT / cfg["memo"]["dir"]
-        deps = dataclasses.replace(deps, peers=Peers(medians, sectors, sec["metrics"]), memo_dir=memo_dir)
         summary = review_candidates(run_id, candidates, tickers, ReviewSettings.from_config(cfg), deps)
     print(
         f"Run {run_id}: {summary.reviewed} reviewed, {summary.failed} failed, {summary.needs_attention} need attention."
     )
-    print(f"Memos written to {memo_dir}.")
-
-
-def print_eval(outcomes: list[tuple[list[tuple[EvalCase, bool]], EvalResult]], model: str) -> EvalResult:
-    for n, (scored, result) in enumerate(outcomes, 1):
-        for case, hit in scored:
-            mark = "hit " if hit else "MISS"
-            print(f"  {n}: {mark} {case.ticker} {case.task}.{case.field} {case.expect_any}: {case.basis}")
-        print(f"  {n}: {eval_line(result)}")
-    overall = combine([result for _, result in outcomes])
-    print(f"review-eval {model}, {len(outcomes)} runs: {eval_line(overall)}")
-    return overall
-
-
-def eval_line(r: EvalResult) -> str:
-    return (
-        f"{r.hits}/{r.cases} cases, {r.parse_failures} parse failures, "
-        f"lowest verified ratio {r.min_verified_ratio:.2f}, {r.fallback_rows} answered by a fallback: "
-        f"{'PASSED' if r.passed else 'FAILED'}"
-    )
+    print(f"Memos written to {deps.memo_dir}.")
 
 
 def cmd_review_eval(cfg: Cfg, args: Args) -> None:
     rev = cfg["review"]
     cases = load_eval_cases(ROOT / rev["eval"]["cases_file"])
-    names = {c.ticker: c.name for c in cases}
-    candidates = [(t, {F.NAME: n, F.PRIORITY_RANK: rank}) for rank, (t, n) in enumerate(names.items(), 1)]
-    sources = rev["eval"]["sources"]  # EDINET only: the same documents every run, no search quota
-    eval_cfg = {**cfg, "docs": {**cfg["docs"], "search": "web" in sources}}
     with ExitStack() as stack:
-        clients = CollectClients.from_config(eval_cfg, os.environ, stack)
-        deps = open_review(cfg, stack)
-        companies = [Company(c.ticker, c.name) for c in cases]
+        clients = CollectClients.from_config(cfg, os.environ, stack, "web" in rev["eval"]["sources"])
+        deps = ReviewDeps.from_config(cfg, ROOT, os.environ, stack, None)
+        companies = [c.company for c in cases]
         collect_documents(companies, CollectSettings.from_config(cfg), clients, deps.store, datetime.date.today())
-        model = deps.llm.primary.model
-        thresholds = {**rev["eval"], "min_verified_ratio": rev["min_verified_ratio"]}
-        run_id = datetime.datetime.now().strftime(EVAL_RUN_ID)
-        gate = EvalGate(thresholds, rev["eval"]["repeats"], f"{deps.llm.primary.name}/{model}", run_id)
-        settings = dataclasses.replace(ReviewSettings.from_config(cfg), sources=sources)
-        outcomes = evaluate_model(cases, candidates, settings, deps, gate)
-        overall = print_eval(outcomes, model)
+        outcomes = evaluate_model(cases, cfg, deps, datetime.datetime.now().strftime(EVAL_RUN_ID))
+        lines, overall = format_eval(outcomes, deps.llm.primary.model)
+        print("\n".join(lines))
         summary = [{"run": n, "hits": r.hits, "passed": r.passed} for n, (_, r) in enumerate(outcomes, 1)]
-        deps.records.record_eval(prompt_version(deps.prompts), model, overall, summary)
+        deps.reviews.record_eval(prompt_version(deps.prompts), deps.llm.primary.model, overall, summary)
     if not overall.passed:
         sys.exit(1)
 
 
 def cmd_llm_check(cfg: Cfg, args: Args) -> None:
-    """Smoke test: one prompt through the fallback chain and one grounded search; prints no secrets."""
-    check = cfg["llm"]["check"]
-    with httpx.Client(timeout=cfg["llm"]["timeout_s"]) as http:
-        reply = LLMClient.from_config(cfg, http, os.environ).chat([{"role": "user", "content": check["chat_prompt"]}])
-        print(f"chat: {reply.provider} / {reply.model}, answer {len(reply.text)} chars")
-        answer = GeminiSearch.from_config(cfg, http, os.environ).search(check["search_prompt"])
-        print(f"search: answer {len(answer.text)} chars, {len(answer.sources)} sources, {len(answer.queries)} queries")
+    for line in smoke_check(cfg, os.environ):
+        print(line)
 
 
 COMMANDS: dict[str, tuple[Callable[[Cfg, Args], None], str]] = {

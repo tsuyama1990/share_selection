@@ -49,7 +49,7 @@ Edit `config.yaml` to adjust criteria. Every tunable parameter, path and file na
 *   `docs`: `search` (also collect web sources), `search_prompt` (`{name}`, `{code}`), `max_sources` (per candidate).
 *   `docstore`: `db_file` of the document store.
 *   `llm`: ordered `providers` (the first with a key is the model `review` is gated on), `search`, `check`, limits (see "LLM" below).
-*   `review`: `max_tickers`, `min_verified_ratio`, `prompt_dir` (the prompt version is the hash of its files), `max_doc_chars` (a document is cut to this before the LLM sees it and quotes are checked), `export_dir` (Parquet of `reviews` / `review_evals`, git-ignored), `context_metrics`, `tasks` (answer items of T1-T5, in running order) and `eval` (`cases_file`, `min_hit_rate`, `max_parse_failures`).
+*   `review`: `max_tickers`, `min_verified_ratio`, `prompt_dir` (the prompt version is the hash of its files), `max_doc_chars` (a document is cut to this before the LLM sees it and quotes are checked), `db_file` (`reviews.duckdb`: `reviews` and `review_evals`, apart from `records.duckdb`), `export_dir` (Parquet of `reviews` / `review_evals`, git-ignored), `context_metrics`, `tasks` (answer items of T1-T5, in running order) and `eval` (`cases_file`, `min_hit_rate`, `max_parse_failures`).
 *   `records`: `db_file`, `export_dir` (Parquet backup per run), `shikiho_issue_months` / `shikiho_release_day` (default `--issue`), `horizons_months`, `benchmark_ticker`, `price_lookback_days` (history fetched before the earliest run by `evaluate`).
 *   `system`: `input_csv`, `db_file`, `sleep_time`, `cache_days`, `market_timezone` (timezone of the history timestamps, `Asia/Tokyo`), `daily_history_period`, `monthly_history_period`.
 
@@ -182,8 +182,8 @@ Runs the CLI end to end against the real JPX, Yahoo, EDINET, Gemini and LLM APIs
 ## Architecture
 
 *   `main.py`: CLI and wiring only (argument parsing, config and `.env` loading, parts built by their `from_config`, one `cmd_<name>` per command in `COMMANDS`, summaries printed); the flows live in `src/`.
-*   `src/collect.py`: the `docs` flow (`collect_documents`): EDINET index and annual reports, then a Gemini search per candidate without web documents (given best `Priority_Rank` first by `main.py`, stops at the search quota).
-*   `src/review.py`: the `review` flow (`review_candidates`): documents -> T1-T5 -> `reviews` row, a failing ticker is recorded and the flow goes on. `src/research.py` runs one task (prompt files, JSON mode, one re-ask), `src/verify.py` checks quotes, `src/review_eval.py` scores and judges the eval cases.
+*   `src/collect.py`: the `docs` flow (`collect_documents`): EDINET index and annual reports, then a Gemini search per candidate without web documents (given best `Priority_Rank` first by `RecordStore.candidates`, stops at the search quota); `companies` turns candidates into `Company` rows with the Japanese names.
+*   `src/review.py`: the `review` flow (`review_candidates`, `ReviewDeps.from_config` opens its parts): documents -> T1-T5 -> `reviews` row, a failing ticker is recorded and the flow goes on. `src/research.py` runs one task (prompt files, JSON mode, one re-ask), `src/verify.py` checks quotes, `src/review_eval.py` scores and judges the eval cases.
 *   `src/stock_data.py`: `StockData`, the typed raw data of one ticker (normalizes histories to naive market-local dates).
 *   `src/fields.py`: The stage-1 result vocabulary (row keys, improvement classes and sources, `ma` / `downside_to_low`); no other module repeats these strings (architecture test).
 *   `src/metrics.py`: Pure helpers (`to_num`, `latest_values`, `sales_cagr`, `avg_turnover`, ...).
@@ -192,14 +192,16 @@ Runs the CLI end to end against the real JPX, Yahoo, EDINET, Gemini and LLM APIs
 *   `src/screener.py`: `Screener` runs rules then indicators and builds the result row; `screen_universe` screens all tickers (`NO_CACHE` when not cached) and adds the earnings calendar fields.
 *   `src/cache.py`: `StockCache` (DuckDB), `refresh` (download if stale) and `refresh_all` (returns the failed tickers).
 *   `src/yahoo.py`: `YahooClient` downloads raw data from Yahoo Finance.
-*   `src/records.py`: `RecordStore` (runs, screen_results, outcomes in `records.duckdb`, exported to Parquet; reviews and review_evals exported to `review.export_dir`) and `evaluate`; `RunInfo` holds the run metadata (`latest_issue`, `git_sha` gather it) and `record_run(RunInfo, results)` builds the columns from `ScreenResult` rows.
+*   `src/records.py`: `RecordStore` (runs, screen_results, outcomes in `records.duckdb`, exported to Parquet; `candidates` in `Priority_Rank` order, `resolve_run`); `RunInfo` holds the run metadata (`latest_issue`, `git_sha` gather it) and `record_run(RunInfo, results)` builds the columns from `ScreenResult` rows.
+*   `src/outcomes.py`: `evaluate` computes the outcomes of the recorded runs whose horizons have elapsed.
+*   `src/review_store.py`: `ReviewStore` (`reviews` and `review_evals` in `reviews.duckdb`, Parquet to `review.export_dir`) and `ReviewRow`.
 *   `src/edinet.py`: `EdinetClient` (EDINET API v2), the filing index update and `fetch_annual_report` (text sections of the latest annual securities report).
 *   `src/webfetch.py`: `fetch_document` (a cited URL -> redirects followed, size limit, HTML/PDF text -> document store), `extract_text`, `web_doc_id`.
 *   `src/docstore.py`: `DocStore` (`documents.duckdb`: documents, EDINET index, fetch errors); a stored text is never rewritten.
 *   `src/tickers.py`: Builds the ticker CSV from the JPX listed company workbook (`update_ticker_csv`) and reads it (`read_tickers`).
 *   `src/selection.py`: `prioritize` adds `Priority_Rank` / `Stage2_Candidate` (class, then improvement yield, then Real_PSR).
 *   `src/throttle.py`: `RateLimiter` (sliding window) shared by the EDINET, web and LLM clients.
-*   `src/report.py`: `write_failures` writes the fetch failures CSV; `write_report` writes the dated CSV (location and columns passed in from `output`) and prints the candidates.
+*   `src/report.py`: `format_eval` formats a `review-eval`; `write_failures` writes the fetch failures CSV; `write_report` writes the dated CSV (location and columns passed in from `output`) and prints the candidates.
 *   `src/config.py`: `load_config(path)` reads a config file (default `config.yaml`; `main.py --config` overrides); `require_key(env, name)` is the one place API keys are checked (`MissingKeyError`). Only `config.py` and `main.py` touch it; everything else receives values through `build_*` / `from_config` / dataclass fields.
 
 ## Design documents (`docs/`, Japanese)

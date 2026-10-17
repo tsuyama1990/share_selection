@@ -77,7 +77,7 @@ def scratch(tmp_path_factory: pytest.TempPathFactory) -> Scratch:
     base["output"]["dir"] = str(root / "results")
     base["records"].update(db_file=str(root / "records.duckdb"), export_dir=str(root / "records"))
     base["docstore"]["db_file"] = str(root / "documents.duckdb")
-    base["review"]["export_dir"] = str(root / "reviews")
+    base["review"].update(db_file=str(root / "reviews.duckdb"), export_dir=str(root / "reviews"))
     base["selection"]["candidates_n"] = CANDIDATES_N
 
     fetch = copy.deepcopy(base)
@@ -150,11 +150,11 @@ def candidates(scratch: Scratch, run_id: str) -> list[str]:
 
 def review_rows(scratch: Scratch, run_id: str) -> int:
     sql = "SELECT count(*) FROM reviews WHERE run_id = ? AND status IS NOT NULL"
-    return query(scratch.path("records", "db_file"), sql, run_id)[0][0]
+    return query(scratch.path("review", "db_file"), sql, run_id)[0][0]
 
 
 def eval_rows(scratch: Scratch) -> list[tuple]:
-    return query(scratch.path("records", "db_file"), 'SELECT passed FROM review_evals ORDER BY "at"')
+    return query(scratch.path("review", "db_file"), 'SELECT passed FROM review_evals ORDER BY "at"')
 
 
 @scenario()

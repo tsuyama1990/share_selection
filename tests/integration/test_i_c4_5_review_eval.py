@@ -4,15 +4,14 @@ import datetime
 import json
 from pathlib import Path
 
-import duckdb
 import pytest
 
 from src import fields as F
 from src.docstore import DocStore, Document
-from src.records import RecordStore
 from src.research import load_prompts
 from src.review import ReviewDeps, ReviewSettings, review_candidates
-from src.review_eval import EvalResult, judge, load_eval_cases, score_case
+from src.review_eval import EvalResult, EvalThresholds, judge, load_eval_cases, score_case
+from src.review_store import ReviewStore
 from tests.fixtures.config import CFG
 from tests.fixtures.review_flow import (
     GOOD_ANSWERS,
@@ -29,7 +28,7 @@ from tests.fixtures.review_flow import (
 REV = CFG["review"]
 CASES = load_eval_cases(Path(__file__).resolve().parents[2] / REV["eval"]["cases_file"])
 VERSION = PROMPT_VERSION
-THRESHOLDS = {**REV["eval"], "min_verified_ratio": REV["min_verified_ratio"]}
+THRESHOLDS = EvalThresholds.from_config(CFG)
 RUN = "eval-1"
 TEXT = "セメントの値上げで営業利益が増加。部材の価格転嫁が進んだ。"
 
@@ -43,7 +42,7 @@ def correct(messages):
 def stores(tmp_path):
     with (
         DocStore(tmp_path / "d.duckdb") as docs,
-        RecordStore(tmp_path / "r.duckdb", tmp_path / "rec", tmp_path / "rev") as rec,
+        ReviewStore(tmp_path / "r.duckdb", tmp_path / "rev") as rec,
     ):
         for case in CASES:
             doc = Document(
@@ -109,9 +108,3 @@ def test_the_latest_eval_of_a_prompt_and_model_decides(stores):
     assert not rec.passed_eval(VERSION, MODEL)
     evaluate(stores, correct, "eval-3")
     assert rec.passed_eval(VERSION, MODEL)
-
-
-def test_evals_are_exported_to_the_review_directory(stores):
-    evaluate(stores, correct)
-    path = stores[2] / "rev" / "review_evals.parquet"
-    assert duckdb.sql(f"SELECT passed, model FROM read_parquet('{path}')").fetchall() == [(True, MODEL)]

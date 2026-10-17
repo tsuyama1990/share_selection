@@ -1,4 +1,4 @@
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from http import HTTPStatus
 from typing import Any
@@ -134,3 +134,13 @@ class GeminiSearch:
         chunks = grounding.get("groundingChunks", [])
         sources = [(c["web"].get("title", ""), c["web"]["uri"]) for c in chunks if "web" in c]
         return SearchAnswer(text, grounding.get("webSearchQueries", []), sources)
+
+
+def smoke_check(cfg: dict[str, Any], env: Mapping[str, str]) -> Iterator[str]:
+    """Lines of a smoke test: one prompt through the fallback chain, then one grounded search; no secrets."""
+    check = cfg["llm"]["check"]
+    with httpx.Client(timeout=cfg["llm"]["timeout_s"]) as http:
+        reply = LLMClient.from_config(cfg, http, env).chat([{"role": "user", "content": check["chat_prompt"]}])
+        yield f"chat: {reply.provider} / {reply.model}, answer {len(reply.text)} chars"
+        answer = GeminiSearch.from_config(cfg, http, env).search(check["search_prompt"])
+        yield f"search: answer {len(answer.text)} chars, {len(answer.sources)} sources, {len(answer.queries)} queries"

@@ -9,9 +9,8 @@ import duckdb
 import httpx
 import pytest
 
-import main
 from tests.fixtures.config import CFG
-from tests.fixtures.docs_flow import ANSWER, GEMINI_KEY, KEY, all_handler, record_candidates
+from tests.fixtures.docs_flow import ANSWER, GEMINI_HOST, GEMINI_KEY, KEY, all_handler, record_candidates
 
 CFG_SEARCH = {
     **CFG,
@@ -26,9 +25,7 @@ CFG_EDINET_ONLY = {**CFG_SEARCH, "docs": {**CFG_SEARCH["docs"], "search": False}
 
 def mock_http(monkeypatch) -> None:
     real_client = httpx.Client
-    monkeypatch.setattr(
-        main.httpx, "Client", lambda **kw: real_client(transport=httpx.MockTransport(all_handler), **kw)
-    )
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=httpx.MockTransport(all_handler), **kw))
 
 
 def test_docs_stores_edinet_and_web_documents_and_survives_failures(project, monkeypatch, capsys):
@@ -76,3 +73,20 @@ def test_docs_search_requires_the_gemini_key(project, monkeypatch, capsys):
         project.run("docs", cfg=CFG_SEARCH)
     assert e.value.code == 1
     assert "GEMINI_API_KEY" in capsys.readouterr().out
+
+
+def test_docs_reports_the_candidates_left_when_the_search_quota_is_used_up(project, monkeypatch, capsys):
+    def handler(request):
+        if request.url.host == GEMINI_HOST:
+            return httpx.Response(429)
+        return all_handler(request)
+
+    real_client = httpx.Client
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw))
+    monkeypatch.setenv("EDINET_API_KEY", KEY)
+    monkeypatch.setenv("GEMINI_API_KEY", GEMINI_KEY)
+    record_candidates(project.root)
+
+    project.run("docs", cfg=CFG_SEARCH)
+
+    assert "Search quota used up: 3 candidates left for the next `docs` run." in capsys.readouterr().out

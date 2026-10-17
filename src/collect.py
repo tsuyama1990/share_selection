@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 from tqdm import tqdm
 
+from . import fields as F
 from .docstore import Company, DocStore
 from .edinet import EdinetClient, fetch_annual_report, update_index
 from .llm import GeminiSearch, LLMError, QuotaExceeded
@@ -58,18 +59,25 @@ class CollectClients:
     fetch_limiter: RateLimiter
 
     @classmethod
-    def from_config(cls, cfg: dict[str, Any], env: Mapping[str, str], stack: ExitStack) -> "CollectClients":
-        """Open the HTTP clients on ``stack``; a missing API key raises before any record is read."""
+    def from_config(
+        cls, cfg: dict[str, Any], env: Mapping[str, str], stack: ExitStack, search: bool
+    ) -> "CollectClients":
+        """Open the HTTP clients on ``stack`` (``search``: with the Gemini search); a missing API key raises early."""
         llm, web = cfg["llm"], cfg["webfetch"]
         edinet_http = stack.enter_context(httpx.Client(timeout=cfg["edinet"]["timeout_s"]))
         edinet = EdinetClient.from_config(cfg, edinet_http, env)
-        search = None
-        if cfg["docs"]["search"]:
-            search = GeminiSearch.from_config(cfg, stack.enter_context(httpx.Client(timeout=llm["timeout_s"])), env)
+        gemini = None
+        if search:
+            gemini = GeminiSearch.from_config(cfg, stack.enter_context(httpx.Client(timeout=llm["timeout_s"])), env)
         headers = {"User-Agent": web["user_agent"]}
         web_http = stack.enter_context(httpx.Client(timeout=web["timeout_s"], headers=headers))
         search_limiter = RateLimiter.per_minute(llm["max_calls_per_minute"])
-        return cls(edinet, search, web_http, search_limiter, RateLimiter(1, web["request_interval_s"]))
+        return cls(edinet, gemini, web_http, search_limiter, RateLimiter(1, web["request_interval_s"]))
+
+
+def companies(candidates: list[tuple[str, dict[str, Any]]], names: Mapping[str, str]) -> list[Company]:
+    """Candidates as companies, Japanese name from ``names`` else the metrics' name."""
+    return [Company(ticker, names.get(ticker, metrics[F.NAME])) for ticker, metrics in candidates]
 
 
 def collect_documents(

@@ -4,22 +4,21 @@ import datetime
 import json
 from dataclasses import replace
 
-import duckdb
 import pytest
 
 from src import fields as F
 from src.docstore import DocStore, Document
 from src.llm import LLMError
-from src.records import RecordStore
 from src.research import load_prompts
 from src.review import VERIFIED_ANSWERS, ReviewDeps, ReviewSettings, ReviewSummary, review_candidates
+from src.review_store import ReviewStore
 from tests.fixtures.config import CFG
 from tests.fixtures.review_flow import PROMPT_DIR, PROMPT_VERSION, FakeLLM, fabricating, good, not_json, task_of
 
 SETTINGS = ReviewSettings.from_config(CFG)
 CANDIDATES = [
-    ("1.T", {F.NAME: "Company 1", F.PRIORITY_RANK: 2, F.PBR: 0.8}),
     ("2.T", {F.NAME: "Company 2", F.PRIORITY_RANK: 1}),
+    ("1.T", {F.NAME: "Company 1", F.PRIORITY_RANK: 2, F.PBR: 0.8}),
     ("3.T", {F.NAME: "Company 3", F.PRIORITY_RANK: 3}),
 ]
 TEXT = "営業利益は46億円増加した。セメントの値上げの効果が大きい。"
@@ -34,7 +33,7 @@ def doc(ticker: str, text: str = TEXT) -> Document:
 def stores(tmp_path):
     with (
         DocStore(tmp_path / "d.duckdb") as docs,
-        RecordStore(tmp_path / "r.duckdb", tmp_path / "rec", tmp_path / "rev") as rec,
+        ReviewStore(tmp_path / "r.duckdb", tmp_path / "rev") as rec,
     ):
         for ticker in ("1.T", "2.T", "3.T"):
             docs.put(doc(ticker))
@@ -128,7 +127,7 @@ def test_targets_are_the_unreviewed_candidates_by_priority_rank_capped(stores):
 
 
 def test_a_ticker_without_documents_or_with_a_failing_llm_is_recorded_and_the_flow_goes_on(stores):
-    candidates = [*CANDIDATES, ("9.T", {F.NAME: "No docs", F.PRIORITY_RANK: 0})]
+    candidates = [("9.T", {F.NAME: "No docs", F.PRIORITY_RANK: 0}), *CANDIDATES]
 
     class Failing(FakeLLM):
         def chat(self, messages, json_mode=False):
@@ -157,22 +156,6 @@ def test_a_failed_ticker_is_reviewed_again_and_its_row_replaced(stores):
     run(stores)
     assert rec.con.execute("SELECT status FROM reviews WHERE ticker = '1.T'").fetchall() == [("ok",)]
     assert rec.con.execute("SELECT count(*) FROM reviews").fetchone() == (3,)
-
-
-def test_reviews_are_exported_only_to_the_review_directory(stores):
-    run(stores, tickers=["1.T"])
-    tmp = stores[2]
-    assert duckdb.sql(f"SELECT ticker FROM read_parquet('{tmp / 'rev' / RUN / 'reviews.parquet'}')").fetchall() == [
-        ("1.T",)
-    ]
-    assert not (tmp / "rec").exists()
-
-
-def test_reviews_round_trip_through_the_records(stores):
-    run(stores, tickers=["1.T"])
-    rows = stores[0].reviews(RUN)
-    assert list(rows) == ["1.T"] and rows["1.T"]["status"] == "ok"
-    assert rows["1.T"]["answers"]["T5"]["suggestion"] == "採用" and rows["1.T"]["verified_ratio"] == 1.0
 
 
 MEMO = CFG["memo"]["filename"]
