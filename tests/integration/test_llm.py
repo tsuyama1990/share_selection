@@ -196,3 +196,17 @@ def test_llm_check_prints_only_summary(monkeypatch, capsys):
     assert "chat: gemini-lite / gemini-3.5-flash-lite, answer 5 chars" in out
     assert "search: answer 11 chars, 2 sources, 2 queries" in out
     assert "SECRET" not in out
+
+
+@pytest.mark.parametrize("content", [None, ""])
+def test_an_empty_reply_is_retried_on_the_same_provider(content):
+    answers = iter(
+        [httpx.Response(200, json={"choices": [{"message": {"content": content}}]}), httpx.Response(200, json=OK_BODY)]
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return next(answers)
+
+    waits: list[float] = []
+    assert client(handler, providers("a", "b"), retries=1, waits=waits).chat(MSGS).provider == "a"
+    assert waits == [1.0]

@@ -14,7 +14,7 @@ class LLMError(RuntimeError):
 
 
 class _TransientError(LLMError):
-    """HTTP 429/5xx or a transport error: worth another attempt on the same provider."""
+    """HTTP 429/5xx, a transport error or an empty reply: worth another attempt on the same provider."""
 
 
 class QuotaExceeded(LLMError):
@@ -104,7 +104,10 @@ class LLMClient:
             raise _TransientError(f"HTTP {resp.status_code}")
         if resp.is_error:
             raise LLMError(f"HTTP {resp.status_code}")
-        return Reply(resp.json()["choices"][0]["message"]["content"], p.name, p.model)
+        content = resp.json()["choices"][0]["message"]["content"]
+        if not isinstance(content, str) or not content:
+            raise _TransientError("empty reply")  # OpenRouter's free routes sometimes answer with a null content
+        return Reply(content, p.name, p.model)
 
 
 class GeminiSearch:
