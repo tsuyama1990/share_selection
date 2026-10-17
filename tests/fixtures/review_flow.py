@@ -9,7 +9,7 @@ from typing import Any
 
 import httpx
 
-from src.llm import Reply
+from src.llm import Provider, Reply
 
 PROMPT_DIR = Path(__file__).resolve().parents[2] / "prompts" / "v1"
 MODEL = "fake-model"
@@ -72,7 +72,7 @@ def not_json(messages: list[dict[str, str]]) -> str:
 class FakeLLM:
     """Stands in for ``LLMClient``; ``calls`` keeps a copy of the messages of every call."""
 
-    primary_model = MODEL
+    primary = Provider("fake", "", MODEL, "")
 
     def __init__(self, respond: Respond = good):
         self.respond = respond

@@ -57,11 +57,11 @@ class LLMClient:
         return cls(providers, http, llm["temperature"], limiter)
 
     @property
-    def primary_model(self) -> str:
-        """Model of the first provider that has a key."""
+    def primary(self) -> Provider:
+        """The first provider that has a key."""
         if not self._providers:
             raise MissingKeyError("set the API key of an LLM provider (environment or .env)")
-        return self._providers[0].model
+        return self._providers[0]
 
     def chat(self, messages: list[dict[str, str]], json_mode: bool = False) -> Reply:
         if not self._providers:

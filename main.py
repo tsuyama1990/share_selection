@@ -136,7 +136,7 @@ def cmd_review(cfg: Cfg, args: Args) -> None:
     version = cfg["review"]["prompt_version"]
     with ExitStack() as stack:
         deps = open_review(cfg, stack)
-        model = deps.llm.primary_model
+        model = deps.llm.primary.model
         if not deps.records.passed_eval(version, model):
             print(f"Error: no passed review-eval for prompt {version} / {model}; run `review-eval` first.")
             sys.exit(1)
@@ -154,7 +154,8 @@ def print_eval(results: list[tuple[EvalCase, bool]], result: EvalResult, model: 
         print(f"  {'hit ' if hit else 'MISS'} {case.ticker} {case.task}.{case.field} {case.expect_any}: {case.basis}")
     print(
         f"review-eval {model}: {result.hits}/{result.cases} cases, {result.parse_failures} parse failures, "
-        f"lowest verified ratio {result.min_verified_ratio:.2f}: {'PASSED' if result.passed else 'FAILED'}"
+        f"lowest verified ratio {result.min_verified_ratio:.2f}, {result.fallback_rows} answered by a fallback: "
+        f"{'PASSED' if result.passed else 'FAILED'}"
     )
 
 
@@ -172,9 +173,9 @@ def cmd_review_eval(cfg: Cfg, args: Args) -> None:
         rows = deps.records.reviews(run_id)
         results = [(c, score_case(c, rows[c.ticker])) for c in cases]
         thresholds = {**rev["eval"], "min_verified_ratio": rev["min_verified_ratio"]}
-        result = judge(results, list(rows.values()), thresholds)
+        model = deps.llm.primary.model
+        result = judge(results, list(rows.values()), thresholds, f"{deps.llm.primary.name}/{model}")
         summary = [{"ticker": c.ticker, "task": c.task, "field": c.field, "hit": hit} for c, hit in results]
-        model = deps.llm.primary_model
         deps.records.record_eval(rev["prompt_version"], model, result, summary)
     print_eval(results, result, model)
     if not result.passed:

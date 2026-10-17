@@ -6,13 +6,14 @@ CASE = EvalCase("1.T", "A", "T1", "source_type", ["値上げ", "価格改定"], 
 THRESHOLDS = {"min_hit_rate": 0.8, "max_parse_failures": 0, "min_verified_ratio": 0.7}
 
 
-def row(answer="unknown", quotes=(), status="ok", ratio=1.0):
+def row(answer="unknown", quotes=(), status="ok", ratio=1.0, providers=("primary",)):
     evidence = [{"field": "source_type", "claim": "c", "quote": q, "doc_id": "d"} for q in quotes]
     return {
         "status": status,
         "answers": {"T1": {"source_type": answer}},
         "evidence": {"T1": evidence},
         "verified_ratio": ratio,
+        "llm_providers": list(providers),
     }
 
 
@@ -43,27 +44,29 @@ def results(*hits: bool):
 
 def test_judge_hit_rate_boundary():
     rows = [row()]
-    assert judge(results(True, True, True, True, False), rows, THRESHOLDS) == EvalResult(5, 4, 0, 1.0, True)
-    assert not judge(results(True, True, True, False, False), rows, THRESHOLDS).passed
-    assert not judge([], rows, THRESHOLDS).passed
+    assert judge(results(True, True, True, True, False), rows, THRESHOLDS, "primary") == EvalResult(
+        5, 4, 0, 1.0, 0, True
+    )
+    assert not judge(results(True, True, True, False, False), rows, THRESHOLDS, "primary").passed
+    assert not judge([], rows, THRESHOLDS, "primary").passed
 
 
 def test_judge_parse_failures_boundary():
     rows = [row(), row(status="bad_json")]
-    assert judge(results(True), rows, THRESHOLDS).parse_failures == 1
-    assert not judge(results(True), rows, THRESHOLDS).passed
-    assert judge(results(True), rows, {**THRESHOLDS, "max_parse_failures": 1}).passed
+    assert judge(results(True), rows, THRESHOLDS, "primary").parse_failures == 1
+    assert not judge(results(True), rows, THRESHOLDS, "primary").passed
+    assert judge(results(True), rows, {**THRESHOLDS, "max_parse_failures": 1}, "primary").passed
 
 
 def test_judge_lowest_verified_ratio_boundary():
-    assert judge(results(True), [row(ratio=0.7), row(ratio=0.9)], THRESHOLDS).passed
-    low = judge(results(True), [row(ratio=0.69), row(ratio=0.9)], THRESHOLDS)
+    assert judge(results(True), [row(ratio=0.7), row(ratio=0.9)], THRESHOLDS, "primary").passed
+    low = judge(results(True), [row(ratio=0.69), row(ratio=0.9)], THRESHOLDS, "primary")
     assert (low.min_verified_ratio, low.passed) == (0.69, False)
 
 
 def test_eval_result_hit_rate():
-    assert EvalResult(4, 3, 0, 1.0, True).hit_rate == 0.75
-    assert EvalResult(0, 0, 0, 0.0, False).hit_rate == 0.0
+    assert EvalResult(4, 3, 0, 1.0, 0, True).hit_rate == 0.75
+    assert EvalResult(0, 0, 0, 0.0, 0, False).hit_rate == 0.0
 
 
 def test_load_eval_cases_reads_the_yaml(tmp_path):
@@ -80,3 +83,8 @@ def test_load_eval_cases_fails_on_a_missing_item(tmp_path):
     path.write_text("cases:\n  - {ticker: '1.T', name: A, task: T1, field: f, expect_any: []}\n", encoding="utf-8")
     with pytest.raises(TypeError):
         load_eval_cases(path)
+
+
+def test_judge_fails_when_a_fallback_provider_answered():
+    result = judge(results(True), [row(), row(providers=("primary", "groq"))], THRESHOLDS, "primary")
+    assert (result.fallback_rows, result.passed) == (1, False)

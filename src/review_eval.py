@@ -25,6 +25,7 @@ class EvalResult:
     hits: int
     parse_failures: int
     min_verified_ratio: float
+    fallback_rows: int  # reviews answered (partly) by a provider other than the primary one
     passed: bool
 
     @property
@@ -47,17 +48,20 @@ def score_case(case: EvalCase, review_row: dict[str, Any]) -> bool:
 
 
 def judge(
-    results: list[tuple[EvalCase, bool]], review_rows: list[dict[str, Any]], thresholds: dict[str, Any]
+    results: list[tuple[EvalCase, bool]], review_rows: list[dict[str, Any]], thresholds: dict[str, Any], primary: str
 ) -> EvalResult:
-    """Pass: hit rate and lowest verified ratio reach their minimums, parse failures stay within the cap."""
+    """Pass: hit rate and lowest verified ratio reach their minimums, parse failures stay within the cap, and every
+    review was answered by the ``primary`` "<provider>/<model>" alone (the pass is recorded for its model)."""
     hits = sum(hit for _, hit in results)
     parse_failures = sum(row["status"] == F.ReviewStatus.BAD_JSON for row in review_rows)
     ratios = [row["verified_ratio"] for row in review_rows if row["status"] == F.ReviewStatus.OK]
     lowest = min(ratios, default=0.0)
+    fallback_rows = sum(set(row["llm_providers"]) - {primary} != set() for row in review_rows)
     passed = (
         bool(results)
         and hits / len(results) >= thresholds["min_hit_rate"]
         and parse_failures <= thresholds["max_parse_failures"]
         and lowest >= thresholds["min_verified_ratio"]
+        and not fallback_rows
     )
-    return EvalResult(len(results), hits, parse_failures, lowest, passed)
+    return EvalResult(len(results), hits, parse_failures, lowest, fallback_rows, passed)

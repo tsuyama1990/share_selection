@@ -98,7 +98,8 @@ def test_review_eval_passes_with_correct_answers_and_review_then_records(setup, 
     assert run_cmd(project, cfg, "review-eval") == 0
     out = capsys.readouterr().out
     assert "hit  1.T T1.source_type" in out and "hit  3.T T5.suggestion" in out
-    assert f"review-eval {MODEL}: 2/2 cases, 0 parse failures, lowest verified ratio 1.00: PASSED" in out
+    summary = f"review-eval {MODEL}: 2/2 cases, 0 parse failures, lowest verified ratio 1.00, 0 answered by a fallback"
+    assert f"{summary}: PASSED" in out
     assert project.query("SELECT prompt_version, model, passed FROM review_evals", cfg) == [("v1", MODEL, True)]
 
     assert run_cmd(project, cfg, "review") == 0

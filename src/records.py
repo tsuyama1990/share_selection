@@ -207,11 +207,17 @@ class RecordStore:
         return {t for (t,) in self.con.execute(sql, [run_id, F.ReviewStatus.OK]).fetchall()}
 
     def reviews(self, run_id: str) -> dict[str, dict[str, Any]]:
-        """Ticker -> ``status``, ``answers``, ``evidence`` and ``verified_ratio`` of the run's reviews."""
-        sql = "SELECT ticker, status, answers, evidence, verified_ratio FROM reviews WHERE run_id = ?"
+        """Ticker -> the run's review (status, answers, evidence, verified_ratio, llm_providers)."""
+        sql = "SELECT ticker, status, answers, evidence, verified_ratio, llm_providers FROM reviews WHERE run_id = ?"
         return {
-            t: {"status": status, "answers": json.loads(a), "evidence": json.loads(e), "verified_ratio": ratio}
-            for t, status, a, e, ratio in self.con.execute(sql, [run_id]).fetchall()
+            t: {
+                "status": status,
+                "answers": json.loads(a),
+                "evidence": json.loads(e),
+                "verified_ratio": ratio,
+                "llm_providers": json.loads(providers),
+            }
+            for t, status, a, e, ratio, providers in self.con.execute(sql, [run_id]).fetchall()
         }
 
     def record_eval(self, prompt_version: str, model: str, result: EvalResult, summary: list[dict[str, Any]]) -> None:

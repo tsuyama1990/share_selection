@@ -51,7 +51,7 @@ def evaluate(stores, respond, run_id=RUN) -> EvalResult:
     review_candidates(run_id, candidates, None, ReviewSettings.from_config(CFG), deps)
     rows = rec.reviews(run_id)
     results = [(c, score_case(c, rows[c.ticker])) for c in CASES]
-    result = judge(results, list(rows.values()), THRESHOLDS)
+    result = judge(results, list(rows.values()), THRESHOLDS, f"fake/{MODEL}")
     summary = [{"ticker": c.ticker, "hit": hit} for c, hit in results]
     rec.record_eval(VERSION, MODEL, result, summary)
     return result
@@ -71,7 +71,7 @@ def test_correct_answers_pass_and_the_pass_is_recorded_for_this_prompt_and_model
     rec = stores[0]
     assert not rec.passed_eval(VERSION, MODEL)
     result = evaluate(stores, correct)
-    assert result == EvalResult(3, 3, 0, 1.0, True)
+    assert result == EvalResult(3, 3, 0, 1.0, 0, True)
     assert rec.passed_eval(VERSION, MODEL)
     assert not rec.passed_eval(VERSION, "another-model") and not rec.passed_eval("v0", MODEL)
     row = rec.con.execute(
