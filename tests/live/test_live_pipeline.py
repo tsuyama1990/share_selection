@@ -68,6 +68,21 @@ PASSED: set[int] = set()
 STATE: dict[str, object] = {}
 
 
+# Paths the commands only read; every other path-like setting must point into the scratch directory.
+READ_ONLY_PATHS = {("system", "db_file"), ("review", "prompt_dir"), ("review", "eval", "cases_file")}
+PATH_KEYS = ("dir", "file", "csv")
+
+
+def assert_writes_stay_in(cfg: dict, root: Path, prefix: tuple[str, ...] = ()) -> None:
+    """Fail fast if a writable path of the live config would land outside the scratch directory (the repo)."""
+    for key, value in cfg.items():
+        where = (*prefix, key)
+        if isinstance(value, dict):
+            assert_writes_stay_in(value, root, where)
+        elif isinstance(value, str) and key.endswith(PATH_KEYS) and where not in READ_ONLY_PATHS:
+            assert Path(value).expanduser().resolve().is_relative_to(root.resolve()), f"{'.'.join(where)} = {value}"
+
+
 @pytest.fixture(scope="session")
 def scratch(tmp_path_factory: pytest.TempPathFactory) -> Scratch:
     root = tmp_path_factory.mktemp("live")
@@ -78,7 +93,10 @@ def scratch(tmp_path_factory: pytest.TempPathFactory) -> Scratch:
     base["records"].update(db_file=str(root / "records.duckdb"), export_dir=str(root / "records"))
     base["docstore"]["db_file"] = str(root / "documents.duckdb")
     base["review"].update(db_file=str(root / "reviews.duckdb"), export_dir=str(root / "reviews"))
+    base["memo"]["dir"] = str(root / "memos")
+    base["backup"]["dir"] = str(root / "backup")
     base["selection"]["candidates_n"] = CANDIDATES_N
+    assert_writes_stay_in(base, root)
 
     fetch = copy.deepcopy(base)
     fetch["system"].update(input_csv=str(root / "fetch_tickers.csv"), db_file=str(root / "fetch_cache.duckdb"))
