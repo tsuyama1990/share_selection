@@ -6,12 +6,21 @@ from dataclasses import dataclass
 from statistics import median
 from typing import Any
 
+from .records import RecordStore
+
 
 @dataclass(frozen=True)
 class Peers:
     medians: dict[str, dict[str, float | None]]  # sector -> metric -> median
     sectors: dict[str, str]  # ticker -> sector
     metrics: list[str]
+
+    @classmethod
+    def from_run(cls, records: RecordStore, run_id: str, sectors: dict[str, str], cfg: dict[str, Any]) -> "Peers":
+        """Sector medians over every ticker of the run."""
+        sec = cfg["sector"]
+        medians = sector_medians(records.run_metrics(run_id), sectors, sec["metrics"], sec["min_peers"])
+        return cls(medians, sectors, sec["metrics"])
 
 
 def _is_number(value: Any) -> bool:

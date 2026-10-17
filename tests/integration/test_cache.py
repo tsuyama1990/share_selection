@@ -76,3 +76,13 @@ def test_history_dates_roundtrip_in_market_timezone(tmp_path):
     assert list(data.history_monthly.index) == list(monthly.index.tz_localize(None))
     assert list(data.history.index) == list(daily.index.tz_localize(None))
     assert data.history_monthly.loc["2008-10-01", "Low"] == 2.0
+
+
+def test_a_fresh_entry_is_not_downloaded_again(tmp_path):
+    class Unreachable:
+        def download(self, ticker):
+            raise AssertionError("downloaded a fresh entry")
+
+    with StockCache(str(tmp_path / "c.duckdb"), TZ) as cache:
+        cache.put("1.T", FakeClient().download("1.T"))
+        assert refresh(cache, Unreachable(), "1.T", max_age_days=1) is None

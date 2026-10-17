@@ -123,3 +123,15 @@ class TestIndicators:
         }
         built = build_indicators(cfg)
         assert built[-1].windows == ({"Lehman": ("2008-09-01", "2009-03-31")})
+
+
+def test_trend_without_a_price_gives_only_the_averages():
+    dates = pd.date_range(start="2021-08-31", periods=30, freq="ME")
+    data = make_stock("T", {"history_monthly": pd.DataFrame({"Close": np.linspace(100, 200, 30)}, index=dates)})
+    assert sorted(Trend(3, 5).compute(data, {})) == ["MA3", "MA5"]
+
+
+def test_trend_is_bull_above_the_short_average_under_the_long_one():
+    dates = pd.date_range(start="2021-08-31", periods=30, freq="ME")
+    data = make_stock("T", {"history_monthly": pd.DataFrame({"Close": np.linspace(200, 100, 30)}, index=dates)})
+    assert Trend(3, 5).compute(data, {"Current_Price": 150})["Chart_Trend"] == "Bull"

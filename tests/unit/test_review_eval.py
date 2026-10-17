@@ -1,9 +1,11 @@
+from dataclasses import replace
+
 import pytest
 
-from src.review_eval import EvalCase, EvalResult, combine, judge, load_eval_cases, score_case
+from src.review_eval import EvalCase, EvalResult, EvalThresholds, combine, judge, load_eval_cases, score_case
 
 CASE = EvalCase("1.T", "A", "T1", "source_type", ["値上げ", "価格改定"], "basis")
-THRESHOLDS = {"min_hit_rate": 0.8, "max_parse_failures": 0, "min_verified_ratio": 0.7}
+THRESHOLDS = EvalThresholds(0.8, 0, 0.7)
 
 
 def row(answer="unknown", quotes=(), status="ok", ratio=1.0, providers=("primary",)):
@@ -55,7 +57,7 @@ def test_judge_parse_failures_boundary():
     rows = [row(), row(status="bad_json")]
     assert judge(results(True), rows, THRESHOLDS, "primary").parse_failures == 1
     assert not judge(results(True), rows, THRESHOLDS, "primary").passed
-    assert judge(results(True), rows, {**THRESHOLDS, "max_parse_failures": 1}, "primary").passed
+    assert judge(results(True), rows, replace(THRESHOLDS, max_parse_failures=1), "primary").passed
 
 
 def test_judge_lowest_verified_ratio_boundary():

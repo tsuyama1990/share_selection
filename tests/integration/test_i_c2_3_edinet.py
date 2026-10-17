@@ -171,3 +171,14 @@ def test_transport_error_is_reported_by_class_name_only(store):
     )
     assert update_index(client, store, TODAY, index_days=0) == 0
     assert store.con.execute("SELECT error FROM fetch_errors").fetchall() == [("ConnectError",)]
+
+
+def test_an_index_reply_that_is_not_json_is_reported_as_invalid(store):
+    client = EdinetClient(
+        "https://edinet.test/api/v2",
+        KEY,
+        httpx.Client(transport=httpx.MockTransport(lambda request: httpx.Response(200, content=b"<html>"))),
+        RateLimiter(1, 0),
+    )
+    assert update_index(client, store, TODAY, index_days=0) == 0
+    assert store.con.execute("SELECT error FROM fetch_errors").fetchall() == [("invalid JSON",)]

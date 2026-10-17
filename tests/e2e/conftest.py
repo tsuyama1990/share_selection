@@ -36,8 +36,9 @@ class Project:
         self.monkeypatch.setattr(sys, "argv", ["main.py", "--config", str(config_path), *args])
         main.main()
 
-    def query(self, sql: str, cfg: dict = CFG) -> list[tuple]:
-        with duckdb.connect(str(self.root / cfg["records"]["db_file"])) as con:
+    def query(self, sql: str, cfg: dict = CFG, section: str = "records") -> list[tuple]:
+        """Rows of ``sql`` in the DB file of the config ``section`` (``records`` or ``review``)."""
+        with duckdb.connect(str(self.root / cfg[section]["db_file"])) as con:
             return con.execute(sql).fetchall()
 
 

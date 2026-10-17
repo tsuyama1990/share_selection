@@ -1,14 +1,11 @@
 import datetime
 import json
-from unittest import mock
 
 import duckdb
-import pandas as pd
-import pytest
 
 from src import fields as F
 from src.config import load_config
-from src.records import RecordStore, RunInfo, evaluate
+from src.records import RecordStore, RunInfo
 from src.screener import NO_CACHE, ScreenResult
 
 CFG = load_config()
@@ -27,6 +24,7 @@ RESULTS = {
         {
             F.IMPROVEMENT_CLASS: "clear",
             F.STAGE2_CANDIDATE: True,
+            F.PRIORITY_RANK: 1,
             F.NEXT_EARNINGS_DATE: "2026-11-05",
             F.QUALITY_FLAGS: ["quarter_spike", "oi_divergence"],
             "PSR": 1.5,
@@ -47,7 +45,7 @@ def parquet(path, table):
 
 
 def test_record_run_round_trip_and_parquet(tmp_path):
-    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec", tmp_path / "rev") as store:
+    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec") as store:
         run_id = store.record_run(INFO, RESULTS)
         run = store.con.execute("SELECT issue, git_sha, config, ticker_list_date FROM runs").fetchall()
         res = store.con.execute(
@@ -69,56 +67,32 @@ def test_record_run_round_trip_and_parquet(tmp_path):
 
 
 def test_candidates_select_by_the_stage2_candidate_column(tmp_path):
-    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec", tmp_path / "rev") as store:
+    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec") as store:
         run_id = store.record_run(INFO, RESULTS)
         assert store.candidates(run_id) == [("1.T", RESULTS["1.T"].row)]
         flags = store.con.execute("SELECT stage2_candidate FROM screen_results ORDER BY ticker").fetchall()
     assert [f for (f,) in flags] == [True, False, False]
 
 
-def closes(values: dict[str, float]) -> pd.Series:
-    return pd.Series(list(values.values()), index=pd.to_datetime(list(values)), dtype=float)
+def test_candidates_come_best_priority_rank_first(tmp_path):
+    ranked = {
+        t: ScreenResult(True, None, {F.STAGE2_CANDIDATE: True, F.PRIORITY_RANK: rank})
+        for t, rank in (("1.T", 3), ("2.T", 1), ("3.T", 2))
+    }
+    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec") as store:
+        run_id = store.record_run(INFO, ranked)
+        assert [t for t, _ in store.candidates(run_id)] == ["2.T", "3.T", "1.T"]
 
 
-HISTORY = {
-    "1.T": closes({"2025-01-03": 100.0, "2025-07-04": 130.0, "2025-12-30": 150.0}),
-    "2.T": closes({"2025-01-03": 50.0, "2025-07-04": 40.0, "2025-12-30": 60.0}),
-    "1306.T": closes({"2025-01-03": 200.0, "2025-07-04": 210.0, "2025-12-30": 240.0}),
-}
+def test_resolve_run_is_the_given_run_else_the_latest(tmp_path):
+    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec") as store:
+        first = store.record_run(INFO, RESULTS)
+        latest = store.record_run(INFO, RESULTS)
+        assert store.resolve_run(first) == first
+        assert store.resolve_run(None) == latest != first
 
 
-def make_run(store, run_at):
-    with mock.patch("src.records.datetime.datetime") as dt:
-        dt.now.return_value = run_at
-        return store.record_run(INFO, RESULTS)
-
-
-def test_evaluate_computes_elapsed_horizons_only(tmp_path):
-    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec", tmp_path / "rev") as store:
-        run_id = make_run(store, datetime.datetime(2025, 1, 5, 12))  # Sunday: t0 uses Friday's close
-        added = evaluate(store, HISTORY.__getitem__, [6, 12], "1306.T", datetime.datetime(2026, 1, 1))
-        assert added == 2  # 6 months elapsed (2025-07-05 -> close of 07-04); 12 months (2026-01-05) not yet
-        assert evaluate(store, HISTORY.__getitem__, [6, 12], "1306.T", datetime.datetime(2026, 1, 1)) == 0
-        rows = store.con.execute(
-            'SELECT ticker, horizon_months, price_t0, price_t1, "return", benchmark_return, excess '
-            "FROM outcomes ORDER BY ticker"
-        ).fetchall()
-        assert evaluate(store, HISTORY.__getitem__, [6, 12], "1306.T", datetime.datetime(2026, 2, 1)) == 2
-        assert store.con.execute("SELECT count(*) FROM outcomes WHERE horizon_months = 12").fetchone() == (2,)
-    assert rows[0][:5] == ("1.T", 6, 100.0, 130.0, pytest.approx(0.3))
-    assert rows[0][5:] == (pytest.approx(0.05), pytest.approx(0.25))
-    assert rows[1][:5] == ("2.T", 6, 50.0, 40.0, pytest.approx(-0.2))
-    assert len(parquet(tmp_path / "rec" / run_id, "outcomes")) == 4
-
-
-def test_evaluate_tolerates_missing_history(tmp_path):
-    def history(ticker):
-        if ticker == "2.T":
-            raise KeyError("Close")
-        return HISTORY[ticker]
-
-    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec", tmp_path / "rev") as store:
-        make_run(store, datetime.datetime(2025, 1, 5))
-        assert evaluate(store, history, [6], "1306.T", datetime.datetime(2026, 1, 1)) == 2
-        row = store.con.execute('SELECT price_t0, "return", excess FROM outcomes WHERE ticker = ?', ["2.T"]).fetchone()
-    assert row == (None, None, None)
+def test_run_metrics_cover_the_tickers_with_metrics(tmp_path):
+    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec") as store:
+        run_id = store.record_run(INFO, RESULTS)
+        assert sorted(store.run_metrics(run_id)) == ["1.T", "2.T", "3.T"]
