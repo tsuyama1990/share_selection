@@ -30,12 +30,13 @@ CASES = load_eval_cases(Path(__file__).resolve().parents[2] / REV["eval"]["cases
 VERSION = PROMPT_VERSION
 THRESHOLDS = EvalThresholds.from_config(CFG)
 RUN = "eval-1"
-TEXT = "セメントの値上げで営業利益が増加。部材の価格転嫁が進んだ。"
+TEXT = "セメントの値上げで営業利益が増加。部材の価格転嫁が進んだ。負ののれん発生益と固定資産売却益を計上。"
 
 
 def correct(messages):
     """Answers every eval case as expected (the suggestion is one of the expected words)."""
-    return reply(messages, {**GOOD_ANSWERS, "T5": {**GOOD_ANSWERS["T5"], "suggestion": "監視"}})
+    t2 = {**GOOD_ANSWERS["T2"], "one_off_items": "負ののれん発生益、固定資産売却益"}
+    return reply(messages, {**GOOD_ANSWERS, "T2": t2, "T5": {**GOOD_ANSWERS["T5"], "suggestion": "監視"}})
 
 
 @pytest.fixture
@@ -66,13 +67,21 @@ def evaluate(stores, respond, run_id=RUN) -> EvalResult:
     return result
 
 
-def test_the_eval_file_holds_the_three_checked_cases():
+def test_the_eval_file_holds_the_checked_cases():
     assert [(c.ticker, c.name, c.task, c.field) for c in CASES] == [
         ("5232.T", "住友大阪セメント", "T1", "source_type"),
         ("6599.T", "エブレン", "T1", "source_type"),
         ("6430.T", "ダイコク電機", "T5", "suggestion"),
+        ("7242.T", "カヤバ", "T2", "one_off_items"),
+        ("6331.T", "三菱化工機", "T2", "one_off_items"),
     ]
-    assert [c.expect_any for c in CASES] == [["値上げ", "価格改定", "販売価格"], ["価格転嫁"], ["落選", "監視"]]
+    assert [c.expect_any for c in CASES] == [
+        ["値上げ", "価格改定", "販売価格"],
+        ["価格転嫁"],
+        ["落選", "監視"],
+        ["負ののれん"],
+        ["固定資産売却益"],
+    ]
     assert all(c.basis for c in CASES) and {c.task for c in CASES} <= set(REV["tasks"])
 
 
@@ -80,7 +89,7 @@ def test_correct_answers_pass_and_the_pass_is_recorded_for_this_prompt_and_model
     rec = stores[0]
     assert not rec.passed_eval(VERSION, MODEL)
     result = evaluate(stores, correct)
-    assert result == EvalResult(3, 3, 0, 1.0, 0, True)
+    assert result == EvalResult(len(CASES), len(CASES), 0, 1.0, 0, True)
     assert rec.passed_eval(VERSION, MODEL)
     assert not rec.passed_eval(VERSION, "another-model") and not rec.passed_eval("v0", MODEL)
     row = rec.con.execute(
@@ -98,7 +107,7 @@ def test_wrong_answers_fail_and_the_failure_is_recorded(stores, respond):
 
 
 def test_parse_failures_are_counted(stores):
-    assert evaluate(stores, not_json).parse_failures == 3
+    assert evaluate(stores, not_json).parse_failures == len(CASES)
 
 
 def test_the_latest_eval_of_a_prompt_and_model_decides(stores):
