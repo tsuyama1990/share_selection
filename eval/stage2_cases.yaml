@@ -20,3 +20,15 @@ cases:
     field: suggestion
     expect_any: [落選, 監視]
     basis: "[一次][報道] 第 1 四半期 営業利益 −34.4%、通期予想 経常 −53%（hypothesis_map H4a、N1 改善なし）"
+  - ticker: "7242.T"
+    name: "カヤバ"
+    task: T2
+    field: one_off_items
+    expect_any: [負ののれん]
+    basis: "[一次] 有価証券報告書 S100YHB1（2026 年 3 月期）経営成績の分析：知多鋼業株式会社の完全子会社化に伴う負ののれん発生益を認識し営業利益 349 億円"
+  - ticker: "6331.T"
+    name: "三菱化工機"
+    task: T2
+    field: one_off_items
+    expect_any: [固定資産売却益]
+    basis: "[一次] 有価証券報告書 S100YK3Y（2026 年 3 月期）経営成績の分析：特別利益に固定資産売却益 1,448 百万円を計上"
