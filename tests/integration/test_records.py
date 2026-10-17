@@ -47,7 +47,7 @@ def parquet(path, table):
 
 
 def test_record_run_round_trip_and_parquet(tmp_path):
-    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec") as store:
+    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec", tmp_path / "rev") as store:
         run_id = store.record_run(INFO, RESULTS)
         run = store.con.execute("SELECT issue, git_sha, config, ticker_list_date FROM runs").fetchall()
         res = store.con.execute(
@@ -69,7 +69,7 @@ def test_record_run_round_trip_and_parquet(tmp_path):
 
 
 def test_candidates_select_by_the_stage2_candidate_column(tmp_path):
-    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec") as store:
+    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec", tmp_path / "rev") as store:
         run_id = store.record_run(INFO, RESULTS)
         assert store.candidates(run_id) == [("1.T", RESULTS["1.T"].row)]
         flags = store.con.execute("SELECT stage2_candidate FROM screen_results ORDER BY ticker").fetchall()
@@ -94,7 +94,7 @@ def make_run(store, run_at):
 
 
 def test_evaluate_computes_elapsed_horizons_only(tmp_path):
-    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec") as store:
+    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec", tmp_path / "rev") as store:
         run_id = make_run(store, datetime.datetime(2025, 1, 5, 12))  # Sunday: t0 uses Friday's close
         added = evaluate(store, HISTORY.__getitem__, [6, 12], "1306.T", datetime.datetime(2026, 1, 1))
         assert added == 2  # 6 months elapsed (2025-07-05 -> close of 07-04); 12 months (2026-01-05) not yet
@@ -117,7 +117,7 @@ def test_evaluate_tolerates_missing_history(tmp_path):
             raise KeyError("Close")
         return HISTORY[ticker]
 
-    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec") as store:
+    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec", tmp_path / "rev") as store:
         make_run(store, datetime.datetime(2025, 1, 5))
         assert evaluate(store, history, [6], "1306.T", datetime.datetime(2026, 1, 1)) == 2
         row = store.con.execute('SELECT price_t0, "return", excess FROM outcomes WHERE ticker = ?', ["2.T"]).fetchone()

@@ -6,7 +6,8 @@
     code reads exists. Reads are found statically: string-literal subscripts (``x["key"]``) whose
     base is one of ``CONFIG_NAMES`` (the config or an alias of one of its sections, e.g.
     ``sc = cfg["indicators"]``). Matching is by key name, not by full path. Keys under
-    ``indicators.shock_lows`` are user-chosen crash names, read dynamically, and are exempt.
+    ``indicators.shock_lows`` (crash names) and ``review.tasks`` (task names) are user-chosen, read dynamically, and
+    are exempt.
 (c) Result-row names and values are strings only in ``src/fields.py``: no other file of ``src/`` or ``main.py``
     repeats one, and dynamic keys (``MA<n>``, ``Downside_to_<name>_Low(%)``) are built by its functions.
 (d) Every ``output.columns`` entry is a ``fields.py`` value or a dynamic key built from ``indicators``.
@@ -41,8 +42,10 @@ CONFIG_NAMES = {
     "ed",
     "check",
     "docs",
+    "rev",
+    "thresholds",
 }
-DYNAMIC_PARENTS = {"shock_lows"}
+DYNAMIC_PARENTS = {"shock_lows", "tasks"}
 
 
 def _parse(path: Path) -> ast.AST:

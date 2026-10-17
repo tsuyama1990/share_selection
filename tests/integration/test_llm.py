@@ -169,6 +169,6 @@ def test_llm_check_prints_only_summary(monkeypatch, capsys):
         monkeypatch.delenv(name, raising=False)
     main.cmd_llm_check(cfg, None)
     out = capsys.readouterr().out
-    assert "chat: gemini / gemini-2.5-flash, answer 5 chars" in out
+    assert "chat: gemini-lite / gemini-3.5-flash-lite, answer 5 chars" in out
     assert "search: answer 11 chars, 2 sources, 2 queries" in out
     assert "SECRET" not in out

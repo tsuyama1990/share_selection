@@ -48,6 +48,8 @@ Edit `config.yaml` to adjust criteria. Every tunable parameter, path and file na
 *   `webfetch`: `timeout_s`, `max_bytes` (larger responses are dropped), `user_agent`, `request_interval_s` of the page fetches of `docs`.
 *   `docs`: `search` (also collect web sources), `search_prompt` (`{name}`, `{code}`), `max_sources` (per candidate).
 *   `docstore`: `db_file` of the document store.
+*   `llm`: ordered `providers` (the first with a key is the model `review` is gated on), `search`, `check`, limits (see "LLM" below).
+*   `review`: `max_tickers`, `min_verified_ratio`, `prompt_dir` / `prompt_version`, `max_doc_chars` (a document is cut to this before the LLM sees it and quotes are checked), `export_dir` (Parquet of `reviews` / `review_evals`, git-ignored), `context_metrics`, `tasks` (answer items of T1-T5, in running order) and `eval` (`cases_file`, `min_hit_rate`, `max_parse_failures`).
 *   `records`: `db_file`, `export_dir` (Parquet backup per run), `shikiho_issue_months` / `shikiho_release_day` (default `--issue`), `horizons_months`, `benchmark_ticker`, `price_lookback_days` (history fetched before the earliest run by `evaluate`).
 *   `system`: `input_csv`, `db_file`, `sleep_time`, `cache_days`, `market_timezone` (timezone of the history timestamps, `Asia/Tokyo`), `daily_history_period`, `monthly_history_period`.
 
@@ -85,6 +87,16 @@ With `docs.search: true` (default) it also asks Gemini (grounded search, key in 
 
 ```bash
 uv run python main.py docs [--run RUN_ID]
+```
+
+### 2d. Review Stage 2 Candidates (LLM)
+`review` asks the LLM five tasks per candidate, using only the stored documents (cut to `review.max_doc_chars`): T1 source of the improvement (types P1-P4), T2 one-off gains and losses, T3 use of capital, T4 why the stock is forgotten, then T5 overall (adopt / drop / watch) with the verified T1-T4 answers. Every claim must carry a verbatim quote of one of the documents; the quote is checked after Unicode and whitespace normalization, claims that fail are dropped and an answer item without a verified claim becomes `unknown`. An invalid JSON reply is asked again once with the error; after that the ticker is recorded as `bad_json`. Each ticker gets a row in `reviews` (`ok`, `no_documents`, `llm_failed`, `bad_json`; a failed ticker is retried by the next run), with `verified_ratio` and `needs_attention` (ratio below `review.min_verified_ratio`). The Parquet export goes to `review.export_dir` (`reviews/`, git-ignored: it quotes web articles; never commit it). `--run RUN_ID` picks a run (default: the latest), `--tickers T1,T2` reviews those tickers only (not capped by `max_tickers`). Prompts are files in `review.prompt_dir` (`system.md`, `t1.md`..`t5.md`, `retry.md`). Industry comparison and the research memo are not built yet.
+
+**Live gate**: `review` refuses to run (exit 1) until `review-eval` has passed for the current `review.prompt_version` and the model of the first provider that has a key. `review-eval` collects the documents of the tickers in `review.eval.cases_file` (`eval/stage2_cases.yaml`, answers checked against primary sources), reviews them under the run id `eval-<timestamp>`, scores them and records the result in `review_evals`; it passes when the hit rate is at least `review.eval.min_hit_rate`, parse failures are at most `max_parse_failures` and every ticker's verified ratio is at least `review.min_verified_ratio`. It uses the real APIs (EDINET, Gemini search if `docs.search`, the LLM providers), so it is run by hand, not in CI: rerun it after changing the provider order or models, `review.prompt_version` or the prompts.
+
+```bash
+uv run python main.py review-eval
+uv run python main.py review [--run RUN_ID] [--tickers 6599.T,5232.T]
 ```
 
 ### 3. Fetch Data (Accumulation)
@@ -164,6 +176,7 @@ The same checks run in CI (`.github/workflows/ci.yml`) and, except pytest, in pr
 
 *   `main.py`: CLI and wiring only (argument parsing, config and `.env` loading, parts built by their `from_config`, one `cmd_<name>` per command in `COMMANDS`, summaries printed); the flows live in `src/`.
 *   `src/collect.py`: the `docs` flow (`collect_documents`): EDINET index and annual reports, then a Gemini search per candidate without web documents (best `Priority_Rank` first, stops at the search quota).
+*   `src/review.py`: the `review` flow (`review_candidates`): documents -> T1-T5 -> `reviews` row, a failing ticker is recorded and the flow goes on. `src/research.py` runs one task (prompt files, JSON mode, one re-ask), `src/verify.py` checks quotes, `src/review_eval.py` scores and judges the eval cases.
 *   `src/stock_data.py`: `StockData`, the typed raw data of one ticker (normalizes histories to naive market-local dates).
 *   `src/fields.py`: The stage-1 result vocabulary (row keys, improvement classes and sources, `ma` / `downside_to_low`); no other module repeats these strings (architecture test).
 *   `src/metrics.py`: Pure helpers (`to_num`, `latest_values`, `sales_cagr`, `avg_turnover`, ...).
@@ -172,7 +185,7 @@ The same checks run in CI (`.github/workflows/ci.yml`) and, except pytest, in pr
 *   `src/screener.py`: `Screener` runs rules then indicators and builds the result row; `screen_universe` screens all tickers (`NO_CACHE` when not cached) and adds the earnings calendar fields.
 *   `src/cache.py`: `StockCache` (DuckDB), `refresh` (download if stale) and `refresh_all` (returns the failed tickers).
 *   `src/yahoo.py`: `YahooClient` downloads raw data from Yahoo Finance.
-*   `src/records.py`: `RecordStore` (runs, screen_results, outcomes in `records.duckdb`, exported to Parquet) and `evaluate`; `RunInfo` holds the run metadata (`latest_issue`, `git_sha` gather it) and `record_run(RunInfo, results)` builds the columns from `ScreenResult` rows.
+*   `src/records.py`: `RecordStore` (runs, screen_results, outcomes in `records.duckdb`, exported to Parquet; reviews and review_evals exported to `review.export_dir`) and `evaluate`; `RunInfo` holds the run metadata (`latest_issue`, `git_sha` gather it) and `record_run(RunInfo, results)` builds the columns from `ScreenResult` rows.
 *   `src/edinet.py`: `EdinetClient` (EDINET API v2), the filing index update and `fetch_annual_report` (text sections of the latest annual securities report).
 *   `src/webfetch.py`: `fetch_document` (a cited URL -> redirects followed, size limit, HTML/PDF text -> document store), `extract_text`, `web_doc_id`.
 *   `src/docstore.py`: `DocStore` (`documents.duckdb`: documents, EDINET index, fetch errors); a stored text is never rewritten.

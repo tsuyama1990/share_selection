@@ -5,18 +5,13 @@ httpx.MockTransport; no key may appear in the output or the document store. The 
 stop) is tested at integration level in tests/integration/test_collect.py.
 """
 
-import datetime
-
 import duckdb
 import httpx
 import pytest
 
 import main
-from src import fields as F
-from src.records import RecordStore, RunInfo
-from src.screener import ScreenResult
 from tests.fixtures.config import CFG
-from tests.fixtures.docs_flow import ANSWER, CANDIDATES, GEMINI_KEY, KEY, all_handler
+from tests.fixtures.docs_flow import ANSWER, GEMINI_KEY, KEY, all_handler, record_candidates
 
 CFG_SEARCH = {
     **CFG,
@@ -27,16 +22,6 @@ CFG_SEARCH = {
     "llm": {**CFG["llm"], "max_calls_per_minute": 1000},
 }
 CFG_EDINET_ONLY = {**CFG_SEARCH, "docs": {**CFG_SEARCH["docs"], "search": False}}
-INFO = RunInfo("2026-10", "abc", {}, datetime.date(2026, 10, 1), None, None)
-
-
-def record_candidates(project) -> None:
-    results = {
-        ticker: ScreenResult(True, None, {**metrics, F.IMPROVEMENT_CLASS: "clear", F.STAGE2_CANDIDATE: True})
-        for ticker, metrics in CANDIDATES
-    }
-    with RecordStore.from_config(CFG, project.root) as store:
-        store.record_run(INFO, results)
 
 
 def mock_http(monkeypatch) -> None:
@@ -50,7 +35,7 @@ def test_docs_stores_edinet_and_web_documents_and_survives_failures(project, mon
     mock_http(monkeypatch)
     monkeypatch.setenv("EDINET_API_KEY", KEY)
     monkeypatch.setenv("GEMINI_API_KEY", GEMINI_KEY)
-    record_candidates(project)
+    record_candidates(project.root)
 
     project.run("docs", cfg=CFG_SEARCH)
 
@@ -69,7 +54,7 @@ def test_docs_stores_edinet_and_web_documents_and_survives_failures(project, mon
 def test_docs_without_search_reports_only_edinet(project, monkeypatch, capsys):
     mock_http(monkeypatch)
     monkeypatch.setenv("EDINET_API_KEY", KEY)
-    record_candidates(project)
+    record_candidates(project.root)
 
     project.run("docs", cfg=CFG_EDINET_ONLY)
 

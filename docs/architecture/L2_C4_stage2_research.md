@@ -14,12 +14,12 @@
 |---|---|---|
 | `llm.py` | OpenAI 互換のチャット（Gemini → Groq → DeepSeek のフォールバック、レート制限）、Gemini ネイティブの検索 | ✅ |
 | `sector.py` | 2-1・2-3：業種（33 業種）ごとの中央値と、候補の同業比較（機械） | 🆕 |
-| `research.py` | T1〜T5 のプロンプトの組み立て、LLM 呼び出し、JSON の検証 | 🆕 |
-| `verify.py` | 引用の照合（正規化した部分一致）、照合できない主張の除外、照合率 | 🆕 |
-| `review.py` | `review` の流れ：候補ごとに文書 → T1〜T5 → 照合 → 記録 → 調査メモ、失敗は状態として残す | 🆕 |
-| `review_eval.py` | モデルの品質の関門：正解のある銘柄の採点と合否（`L3_composition.md` 5.3） | 🆕 |
+| `research.py` | T1〜T5 のプロンプトの組み立て、LLM 呼び出し、JSON の検証 | ✅ |
+| `verify.py` | 引用の照合（正規化した部分一致）、照合できない主張の除外、照合率 | ✅ |
+| `review.py` | `review` の流れ：候補ごとに文書 → T1〜T5 → 照合 → 記録 → 調査メモ、失敗は状態として残す | ✅（業種の比較・調査メモは C） |
+| `review_eval.py` | モデルの品質の関門：正解のある銘柄の採点と合否（`L3_composition.md` 5.3） | ✅ |
 | `memo.py`（C6） | 調査メモ（銘柄ごとの Markdown）の出力 | 🆕 |
-| `records.py`（C5） | 実行記録。`reviews` テーブルの追加は未実装（L3 で設計） | ✅ |
+| `records.py`（C5） | 実行記録。`reviews`・`review_evals` テーブル（ブランチ B）。Parquet は `review.export_dir` へ | ✅ |
 
 ## 3. 処理の流れ（`review` コマンド）
 
@@ -83,9 +83,9 @@ LLM・検索・EDINET・Web はモック、DB は一時ファイル。
 |---|---|---|---|
 | I-C4-1 | `llm.py` とモックの HTTP | フォールバックの順番、キーのないプロバイダーを飛ばす、全失敗のエラー、検索の解析、キーが URL・例外・出力に出ない | ✅（`tests/integration/test_llm.py`） |
 | I-C4-2 | `sector.py` と実行記録 | 業種ごとの中央値、候補の同業比較、同業が少ない業種の扱い | 🆕 |
-| I-C4-3 | `research.py`＋`verify.py`＋モックの LLM | JSON の検証と 1 回の再依頼、引用の照合で捨てる主張、unknown への置き換え、照合率 | 🆕 |
-| I-C4-4 | `review` の 1 銘柄分（文書ストア・LLM・記録） | `reviews` に 1 行、照合できた根拠だけが残る、失敗は状態として残り次へ進む | 🆕 |
-| I-C4-5 | `review-eval`（偽の LLM・一時 DB） | 正解との一致・JSON の不正・照合率で合否、合格の記録が無いと `review` が拒む | 🆕 |
+| I-C4-3 | `research.py`＋`verify.py`＋モックの LLM | JSON の検証と 1 回の再依頼、引用の照合で捨てる主張、unknown への置き換え、照合率 | ✅ `tests/integration/test_i_c4_3_research_verify.py` |
+| I-C4-4 | `review` の 1 銘柄分（文書ストア・LLM・記録） | `reviews` に 1 行、照合できた根拠だけが残る、失敗は状態として残り次へ進む | ✅ `tests/integration/test_i_c4_4_review_one.py` |
+| I-C4-5 | `review-eval`（偽の LLM・一時 DB） | 正解との一致・JSON の不正・照合率で合否、合格の記録が無いと `review` が拒む（拒否は E2E の E6） | ✅ `tests/integration/test_i_c4_5_review_eval.py` |
 
 E2E（L1 E6）は、複数銘柄で `review` を通しで実行し、調査メモまで出ることを確かめる。
 
@@ -106,6 +106,8 @@ E2E（L1 E6）は、複数銘柄で `review` を通しで実行し、調査メ�
 - `feat/llm-client`：本設計の `llm.py` の責務と一致。テストを結合テストの階層へ移し、設計の関門を通してマージした（2026-10-14）。
 
 ## 10. 訂正履歴
+
+- 2026-10-17（ブランチ B）：`verify.py`・`research.py`・`review.py`・`review_eval.py` を実装し I-C4-3〜5 を結合テストにした（変更点は `L3_composition.md` 9 章）。
 
 - 2026-10-17（承認済み）：`review` の流れを `review.py`、品質の関門を `review_eval.py`（I-C4-5）に置く設計（`L3_composition.md`）。
 

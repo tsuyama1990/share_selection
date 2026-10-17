@@ -1,4 +1,6 @@
-"""Stage-1 result vocabulary: row keys and shared values, defined once and imported everywhere else."""
+"""Result vocabulary: row keys and shared values, defined once and imported everywhere else."""
+
+from enum import StrEnum
 
 TICKER = "Ticker"
 NAME = "Name"
@@ -40,9 +42,17 @@ CHART_TREND = "Chart_Trend"
 CLASS_CLEAR = "clear"
 CLASS_SIGNAL = "signal"
 CLASS_NONE = "none"
-CLASS_UNKNOWN = "unknown"
+UNKNOWN = "unknown"
+CLASS_UNKNOWN = UNKNOWN
 SOURCE_QUARTERLY = "quarterly"
 SOURCE_ANNUAL = "annual"
+
+
+class ReviewStatus(StrEnum):
+    OK = "ok"
+    NO_DOCUMENTS = "no_documents"
+    LLM_FAILED = "llm_failed"
+    BAD_JSON = "bad_json"
 
 
 def ma(months: int) -> str:

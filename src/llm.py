@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 
-from .config import require_key
+from .config import MissingKeyError, require_key
 from .throttle import RateLimiter
 
 
@@ -55,6 +55,13 @@ class LLMClient:
         ]
         limiter = RateLimiter.per_minute(llm["max_calls_per_minute"])
         return cls(providers, http, llm["temperature"], limiter)
+
+    @property
+    def primary_model(self) -> str:
+        """Model of the first provider that has a key."""
+        if not self._providers:
+            raise MissingKeyError("set the API key of an LLM provider (environment or .env)")
+        return self._providers[0].model
 
     def chat(self, messages: list[dict[str, str]], json_mode: bool = False) -> Reply:
         if not self._providers:

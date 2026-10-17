@@ -27,8 +27,8 @@
 | モジュール | 公開する名前 | 責務 | 状態 |
 |---|---|---|---|
 | `collect.py` | `CollectClients`、`CollectSettings`、`CollectSummary`、`collect_documents` | `docs` の流れ：EDINET の索引の更新と有価証券報告書、Web 文書がまだ無い候補だけを優先順に検索し出典を取得、検索の割り当てで停止 | ✅ |
-| `review.py` | `ReviewSettings`、`ReviewSummary`、`review_candidates` | `review` の流れ：業種の中央値、候補ごとに文書の読み出し → T1〜T5（`research.py`）→ 照合（`verify.py`）→ 記録 → 調査メモ。銘柄の失敗は状態として記録して次へ | 🆕 |
-| `review_eval.py` | `EvalCase`、`EvalResult`、`load_eval_cases`、`score_case`、`judge` | モデルの品質の関門：正解のある銘柄の調査結果の採点と合否 | 🆕 |
+| `review.py` | `ReviewDeps`、`ReviewSettings`、`ReviewSummary`、`review_candidates` | `review` の流れ：業種の中央値、候補ごとに文書の読み出し → T1〜T5（`research.py`）→ 照合（`verify.py`）→ 記録 → 調査メモ。銘柄の失敗は状態として記録して次へ（B：業種の中央値・調査メモはまだ無い） | ✅ |
+| `review_eval.py` | `EvalCase`、`EvalResult`、`load_eval_cases`、`score_case`、`judge` | モデルの品質の関門：正解のある銘柄の調査結果の採点と合否 | ✅ |
 
 ## 4. 既存モジュールの変更
 
@@ -72,19 +72,23 @@ def collect_documents(candidates, settings, clients, store, today) -> CollectSum
 
 ```python
 @dataclass(frozen=True)
-class ReviewSettings:           # from_config(cfg)：review・sector の値
+class ReviewSettings:           # from_config(cfg)：review の値（B。sector の値は C）
     max_tickers: int; min_verified_ratio: float; max_doc_chars: int
-    prompt_version: str; task_fields: dict[str, list[str]]; sector_metrics: list[str]; min_peers: int
+    prompt_version: str; task_fields: dict[str, list[str]]; context_metrics: list[str]
 
 @dataclass(frozen=True)
 class ReviewSummary:
-    reviewed: int; failed: int; needs_attention: int; memo_paths: list[Path]
+    reviewed: int; failed: int; needs_attention: int      # memo_paths は C
 
-def review_candidates(run_id, tickers, settings, llm, prompts, records, store, sectors, memo_dir) -> ReviewSummary
+@dataclass(frozen=True)
+class ReviewDeps:               # 引数を 5 個に収めるための束（llm・prompts・records・store）
+    llm: LLMClient; prompts: dict[str, str]; records: RecordStore; store: DocStore
+
+def review_candidates(run_id, candidates, tickers, settings, deps) -> ReviewSummary
 ```
 
-- 対象：`tickers` が与えられればそれ（評価・少数での確認用）、無ければ実行の二次候補のうち `reviewed(run_id)` に無いものを `Priority_Rank` の順に `max_tickers` 件。
-- 1 銘柄：文書を `max_doc_chars` で切る → T1〜T4 → T5（T1〜T4 の照合済みの answer を文脈に）→ `check_claims` → `record_review` → `render_memo` を書き出す。業種の比較（`sector.py`）と調査メモ（`memo.py`）はブランチ C で足す（B では `sector_comparison` は空、メモは出さない。`ReviewSettings` の sector の値と `sectors`・`memo_dir` の引数も C で足す）。失敗（文書が無い、全プロバイダーの失敗、JSON 不正）は status に残して次へ。
+- 対象：`tickers` が与えられればそれ（少数での確認用。`max_tickers` の対象外）、無ければ `candidates`（`RecordStore.candidates` の (ticker, 指標)。評価では正解の銘柄から作る）のうち `reviewed(run_id)` に無いものを `Priority_Rank` の順に `max_tickers` 件。
+- 1 銘柄：文書を `max_doc_chars` で切る → T1〜T4 → T5（T1〜T4 の照合済みの answer を文脈 `verified_answers` に。照合は `run_task` の中）→ `record_review`（B）→ `render_memo` を書き出す（C）。文脈は銘柄コード・名前と `review.context_metrics` の指標。銘柄の照合率はタスクごとの照合率の平均。`needs_attention` は成功した銘柄の照合率が `min_verified_ratio` 未満のとき。業種の比較（`sector.py`）と調査メモ（`memo.py`）はブランチ C で足す（B では `sector_comparison` は空、メモは出さない。`ReviewSettings` の sector の値と `sectors`・`memo_dir` の引数も C で足す）。失敗（文書が無い、全プロバイダーの失敗、JSON 不正）は status に残して次へ。
 - **品質の関門**：`records.passed_eval(prompt_version, first_model)` が偽なら、評価以外の実行を拒む（`main.py` が「先に `review-eval` を」と表示して終了コード 1）。
 
 ### 5.3 `review_eval.py`（モデルの品質の関門）
@@ -172,6 +176,8 @@ def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresho
 各ブランチの後に bonsai。A の後、`main.py` は 150 行以下を目安にする [推論]。
 
 ## 9. 訂正履歴
+
+- 2026-10-17（ブランチ B の実装）：(1) `run_task` の引数が 6 個で PLR0913 を超えるため、`task` と `fields` を 1 つの組 `task_fields: tuple[str, list[str]]`（`ReviewSettings.task_fields.items()` の 1 要素）にして 5 個にした。(2) `review_candidates` も同じ理由で依存を `ReviewDeps` にまとめ、評価の銘柄を渡せるよう `candidates` を引数にした（`tickers` は絞り込み）。(3) `ReviewSettings` に `context_metrics`（LLM に見せる一次の指標。`review.context_metrics`）を足し、sector の値と `ReviewSummary.memo_paths` は C に送った。(4) 再依頼の文面は `prompts/<版>/retry.md`（`{error}`）。(5) 状態の語彙は `fields.ReviewStatus`（`ok`・`no_documents`・`llm_failed`・`bad_json`）。(6) 応答の `unknown` キーと答えの値 `unknown` は同じ語で `fields.UNKNOWN`（既存の `CLASS_UNKNOWN` はこれを指す）。(7) `review.tasks` の下はタスク名で動的に読むため、アーキテクチャテストの `DYNAMIC_PARENTS` に加えた。(8) `RecordStore.reviews(run_id)`（評価の採点が読む）と `LLMClient.primary_model`（最初のキーのあるプロバイダーのモデル。無ければ `MissingKeyError`）を足した。
 
 - 2026-10-17：評価の正解を `hypothesis_map.md` と照合し、一次情報で確かめていない 3 件（燦ホールディングス・東プレ・セントラル硝子）を外した。ダイコク電機は「減益」の語ではなく T5 の提案（落選・監視）で採点する。評価の銘柄の文書は `review-eval` が `collect_documents` で集める（`EvalCase.name` を追加）
 
