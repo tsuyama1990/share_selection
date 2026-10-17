@@ -31,7 +31,7 @@ CASES = load_eval_cases(Path(__file__).resolve().parents[2] / REV["eval"]["cases
 VERSION = PROMPT_VERSION
 THRESHOLDS = {**REV["eval"], "min_verified_ratio": REV["min_verified_ratio"]}
 RUN = "eval-1"
-TEXT = "セメントの値上げで営業利益が増加。半導体向けの需要。"
+TEXT = "セメントの値上げで営業利益が増加。部材の価格転嫁が進んだ。"
 
 
 def correct(messages):
@@ -70,10 +70,10 @@ def evaluate(stores, respond, run_id=RUN) -> EvalResult:
 def test_the_eval_file_holds_the_three_checked_cases():
     assert [(c.ticker, c.name, c.task, c.field) for c in CASES] == [
         ("5232.T", "住友大阪セメント", "T1", "source_type"),
-        ("6599.T", "エブレン", "T1", "demand_wave"),
+        ("6599.T", "エブレン", "T1", "source_type"),
         ("6430.T", "ダイコク電機", "T5", "suggestion"),
     ]
-    assert [c.expect_any for c in CASES] == [["値上げ", "価格改定", "販売価格"], ["半導体"], ["落選", "監視"]]
+    assert [c.expect_any for c in CASES] == [["値上げ", "価格改定", "販売価格"], ["価格転嫁"], ["落選", "監視"]]
     assert all(c.basis for c in CASES) and {c.task for c in CASES} <= set(REV["tasks"])
 
 

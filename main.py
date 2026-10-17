@@ -1,4 +1,5 @@
 import argparse
+import dataclasses
 import datetime
 import os
 import sys
@@ -176,8 +177,10 @@ def cmd_review_eval(cfg: Cfg, args: Args) -> None:
     cases = load_eval_cases(ROOT / rev["eval"]["cases_file"])
     names = {c.ticker: c.name for c in cases}
     candidates = [(t, {F.NAME: n, F.PRIORITY_RANK: rank}) for rank, (t, n) in enumerate(names.items(), 1)]
+    sources = rev["eval"]["sources"]  # EDINET only: the same documents every run, no search quota
+    eval_cfg = {**cfg, "docs": {**cfg["docs"], "search": "web" in sources}}
     with ExitStack() as stack:
-        clients = CollectClients.from_config(cfg, os.environ, stack)
+        clients = CollectClients.from_config(eval_cfg, os.environ, stack)
         deps = open_review(cfg, stack)
         companies = [Company(c.ticker, c.name) for c in cases]
         collect_documents(companies, CollectSettings.from_config(cfg), clients, deps.store, datetime.date.today())
@@ -185,7 +188,8 @@ def cmd_review_eval(cfg: Cfg, args: Args) -> None:
         thresholds = {**rev["eval"], "min_verified_ratio": rev["min_verified_ratio"]}
         run_id = datetime.datetime.now().strftime(EVAL_RUN_ID)
         gate = EvalGate(thresholds, rev["eval"]["repeats"], f"{deps.llm.primary.name}/{model}", run_id)
-        outcomes = evaluate_model(cases, candidates, ReviewSettings.from_config(cfg), deps, gate)
+        settings = dataclasses.replace(ReviewSettings.from_config(cfg), sources=sources)
+        outcomes = evaluate_model(cases, candidates, settings, deps, gate)
         overall = print_eval(outcomes, model)
         summary = [{"run": n, "hits": r.hits, "passed": r.passed} for n, (_, r) in enumerate(outcomes, 1)]
         deps.records.record_eval(prompt_version(deps.prompts), model, overall, summary)

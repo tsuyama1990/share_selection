@@ -5,7 +5,7 @@ import pytest
 from src.llm import Reply
 from src.research import ReplyError, TaskResult, build_messages, load_prompts, parse_reply, prompt_version, run_task
 
-PROMPTS = {"system": "SYSTEM", "t1": "# T1 task", "retry": "again: {error}"}
+PROMPTS = {"system": "SYSTEM", "user": "{documents}\n{context}\n{task}", "t1": "# T1 task", "retry": "again: {error}"}
 DOCS = {"d1": "営業利益は46億円増加した。"}
 FIELDS = ["a", "b"]
 
@@ -28,10 +28,11 @@ class Scripted:
 
 
 def test_build_messages_tags_documents_and_carries_instructions_and_context():
-    system, user = build_messages("SYS", "TASK", {"d1": "text one", "d2": "text two"}, {"name": "会社"})
+    prompts = {"system": "SYS", "user": "{documents}|{context}|{task}", "t1": "TASK"}
+    system, user = build_messages(prompts, "T1", {"d1": "text one", "d2": "text two"}, {"name": "会社"})
     assert system == {"role": "system", "content": "SYS"}
     assert user["role"] == "user"
-    assert user["content"].startswith("TASK")
+    assert user["content"].startswith('<document id="d1">') and user["content"].endswith("|TASK")
     assert '"name": "会社"' in user["content"]
     assert '<document id="d1">\ntext one\n</document>' in user["content"]
     assert '<document id="d2">\ntext two\n</document>' in user["content"]

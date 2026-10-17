@@ -14,7 +14,7 @@ from src.records import RecordStore
 from src.research import load_prompts
 from src.review import VERIFIED_ANSWERS, ReviewDeps, ReviewSettings, ReviewSummary, review_candidates
 from tests.fixtures.config import CFG
-from tests.fixtures.review_flow import PROMPT_DIR, PROMPT_VERSION, FakeLLM, fabricating, good, not_json
+from tests.fixtures.review_flow import PROMPT_DIR, PROMPT_VERSION, FakeLLM, fabricating, good, not_json, task_of
 
 SETTINGS = ReviewSettings.from_config(CFG)
 CANDIDATES = [
@@ -72,7 +72,7 @@ def test_a_candidate_gets_one_row_with_the_verified_answers_and_evidence(stores)
         version,
     ) = row(stores[0], "1.T")
     assert summary == ReviewSummary(reviewed=1, failed=0, needs_attention=0)
-    assert (status, suggestion, source_type, reason) == ("ok", "採用", "P2 値上げの浸透", "見えにくさ")
+    assert (status, suggestion, source_type, reason) == ("ok", "採用", "P2 値上げ・価格転嫁の浸透", "見えにくさ")
     answers, evidence = json.loads(answers), json.loads(evidence)
     assert list(answers) == list(CFG["review"]["tasks"]) and answers["T1"]["demand_wave"] == "半導体"
     assert all(c["quote"] in TEXT for claims in evidence.values() for c in claims)
@@ -95,11 +95,11 @@ def test_tasks_run_in_order_and_only_the_last_sees_the_verified_answers(stores):
     llm = FakeLLM(good)
     run(stores, llm, tickers=["1.T"])
     users = [c[1]["content"] for c in llm.calls]
-    assert [u.split()[1] for u in users] == list(CFG["review"]["tasks"])
+    assert [task_of([{}, {"content": u}]) for u in users] == list(CFG["review"]["tasks"])
     contexts = [json.loads(next(line for line in u.splitlines() if line.startswith("{"))) for u in users]
     assert [VERIFIED_ANSWERS in c for c in contexts] == [False, False, False, False, True]
     last = contexts[-1]
-    assert last[VERIFIED_ANSWERS]["T1"]["source_type"] == "P2 値上げの浸透"
+    assert last[VERIFIED_ANSWERS]["T1"]["source_type"] == "P2 値上げ・価格転嫁の浸透"
     assert last["ticker"] == "1.T" and last["name"] == "Company 1" and last[F.PBR] == 0.8
     assert F.REAL_PSR not in last  # metrics the candidate lacks are left out
 

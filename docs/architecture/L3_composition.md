@@ -113,6 +113,8 @@ def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresho
 
 `review-eval` コマンド：評価の銘柄は二次候補ではないので、まず `collect_documents` で評価の銘柄（名前は `EvalCase.name`）の文書を集め、次に `review_candidates(tickers=...)` を実行し（記録先は通常と同じ `reviews` だが run_id は評価用に `eval-<日時>`）、`judge` の結果を `review_evals` に記録して表示する。不合格なら終了コード 1。
 
+**評価の文書は EDINET だけ**（2026-10-17 追加、ユーザー承認）：Web 検索の出典は実行ごと・日ごとに変わり、検索の割り当て（1 日約 20 回）も使う。評価は `review.eval.sources`（`[edinet]`）の文書だけで行い、Web 検索をしない。毎回同じ文書でモデルだけを比べられる。本番の `review` は `review.sources`（`[edinet, web]`）。
+
 **反復**（2026-10-17 追加、ユーザー承認）：同じモデル・同じプロンプトでも合否が揺れた（8.1 節 S0：3 回中 1 回だけ合格）。`evaluate_model` は文書を 1 回集めた後、評価の銘柄の調査を `review.eval.repeats` 回（初期値 3）繰り返し、回ごとに `judge` する。`combine` が回ごとの結果をまとめ、**すべての回が合格したときだけ合格**とする（一致数・JSON の不正・主のモデル以外の回答は合計、照合率は最小）。`review_evals` には 1 回の `review-eval` につき 1 行（回ごとの結果は summary に）。
 
 ```python
@@ -133,7 +135,7 @@ def evaluate_model(cases, candidates, settings, deps, gate) -> list[EvalResult] 
 | 銘柄 | タスク・項目 | expect_any | 根拠 |
 |---|---|---|---|
 | 5232.T 住友大阪セメント | T1・source_type | 値上げ、価格改定、販売価格 | [一次] 決算短信：セメントの値上げで営業利益 +46 億円（hypothesis_map H1b） |
-| 6599.T エブレン | T1・demand_wave | 半導体 | [一次][報道] 決算説明会：AI 向け半導体製造装置、防衛（H1a） |
+| 6599.T エブレン | T1・source_type | 価格転嫁 | [一次] 有価証券報告書（S100YI0V、2026 年 3 月期）経営成績の分析：「値上がりした仕入れ部材の売価への価格転嫁が進んだことで、営業利益が増加」（営業利益 +14.2%、売上 −0.8%） |
 | 6430.T ダイコク電機 | T5・suggestion | 落選、監視 | [一次][報道] 第 1 四半期 営業利益 −34.4%、通期予想 経常 −53%（H4a、N1 改善なし） |
 
 燦ホールディングス・東プレ・セントラル硝子（「四半期 EPS の急増に一時的な損益が含まれるか」）は入れない：根拠が自分たちの旗（`Quality_Flags`）だけで、一次情報で確かめていない。正解として使うには、先に決算短信で一時的な損益を確かめる（確かめたら追加する）。3 件のため、一致率 0.8 以上は「3 件すべて一致」になる。
@@ -200,6 +202,8 @@ def evaluate_model(cases, candidates, settings, deps, gate) -> list[EvalResult] 
 結論：流れと関門は期待どおり。軽いモデルは評価の合否が揺れるため、関門に「k 回続けて合格」を足し（ユーザー承認、次のブランチ）、DeepSeek を同じ関門で試す。
 
 ## 9. 訂正履歴
+
+- 2026-10-17：評価の文書を EDINET だけにした（`review.eval.sources`）。エブレンの正解を「半導体の需要」（決算説明会・報道。直近の利益の理由としては一次情報で確かめていない）から、有価証券報告書の経営成績の分析にある「価格転嫁」へ。2 つのモデルとも、きれいな文書でこの文を引用した。プロンプトの並び（文書を先、タスクを後）を `prompts/user.md` に置き、版のハッシュに含める（同じ文書を 5 タスクで送るため、プロバイダーの前方一致のキャッシュが効く）
 
 - 2026-10-17：評価を k 回続けての合格に（`review.eval.repeats`、`combine`・`evaluate_model`）。評価の流れを `main.py` から `review_eval.py` へ（`main.py` は組み立てだけ）
 

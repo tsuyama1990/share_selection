@@ -11,9 +11,9 @@ cases:
   - ticker: "6599.T"
     name: "エブレン"
     task: T1
-    field: demand_wave
-    expect_any: [半導体]
-    basis: "[一次][報道] 決算説明会：AI 向け半導体製造装置、防衛（hypothesis_map H1a）"
+    field: source_type
+    expect_any: [価格転嫁]
+    basis: "[一次] 有価証券報告書 S100YI0V（2026 年 3 月期）経営成績の分析：仕入れ部材の値上がり分の売価への価格転嫁で営業利益 +14.2%（hypothesis_map 8 章）"
   - ticker: "6430.T"
     name: "ダイコク電機"
     task: T5

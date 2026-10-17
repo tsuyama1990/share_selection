@@ -209,6 +209,7 @@ review:
   max_tickers: 50                # Candidates reviewed per run (best Priority_Rank first; --tickers is not limited)
   min_verified_ratio: 0.7        # Verified claims / claims below this: the ticker needs attention (and fails review-eval)
   prompt_dir: "prompts"          # system.md, t1.md..t5.md, retry.md; their content hash is the prompt version (review-eval passes are per version and model)
+  sources: [edinet, web]        # Document sources the review tasks use
   max_doc_chars: 20000           # Each document is cut to this many characters before the LLM sees it (and before quotes are checked)
   export_dir: "reviews"          # Parquet export of reviews and review_evals (git-ignored: quotes of web articles)
   context_metrics: ["Improvement_Class", "EPS_Q_YoY(%)", "OI_YoY(%)", "Op_Margin_Change(pt)", "Real_PSR", "PBR"]  # Stage 1 metrics shown to the LLM
@@ -220,6 +221,7 @@ review:
     T5: [suggestion, open_questions]
   eval:                          # Pass conditions of `review-eval`
     cases_file: "eval/stage2_cases.yaml"
+    sources: [edinet]            # Eval documents: EDINET only (web sources change run to run and use the search quota)
     repeats: 3                   # The eval passes only when every one of this many repetitions passes (answers vary run to run)
     min_hit_rate: 0.8            # Cases answered as expected / cases
     max_parse_failures: 0        # Reviews whose reply was invalid JSON even after the re-ask
