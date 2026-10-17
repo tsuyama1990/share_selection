@@ -94,7 +94,7 @@ def review_candidates(run_id, tickers, settings, llm, prompts, records, store, s
 ```python
 @dataclass(frozen=True)
 class EvalCase:
-    ticker: str; task: str; field: str
+    ticker: str; name: str; task: str; field: str
     expect_any: list[str]       # 照合済みの answer か根拠の引用に、どれか 1 つが含まれれば合格（空なら「項目が unknown でない」）
     basis: str                  # 出典（hypothesis_map の節）
 
@@ -107,7 +107,7 @@ def score_case(case: EvalCase, review_row: dict) -> bool
 def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresholds: dict) -> EvalResult
 ```
 
-`review-eval` コマンド：評価の銘柄で `review_candidates(tickers=...)` を実行し（記録先は通常と同じ `reviews` だが run_id は評価用に `eval-<日時>`）、`judge` の結果を `review_evals` に記録して表示する。不合格なら終了コード 1。
+`review-eval` コマンド：評価の銘柄は二次候補ではないので、まず `collect_documents` で評価の銘柄（名前は `EvalCase.name`）の文書を集め、次に `review_candidates(tickers=...)` を実行し（記録先は通常と同じ `reviews` だが run_id は評価用に `eval-<日時>`）、`judge` の結果を `review_evals` に記録して表示する。不合格なら終了コード 1。
 
 **合格の条件**（値はすべて `review.eval:` に置く）：
 
@@ -117,16 +117,15 @@ def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresho
 | JSON の不正（再依頼の後も不正） | 0 件 | 不正が出るモデルは本番で銘柄を落とす |
 | 銘柄ごとの照合率の最小値 | `review.min_verified_ratio`（0.7）以上 | 引用の捏造が多いモデルを止める |
 
-初期の正解（`eval/stage2_cases.yaml` の中身。値は実装の前に `hypothesis_map.md` と照合する）：
+初期の正解（`eval/stage2_cases.yaml` の中身。2026-10-17 に `docs/hypothesis_map.md` と照合済み）：
 
-| 銘柄 | タスク・項目 | expect_any |
-|---|---|---|
-| 5232.T 住友大阪セメント | T1・source_type の根拠 | 値上げ、価格改定、販売価格 |
-| 6599.T エブレン | T1・demand_wave | 半導体 |
-| 6430.T ダイコク電機 | T4・reason_forgotten の根拠 | 減益 |
-| 9628.T 燦ホールディングス | T2・one_off_items | （空でない） |
-| 5975.T 東プレ | T2・one_off_items | （空でない） |
-| 4044.T セントラル硝子 | T2・one_off_items | （空でない） |
+| 銘柄 | タスク・項目 | expect_any | 根拠 |
+|---|---|---|---|
+| 5232.T 住友大阪セメント | T1・source_type | 値上げ、価格改定、販売価格 | [一次] 決算短信：セメントの値上げで営業利益 +46 億円（hypothesis_map H1b） |
+| 6599.T エブレン | T1・demand_wave | 半導体 | [一次][報道] 決算説明会：AI 向け半導体製造装置、防衛（H1a） |
+| 6430.T ダイコク電機 | T5・suggestion | 落選、監視 | [一次][報道] 第 1 四半期 営業利益 −34.4%、通期予想 経常 −53%（H4a、N1 改善なし） |
+
+燦ホールディングス・東プレ・セントラル硝子（「四半期 EPS の急増に一時的な損益が含まれるか」）は入れない：根拠が自分たちの旗（`Quality_Flags`）だけで、一次情報で確かめていない。正解として使うには、先に決算短信で一時的な損益を確かめる（確かめたら追加する）。3 件のため、一致率 0.8 以上は「3 件すべて一致」になる。
 
 評価は本物の API を使うライブの関門（CI には入れない）。モデルの順番・プロンプトの版を変えたら必ず実行する。`review` は合格の記録がないと動かない（上の 5.2）ので、実行を忘れても本番は走らない。
 
@@ -173,5 +172,7 @@ def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresho
 各ブランチの後に bonsai。A の後、`main.py` は 150 行以下を目安にする [推論]。
 
 ## 9. 訂正履歴
+
+- 2026-10-17：評価の正解を `hypothesis_map.md` と照合し、一次情報で確かめていない 3 件（燦ホールディングス・東プレ・セントラル硝子）を外した。ダイコク電機は「減益」の語ではなく T5 の提案（落選・監視）で採点する。評価の銘柄の文書は `review-eval` が `collect_documents` で集める（`EvalCase.name` を追加）
 
 - 2026-10-17（ブランチ A の実装）：5.1 節の `collect_documents` の引数が 8 個で ruff の PLR0913（5 個まで）を超えるため、依存を `CollectClients`（edinet・search・web_http・二つのリミッター）にまとめ、`collect_documents(candidates, settings, clients, store, today)` にした。`CollectSettings.search` は `clients.search is None` と重複するので削除（`main.py` は `docs.search` を `CollectClients.from_config` 経由で読む）。`SECONDS_PER_MINUTE` は `llm.py` に置く。`latest_issue`・`git_sha` は `main.py` から `records.py`（`RunInfo` の隣）へ移した。`GeminiSearch.search` の「キー無し」検査は `from_config` の `require_key` に置き換えて削除。
