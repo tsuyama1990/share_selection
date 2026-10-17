@@ -219,5 +219,6 @@ review:
     T5: [suggestion, open_questions]
   eval:                          # Pass conditions of `review-eval`
     cases_file: "eval/stage2_cases.yaml"
+    repeats: 3                   # The eval passes only when every one of this many repetitions passes (answers vary run to run)
     min_hit_rate: 0.8            # Cases answered as expected / cases
     max_parse_failures: 0        # Reviews whose reply was invalid JSON even after the re-ask

@@ -1,6 +1,6 @@
 import pytest
 
-from src.review_eval import EvalCase, EvalResult, judge, load_eval_cases, score_case
+from src.review_eval import EvalCase, EvalResult, combine, judge, load_eval_cases, score_case
 
 CASE = EvalCase("1.T", "A", "T1", "source_type", ["値上げ", "価格改定"], "basis")
 THRESHOLDS = {"min_hit_rate": 0.8, "max_parse_failures": 0, "min_verified_ratio": 0.7}
@@ -88,3 +88,10 @@ def test_load_eval_cases_fails_on_a_missing_item(tmp_path):
 def test_judge_fails_when_a_fallback_provider_answered():
     result = judge(results(True), [row(), row(providers=("primary", "groq"))], THRESHOLDS, "primary")
     assert (result.fallback_rows, result.passed) == (1, False)
+
+
+def test_combine_passes_only_when_every_run_passed():
+    ok, bad = EvalResult(3, 3, 0, 0.9, 0, True), EvalResult(3, 2, 1, 0.5, 1, False)
+    assert combine([ok, ok]) == EvalResult(6, 6, 0, 0.9, 0, True)
+    assert combine([ok, bad]) == EvalResult(6, 5, 1, 0.5, 1, False)
+    assert not combine([]).passed

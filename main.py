@@ -22,7 +22,7 @@ from src.records import RecordStore, RunInfo, evaluate, git_sha, latest_issue
 from src.report import write_failures, write_report
 from src.research import load_prompts, prompt_version
 from src.review import ReviewDeps, ReviewSettings, review_candidates
-from src.review_eval import EvalCase, EvalResult, judge, load_eval_cases, score_case
+from src.review_eval import EvalCase, EvalGate, EvalResult, combine, evaluate_model, load_eval_cases
 from src.screener import NO_CACHE, Screener, screen_universe
 from src.selection import prioritize
 from src.tickers import read_tickers, update_ticker_csv
@@ -149,13 +149,22 @@ def cmd_review(cfg: Cfg, args: Args) -> None:
     )
 
 
-def print_eval(results: list[tuple[EvalCase, bool]], result: EvalResult, model: str) -> None:
-    for case, hit in results:
-        print(f"  {'hit ' if hit else 'MISS'} {case.ticker} {case.task}.{case.field} {case.expect_any}: {case.basis}")
-    print(
-        f"review-eval {model}: {result.hits}/{result.cases} cases, {result.parse_failures} parse failures, "
-        f"lowest verified ratio {result.min_verified_ratio:.2f}, {result.fallback_rows} answered by a fallback: "
-        f"{'PASSED' if result.passed else 'FAILED'}"
+def print_eval(outcomes: list[tuple[list[tuple[EvalCase, bool]], EvalResult]], model: str) -> EvalResult:
+    for n, (scored, result) in enumerate(outcomes, 1):
+        for case, hit in scored:
+            mark = "hit " if hit else "MISS"
+            print(f"  {n}: {mark} {case.ticker} {case.task}.{case.field} {case.expect_any}: {case.basis}")
+        print(f"  {n}: {eval_line(result)}")
+    overall = combine([result for _, result in outcomes])
+    print(f"review-eval {model}, {len(outcomes)} runs: {eval_line(overall)}")
+    return overall
+
+
+def eval_line(r: EvalResult) -> str:
+    return (
+        f"{r.hits}/{r.cases} cases, {r.parse_failures} parse failures, "
+        f"lowest verified ratio {r.min_verified_ratio:.2f}, {r.fallback_rows} answered by a fallback: "
+        f"{'PASSED' if r.passed else 'FAILED'}"
     )
 
 
@@ -164,21 +173,19 @@ def cmd_review_eval(cfg: Cfg, args: Args) -> None:
     cases = load_eval_cases(ROOT / rev["eval"]["cases_file"])
     names = {c.ticker: c.name for c in cases}
     candidates = [(t, {F.NAME: n, F.PRIORITY_RANK: rank}) for rank, (t, n) in enumerate(names.items(), 1)]
-    run_id = datetime.datetime.now().strftime(EVAL_RUN_ID)
     with ExitStack() as stack:
         clients = CollectClients.from_config(cfg, os.environ, stack)
         deps = open_review(cfg, stack)
         collect_documents(candidates, CollectSettings.from_config(cfg), clients, deps.store, datetime.date.today())
-        review_candidates(run_id, candidates, None, ReviewSettings.from_config(cfg), deps)
-        rows = deps.records.reviews(run_id)
-        results = [(c, score_case(c, rows[c.ticker])) for c in cases]
-        thresholds = {**rev["eval"], "min_verified_ratio": rev["min_verified_ratio"]}
         model = deps.llm.primary.model
-        result = judge(results, list(rows.values()), thresholds, f"{deps.llm.primary.name}/{model}")
-        summary = [{"ticker": c.ticker, "task": c.task, "field": c.field, "hit": hit} for c, hit in results]
-        deps.records.record_eval(prompt_version(deps.prompts), model, result, summary)
-    print_eval(results, result, model)
-    if not result.passed:
+        thresholds = {**rev["eval"], "min_verified_ratio": rev["min_verified_ratio"]}
+        run_id = datetime.datetime.now().strftime(EVAL_RUN_ID)
+        gate = EvalGate(thresholds, rev["eval"]["repeats"], f"{deps.llm.primary.name}/{model}", run_id)
+        outcomes = evaluate_model(cases, candidates, ReviewSettings.from_config(cfg), deps, gate)
+        overall = print_eval(outcomes, model)
+        summary = [{"run": n, "hits": r.hits, "passed": r.passed} for n, (_, r) in enumerate(outcomes, 1)]
+        deps.records.record_eval(prompt_version(deps.prompts), model, overall, summary)
+    if not overall.passed:
         sys.exit(1)
 
 

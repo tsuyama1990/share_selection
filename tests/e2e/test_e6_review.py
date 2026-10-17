@@ -97,9 +97,12 @@ def test_review_eval_passes_with_correct_answers_and_review_then_records(setup, 
     llm(good)
     assert run_cmd(project, cfg, "review-eval") == 0
     out = capsys.readouterr().out
-    assert "hit  1.T T1.source_type" in out and "hit  3.T T5.suggestion" in out
-    summary = f"review-eval {MODEL}: 2/2 cases, 0 parse failures, lowest verified ratio 1.00, 0 answered by a fallback"
-    assert f"{summary}: PASSED" in out
+    runs = CFG["review"]["eval"]["repeats"]
+    assert all(
+        f"{n}: hit  1.T T1.source_type" in out and f"{n}: hit  3.T T5.suggestion" in out for n in range(1, runs + 1)
+    )
+    overall = f"review-eval {MODEL}, {runs} runs: {2 * runs}/{2 * runs} cases, 0 parse failures"
+    assert f"{overall}, lowest verified ratio 1.00, 0 answered by a fallback: PASSED" in out
     assert project.query("SELECT prompt_version, model, passed FROM review_evals", cfg) == [
         (PROMPT_VERSION, MODEL, True)
     ]
@@ -118,7 +121,7 @@ def test_review_eval_fails_with_wrong_answers_and_review_stays_refused(setup, ca
     llm(clueless)
     assert run_cmd(project, cfg, "review-eval") == 1
     out = capsys.readouterr().out
-    assert "MISS 1.T T1.source_type" in out and "0/2 cases" in out and out.rstrip().endswith("FAILED")
+    assert "1: MISS 1.T T1.source_type" in out and "1: 0/2 cases" in out and out.rstrip().endswith("FAILED")
     assert project.query("SELECT passed FROM review_evals", cfg) == [(False,)]
 
     assert run_cmd(project, cfg, "review") == 1

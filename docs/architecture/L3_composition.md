@@ -28,7 +28,7 @@
 |---|---|---|---|
 | `collect.py` | `CollectClients`、`CollectSettings`、`CollectSummary`、`collect_documents` | `docs` の流れ：EDINET の索引の更新と有価証券報告書、Web 文書がまだ無い候補だけを優先順に検索し出典を取得、検索の割り当てで停止 | ✅ |
 | `review.py` | `ReviewDeps`、`ReviewSettings`、`ReviewSummary`、`review_candidates` | `review` の流れ：業種の中央値、候補ごとに文書の読み出し → T1〜T5（`research.py`）→ 照合（`verify.py`）→ 記録 → 調査メモ。銘柄の失敗は状態として記録して次へ（B：業種の中央値・調査メモはまだ無い） | ✅ |
-| `review_eval.py` | `EvalCase`、`EvalResult`、`load_eval_cases`、`score_case`、`judge` | モデルの品質の関門：正解のある銘柄の調査結果の採点と合否 | ✅ |
+| `review_eval.py` | `EvalCase`、`EvalResult`、`EvalGate`、`load_eval_cases`、`score_case`、`judge`、`combine`、`evaluate_model` | モデルの品質の関門：正解のある銘柄の調査結果の採点と合否 | ✅ |
 
 ## 4. 既存モジュールの変更
 
@@ -113,7 +113,14 @@ def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresho
 
 `review-eval` コマンド：評価の銘柄は二次候補ではないので、まず `collect_documents` で評価の銘柄（名前は `EvalCase.name`）の文書を集め、次に `review_candidates(tickers=...)` を実行し（記録先は通常と同じ `reviews` だが run_id は評価用に `eval-<日時>`）、`judge` の結果を `review_evals` に記録して表示する。不合格なら終了コード 1。
 
-**合格の条件**（値はすべて `review.eval:` に置く）：
+**反復**（2026-10-17 追加、ユーザー承認）：同じモデル・同じプロンプトでも合否が揺れた（8.1 節 S0：3 回中 1 回だけ合格）。`evaluate_model` は文書を 1 回集めた後、評価の銘柄の調査を `review.eval.repeats` 回（初期値 3）繰り返し、回ごとに `judge` する。`combine` が回ごとの結果をまとめ、**すべての回が合格したときだけ合格**とする（一致数・JSON の不正・主のモデル以外の回答は合計、照合率は最小）。`review_evals` には 1 回の `review-eval` につき 1 行（回ごとの結果は summary に）。
+
+```python
+def combine(results: list[EvalResult]) -> EvalResult
+def evaluate_model(cases, candidates, settings, deps, gate) -> list[EvalResult]   # 回ごとの結果。gate は閾値・回数・主のプロバイダー
+```
+
+**合格の条件**（値はすべて `review.eval:` に置く。各回で満たし、全回で合格）：
 
 | 条件 | 初期値 | 理由 |
 |---|---|---|
@@ -140,6 +147,7 @@ def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresho
 | U-review_eval-1 | `score_case` | expect_any の一致（answer・引用のどちらでも）、不一致、空の expect_any は項目が unknown でなければ合格 |
 | U-review_eval-2 | `judge` | 一致率・JSON の不正・照合率の最小値の、それぞれ境界での合否 |
 | U-review_eval-3 | `load_eval_cases` | YAML の読み込み、必須の項目の欠けで失敗 |
+| U-review_eval-4 | `combine` | 全回合格で合格、1 回でも不合格なら不合格、合計と最小 |
 | U-collect-1 | `CollectSettings` | 設定から作る（`from_config`） |
 | U-review-1 | `ReviewSettings` | 設定から作る（`from_config`） |
 
@@ -192,6 +200,8 @@ def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresho
 結論：流れと関門は期待どおり。軽いモデルは評価の合否が揺れるため、関門に「k 回続けて合格」を足し（ユーザー承認、次のブランチ）、DeepSeek を同じ関門で試す。
 
 ## 9. 訂正履歴
+
+- 2026-10-17：評価を k 回続けての合格に（`review.eval.repeats`、`combine`・`evaluate_model`）。評価の流れを `main.py` から `review_eval.py` へ（`main.py` は組み立てだけ）
 
 - 2026-10-17（ライブのシナリオ試験の結果）：上位 5 社の review で、判断の項目（T4・T5）の引用がプロンプト自身の型の説明文になり unknown になった → system に「判断の項目も文書の根拠の文を引用し、指示の説明文は引用しない」を追加。その後の評価でダイコクの T5 が unknown（「落選」と書かれた文を探した）→ T5 に「判断を決めた事実を引用する」を追加。版の名前と中身がずれる危険があるため、版をプロンプトの内容のハッシュにした（`review.prompt_version` を削除、`prompts/` を 1 つに）
 
