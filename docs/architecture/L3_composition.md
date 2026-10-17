@@ -171,10 +171,25 @@ def judge(results: list[tuple[EvalCase, bool]], review_rows: list[dict], thresho
 | 順 | ブランチ | 中身 | 挙動 |
 |---|---|---|---|
 | A ✅ | `refactor/composition` | 4 章の既存モジュールの変更（`RunInfo`、`screen_universe`、`from_config`、`require_key`、`refresh_all`、`write_failures`、`collect.py`、`main.py` の `COMMANDS`）。E7 の流れのテストを `collect_documents` の結合テストへ | 変えない（ゴールデンと実データの全件が一致） |
-| B | `feat/review-command` | `verify.py`、`research.py`（`run_task` まで）、`review.py`、`review_eval.py`、`prompts/`、`eval/stage2_cases.yaml`、`reviews`・`review_evals`、`review`・`review-eval` コマンド、プロバイダーの順番 | 新機能。ライブで評価を実行し、結果を報告して承認を受けてからマージ |
+| B ✅ | `feat/review-command` | `verify.py`、`research.py`（`run_task` まで）、`review.py`、`review_eval.py`、`prompts/`、`eval/stage2_cases.yaml`、`reviews`・`review_evals`、`review`・`review-eval` コマンド、プロバイダーの順番 | 新機能。ライブで評価を実行し、結果を報告して承認を受けてからマージ |
 | C | `feat/review-sector-memo` | `sector.py`、`memo.py` | 新機能 |
 
 各ブランチの後に bonsai。A の後、`main.py` は 150 行以下を目安にする [推論]。
+
+## 8.1 ライブのシナリオ試験（2026-10-17、`gemini-3.5-flash-lite`、プロンプトの版 1b250eef9b52）[データ]
+
+| # | シナリオ | 期待 | 結果 |
+|---|---|---|---|
+| S1 | `docs`（一部の候補は検索済み） | 検索済みを飛ばし、割り当てで止まり残りを表示 | 50 社の EDINET、16 社の検索で 73 文書、「12 candidates left」 |
+| S0 | `review-eval` を 3 回 | 毎回合格 | 合格 1 回・不合格 2 回（照合率の最小 0.67・0.50、ダイコクの T5 の外れ 1 回）。同じモデル・同じプロンプトで結果が揺れる |
+| S2 | 上位 5 社の `review` | 5 社 ok | 5 社 ok、要注意 1 |
+| S3b | `max_tickers: 3` の `review` | レビュー済みを飛ばし 6〜8 位 | 3 社（ok 2、JSON 不正 1 は状態として記録して次へ） |
+| S4 | プロンプトを 1 文字変えた複製 | 拒否 | 拒否（新しい版に評価がない） |
+| S5 | 誤った正解での評価 | 不合格・終了コード 1 | 1/3、不合格 |
+| S6 | S5 の後の `review` | 拒否 | 拒否（最新の評価が不合格） |
+| S7 | Gemini のキーなし | 拒否かキーのエラー | 拒否（主のモデルが Groq になり、その評価がない） |
+
+結論：流れと関門は期待どおり。軽いモデルは評価の合否が揺れるため、関門に「k 回続けて合格」を足し（ユーザー承認、次のブランチ）、DeepSeek を同じ関門で試す。
 
 ## 9. 訂正履歴
 
