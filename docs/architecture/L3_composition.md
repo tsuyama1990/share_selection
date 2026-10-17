@@ -176,7 +176,7 @@ def evaluate_model(cases, cfg, deps, run_id) -> list[tuple[scored, EvalResult]] 
 | 節 | 追加・変更 |
 |---|---|
 | `llm` | `retries`・`retry_wait_s`：429・5xx・タイムアウトは同じプロバイダーで再試行してから次へ（無料枠は負荷で 503 を返す [データ：2026-10-16]。評価はフォールバックで答えると不合格のため） |
-| `llm.providers` | 先頭に `gemini-3.5-flash-lite`（無料枠：1 日 379 回以上、64k トークンの入力 [データ：2026-10-16]）、次に `gemini-2.5-flash`、Groq、DeepSeek |
+| `llm.providers` | 先頭に `deepseek-v4-flash`（有料。2026-10-17 から。評価に安定して合格）、次に `gemini-3.5-flash-lite`（無料枠：1 日 379 回以上、64k トークンの入力 [データ：2026-10-16]）、`gemini-2.5-flash`、Groq |
 | `review` | max_tickers、min_verified_ratio、prompt_dir（版はプロンプトの内容のハッシュ）、max_doc_chars、tasks（タスクごとの項目名）、export_dir、`eval:`（cases_file、min_hit_rate、max_parse_failures） |
 | `sector` | metrics、min_peers |
 | `memo` | dir（`results/` の下）、filename |
@@ -225,6 +225,8 @@ def evaluate_model(cases, cfg, deps, run_id) -> list[tuple[scored, EvalResult]] 
 挙動は変えない（ゴールデン、実データの全件の一致、ライブ E2E）。実運用の `records.duckdb` の空の `reviews`・`review_evals` テーブルは一度だけ消す（行は 0）。
 
 ## 9. 訂正履歴
+
+- 2026-10-17（ユーザー決定）：主のモデルを `deepseek-v4-flash`（有料）に。`gemini-3.5-flash-lite` は 3 回続けての評価に 3 度中 1 度しか合格しなかった（照合率の最小 0.53 など）[データ：2026-10-17]。Gemini・Groq はフォールバック。評価はフォールバックの回答があれば不合格のまま
 
 - 2026-10-17：評価に一時的な損益の 2 件（カヤバ・三菱化工機、有価証券報告書の経営成績の分析で確かめた）を追加し 5 件に。外していた燦ホールディングス（負ののれん発生益は会社の IR ページで確認したが EDINET の索引に報告書が無い）・東プレ・セントラル硝子（直近の四半期の理由を一次情報で確かめられない）は入れない
 

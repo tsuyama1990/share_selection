@@ -12,7 +12,7 @@
 
 | モジュール | 責務 | 状態 |
 |---|---|---|
-| `llm.py` | OpenAI 互換のチャット（Gemini → Groq → DeepSeek のフォールバック、レート制限）、Gemini ネイティブの検索 | ✅ |
+| `llm.py` | OpenAI 互換のチャット（`llm.providers` の順のフォールバック。2026-10-17 から DeepSeek → Gemini → Groq、レート制限）、Gemini ネイティブの検索 | ✅ |
 | `sector.py` | 2-1・2-3：業種（33 業種）ごとの中央値と、候補の同業比較（機械） | ✅ |
 | `research.py` | T1〜T5 のプロンプトの組み立て、LLM 呼び出し、JSON の検証 | ✅ |
 | `verify.py` | 引用の照合（正規化した部分一致）、照合できない主張の除外、照合率 | ✅ |
