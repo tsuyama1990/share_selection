@@ -78,7 +78,7 @@
 | ID | コンポーネント | 責務 | モジュール（現状） | 状態 |
 |---|---|---|---|---|
 | C1 | 銘柄一覧 | JPX の一覧から対象銘柄 CSV を作る | `tickers.py` | ✅ |
-| C2 | データ取得 | 外部システムからの取得と保存（キャッシュ・文書） | `yahoo.py`、`cache.py`、`stock_data.py`、`earnings_calendar.py`、`edinet.py`、`webfetch.py`、`docstore.py`、`collect.py`（`docs` の流れ）、`throttle.py`（外部 API の呼び出し間隔。C4 の LLM も使う）（詳細は `L2_C2_data_acquisition.md`） | ✅ |
+| C2 | データ取得 | 外部システムからの取得と保存（キャッシュ・文書） | `yahoo.py`、`cache.py`、`stock_data.py`、`earnings_calendar.py`、`edinet.py`、`webfetch.py`、`docstore.py`、`collect.py`（`docs`・`profiles` の流れ）、`throttle.py`（外部 API の呼び出し間隔。C4 の LLM も使う）（詳細は `L2_C2_data_acquisition.md`） | ✅ |
 | C3 | 一次スクリーニング | 足切り（R1）、指標、改善の兆し（R2）、質の旗（R4）、順位と二次候補 | `rules.py`、`indicators.py`、`improvement.py`、`quality.py`、`metrics.py`、`screener.py`、`selection.py`（順位と二次候補）、`fields.py`（結果行の項目名と値の語彙を 1 か所で定義） | ✅ |
 | C4 | 二次調査 | 業種の文脈、LLM による企業分析、引用の照合、調査メモ（R5） | `llm.py`、`sector.py`、`research.py`、`verify.py`、`review.py`（`review` の流れ）、`review_eval.py`（モデルの品質の関門）（詳細は `L2_C4_stage2_research.md`） | ✅ |
 | C5 | 記録と答え合わせ | 実行・全銘柄の判定・二次の調査結果の記録、結果の計算（R6） | `records.py`（実行・判定）、`outcomes.py`（答え合わせ）、`backup.py`（git 対象外の記録のバックアップ）、`review_store.py`（`reviews`・`review_evals`、別の DB ファイル `review.db_file`、バージョン管理の対象外） | ✅ |
@@ -108,7 +108,7 @@ tickers ─▶ fetch ─▶ calendar ─▶ analyze ─▶ docs ─▶ review �
 | `evaluate` | 記録、Yahoo の価格履歴 | 記録（`outcomes`。流れの判断の答え合わせ 🆕） | 随時 |
 | `backup` | `review.db_file`・`review.export_dir`・`memo.dir`・`docstore.db_file` | `backup.dir/<日時>/` の写し（新しい `backup.keep` 個だけ残す）。`backup.dir` がリポジトリの中なら拒否（公開リポジトリ） | `review` の後 |
 | `llm-check` | LLM、検索 | 疎通の結果 | 任意（ライブ確認。CI では実行しない） |
-| `profiles` 🆕 | 銘柄一覧、EDINET | 文書ストア（全銘柄の有価証券報告書の「事業の内容」）、取得の失敗 | 年 1 回＋新しい報告書の差分（月 1 回） |
+| `profiles` | 銘柄一覧、EDINET | 文書ストア（全銘柄の有価証券報告書の「事業の内容」）、取得の失敗 | 年 1 回＋新しい報告書の差分（月 1 回） |
 | `flow-memo` 🆕 | 流れの名前と需要の説明（任意の URL）、Web 検索、文書ストア、最新の実行の記録、キャッシュ、LLM | 調査メモ（`flow.memo_dir`）、記録（`flow.db_file`） | 人が流れに気づいたとき |
 | `flow-decide` 🆕 | 流れ・銘柄・買う／見送る・理由・金額の上限 | 記録（判断） | 調査メモを読んだ後 |
 
@@ -154,7 +154,7 @@ E2E テストは、この表の形式が守られることを確かめる。
 | E6 | 文書ストアにある二次候補で `review`（LLM をモック） | `reviews` に記録され、照合できない引用の主張は捨てられ、調査メモが出る。キーが出力に現れない | R5・N2・N3・N4 | ある |
 | E7 | 二次候補で `docs`（EDINET・検索・Web をモック、一部失敗） | 候補ごとの文書が文書ストアに入り、失敗は記録されて全体は止まらない。キーが出力に現れない | R5・N2・N6 | ある |
 | E8 | 一時ディレクトリで `backup` | 4 つの対象が日時のフォルダに写り、古いものは `backup.keep` 個を超えると消える。`backup.dir` がリポジトリの中なら終了コード 1 で何も写さない | N1 | ある（`tests/e2e/test_e8_backup.py`） |
-| E9 | EDINET をモックした `profiles`（一部失敗） | 銘柄ごとの「事業の内容」が文書ストアに入り、失敗は記録されて全体は止まらない。2 回目は取得済みを飛ばす | R9・N6 | 🆕（`tests/e2e/test_e9_profiles.py`） |
+| E9 | EDINET をモックした `profiles`（一部失敗） | 銘柄ごとの「事業の内容」が文書ストアに入り、失敗は記録されて全体は止まらない。2 回目は取得済みを飛ばす | R9・N6 | ある（`tests/e2e/test_e9_profiles.py`） |
 | E10 | 検索・Web・LLM をモックし、フィクスチャの文書ストア・記録・キャッシュで `flow-memo` | 調査メモに 5 つの軸（照合できた引用だけ、無ければ「不明」）、地図（照合できた会社だけ）、会社ごとの判定と数値が出て、記録に残る。`profiles` 未実行なら案内して終了コード 1。キーが出力に現れない | R8・R9・R10・N2・N3・N7 | 🆕（`tests/e2e/test_e10_flow_memo.py`） |
 | E11 | `flow-decide` → 期間を過ぎた記録で `evaluate`（価格をモック） | 判断が記録され、期間を過ぎた判断だけ超過リターンと比べる相手の超過リターンが計算される | R11・R12 | 🆕（`tests/e2e/test_e11_flow_decide.py`） |
 | E12 | 株価の履歴を含むフィクスチャのキャッシュで `review-eval` → `review`（LLM をモック） | 調査メモと `reviews.sector_comparison` に業種の勢い（超過リターンと順位）と業種の中の位置が入る。二次候補の顔ぶれと順位は変わらない | R13 | ある（`tests/e2e/test_e12_review_momentum.py`） |
