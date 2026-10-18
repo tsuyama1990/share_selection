@@ -16,12 +16,11 @@
 | モジュール | 公開する名前 | 責務 | 状態 |
 |---|---|---|---|
 | `company_map.py` | `MapSettings`、`MapDeps`、`CompanyHit`、`MapResult`、`search_terms`、`rank_companies`、`build_map` | 恩恵企業の地図：需要から検索語（LLM）、全銘柄の「事業の内容」とセグメント情報の部分一致での順位付け、上位 `top_k` 社の確かめ（LLM と照合） | ✅ |
-| `flow.py` | `FlowSettings`、`Throttles`、`FlowDeps`、`FlowSummary`、`CompanyLine`、`MissingProfilesError`、`flow_memo`、`company_numbers`、`render_flow_memo` | `flow-memo`・`flow-decide` の流れ：根拠の文書、軸の抜き出し、地図、会社ごとの数値、調査メモ、判断の記録 | ✅ |
-| `flow_store.py` | `FlowRow`、`AxisRow`、`CompanyRow`、`FlowStore` | `flow.db_file`（git 対象外）の記録：流れ、軸、地図、判断、答え合わせ | ✅ |
+| `flow.py` | `FlowSettings`、`Throttles`、`FlowDeps`、`FlowSummary`、`CompanyLine`、`MissingProfilesError`、`flow_memo`、`company_numbers`、`render_flow_memo`、`Decision`、`flow_decide` | `flow-memo`・`flow-decide` の流れ：根拠の文書、軸の抜き出し、地図、会社ごとの数値、調査メモ、判断の記録 | ✅ |
+| `flow_store.py` | `FlowRow`、`AxisRow`、`CompanyRow`、`DecisionRow`、`OutcomeRow`、`FlowStore` | `flow.db_file`（git 対象外）の記録：流れ、軸、地図、判断、答え合わせ | ✅ |
 
 ## 3. クラス・関数
 
-判断と答え合わせ（`Decision`・`flow_decide`・`DecisionRow`・`OutcomeRow`・`record_decision`・`record_outcome`・`decisions`・`due_decisions`）は flow-decide のブランチで作り、そのとき 2 章の表に足す。
 
 ### 3.1 `company_map.py`
 
@@ -57,7 +56,7 @@ Decision(flow_id, ticker, action, reason, max_yen)
 CompanyLine(ticker, name, tier, exposure, numbers, note)
 class MissingProfilesError(RuntimeError)
 def flow_memo(name, demand, urls, settings, deps) -> FlowSummary
-def flow_decide(decision, deps) -> None
+def flow_decide(decision, flows: FlowStore) -> None
 def company_numbers(ticker, row, peers, momentum) -> dict[str, Any]
 def render_flow_memo(name, demand, axes, companies) -> str
 ```
@@ -72,7 +71,7 @@ def render_flow_memo(name, demand, axes, companies) -> str
   4. 地図：`deps.store.profiles()` が空なら `MissingProfilesError`。あれば `build_map(demand, settings.map, MapDeps(deps.llm, deps.prompts, deps.store))`。
   5. 会社ごとの数値：`run_id = deps.records.resolve_run(None)`、`tickers = list(deps.records.run_metrics(run_id))`、`peers = Peers.from_run(deps.records, run_id, sectors, cfg)`、`momentum = sector.momentum(universe, ticker, momentum_settings, today)`（`universe = sector.Universe(deps.history, tickers, sectors)`）、`row = deps.records.screen_row(run_id, ticker)` → `company_numbers` と `CompanyLine`（`sectors` と名前は `read_column(input_csv, …)`）。
   6. `record_axes` → `record_companies` のあと、`render_flow_memo` の結果を `memo_dir / f"{name}-{today}.md"` に書いて `FlowSummary` を返す。
-- `flow_decide(decision, deps)`：`deps.flows.record_decision(DecisionRow(...))`。`decided_at` は実行の時刻を分単位に丸める。`ValueError`（`Decision` の検証）はそのまま送出し、`main.py` が終了コード 1。
+- `flow_decide(decision, flows)`：`flows.record_decision(DecisionRow(...))`（判断の記録に LLM などは要らないので、記録だけを受け取る）。`decided_at` は実行の時刻を分単位に丸める。`ValueError`（`Decision` の検証）はそのまま送出し、`main.py` が終了コード 1。
 - `Decision`：`action` が `ACTIONS` に無ければ `ValueError`。`max_yen` は `None` か 0 以上の整数で、`None`（上限なし）と 0（1 円も買わない）を区別する。負の値は `ValueError`。
 - `company_numbers(ticker, row, peers, momentum)`：**純粋**。`sector.compare` の値・業種の中央値・比に、`row`（`RecordStore.screen_row` の 1 行）の通過・落ちた条件・改善区分と `momentum["position"]`（地図の中の位置）を並べる。記録に無い項目は null。
 - `render_flow_memo(name, demand, axes, companies)`：**純粋**。5 つの軸と終わりの手がかり（引用つき、無ければ「不明」）、地図（何次か・売上に占める割合・引用）、会社ごとの数値の表を Markdown にする。注記の 1 行（先に上がった会社はその後負けやすい）は `CompanyLine.note` が真のときだけ出す。判定は `sector.momentum_note`（3.4 節）が行い、`render_flow_memo` は印を出すだけ。
@@ -90,7 +89,7 @@ FlowStore  # from_config(cfg, root): flow.db_file；context manager
 
 - 表と主キーは `L2_C9_tailwind.md` 4 章のとおり（`flows`・`flow_axes`・`flow_companies`・`flow_decisions`・`flow_outcomes`）。DuckDB の 1 ファイル。
 - 書き込み：`save_flow(row) -> str`（`flow_id` を決めて返す）、`record_axes(flow_id, rows)`、`record_companies(flow_id, rows)`、`record_decision(row)`、`record_outcome(row)`。
-- 読み出し：`axes(flow_id) -> list[AxisRow]`、`companies(flow_id) -> list[CompanyRow]`、`decisions(flow_id) -> list[DecisionRow]`、`due_decisions(months, today) -> list[DecisionRow]`（答え合わせの対象：`decided_at` から `months` を過ぎ、その (flow_id, ticker, decided_at, months) の `flow_outcomes` がまだ無い判断。`months` は繰り返す）。
+- 読み出し：`axes(flow_id) -> list[AxisRow]`、`companies(flow_id) -> list[CompanyRow]`、`due_decisions(months, today) -> list[DecisionRow]`（答え合わせの対象：`decided_at` から `months` を過ぎ、その (flow_id, ticker, decided_at, months) の `flow_outcomes` がまだ無い判断。`months` は繰り返す）。
 - 主キーが同じ 2 回目は増やさない（上書き）。`flow_decisions` の主キーは (flow_id, ticker, decided_at) なので、決め直すと行が増える。JSON の列（`urls`・`answer`・`evidence`・`valuations`）は文字列で往復する。
 
 ### 3.4 既存モジュールへの追加（文章）
