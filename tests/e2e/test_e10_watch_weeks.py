@@ -1,7 +1,8 @@
 """E10 (not implemented). Placeholder (L1 section 7, L2 C9).
 
-Two weeks of `watch` (call for comments, then the result with the same case number): one event, stage raised to
-confirmed with dates, alerted only in the week confidence rose, deadline section, unalerted pairs still recorded.
+Two weeks of `watch` (call for comments, then the result with the same case number; a rate turn in another week): one
+flow raised to confirmed with dates, listed as strengthened when the overlap grows, ending-soon section, the rate turn
+becomes an event.
 """
 
 import sys
