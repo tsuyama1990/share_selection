@@ -1,6 +1,6 @@
 # L2 詳細設計：C9 流れの調査（Tailwind Watch）
 
-作成：2026-10-18 ／ 状態：**設計（受け入れ待ち）**　親：`L1_architecture.md` C9（R8〜R12）　方針：`docs/tailwind_watch_design.md` 4 章　対応テスト：結合テスト（7 章）、E2E は L1 の E9〜E11
+作成：2026-10-18 ／ 状態：**実装済み**　親：`L1_architecture.md` C9（R8〜R12）　方針：`docs/tailwind_watch_design.md` 4 章　対応テスト：結合テスト（7 章）、E2E は L1 の E9〜E11
 
 凡例：✅ 実装済み ／ 🆕 未実装
 

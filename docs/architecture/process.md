@@ -42,5 +42,5 @@ L1 全体設計 ─▶ L2 詳細設計 ─▶ L3 クラス設計 ─▶ 実装
 | 対象 | 状態 |
 |---|---|
 | Value Turn（C1〜C7） | L1〜L3 の設計とテスト、実装はマージ済み。主のモデルは `deepseek-v4-flash` |
-| Tailwind Watch（C9） | 方針は了承（`docs/tailwind_watch_design.md`）。L1・L2（`L2_C9_tailwind.md`）は受け入れ待ち、テストは strict xfail の仮置き。次は Value Turn への追加（L2 C4 の業種の勢い） |
+| Tailwind Watch（C9、R8〜R13） | L1〜L3 の設計（各段階でレビュー）、テスト、実装、bonsai はマージ済み（2026-10-18）。`profiles`・`flow-memo`・`flow-decide`、`evaluate` の判断の答え合わせ、Value Turn の調査メモの業種の勢い |
 | C8 実験 | 結果が貯まる 2027 年春以降 |

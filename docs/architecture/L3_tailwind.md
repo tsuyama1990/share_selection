@@ -1,6 +1,6 @@
 # L3 クラス設計：Tailwind Watch（地図・流れの調査・記録）
 
-作成：2026-10-18（DeepSeek の下書きを DeepSeek と Claude がレビュー） ／ 状態：**設計（受け入れ待ち）** ／ 親：`L2_C9_tailwind.md`、`L2_C4_stage2_research.md` 3.1 節　関連：`L3_composition.md`（組み立て）、`L3_stage2_classes.md`（既存モジュールのクラス）
+作成：2026-10-18（DeepSeek の下書きを DeepSeek と Claude がレビュー） ／ 状態：**実装済み** ／ 親：`L2_C9_tailwind.md`、`L2_C4_stage2_research.md` 3.1 節　関連：`L3_composition.md`（組み立て）、`L3_stage2_classes.md`（既存モジュールのクラス）
 
 凡例：✅ 実装済み ／ 🆕 未実装
 
