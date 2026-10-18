@@ -9,7 +9,7 @@ from typing import Any
 from . import fields as F
 from .docstore import DocStore
 from .llm import LLMClient, LLMError
-from .research import RETRY, ReplyError, TaskResult, run_task
+from .research import RETRY, ReplyError, run_task
 from .verify import normalize
 
 TERMS = "terms"  # the JSON item of the reply, and the user prompt that asks for the terms
@@ -116,11 +116,6 @@ def _confirm(ticker: str, demand: str, settings: MapSettings, deps: MapDeps) -> 
         return None
     if result.answer[SELLS] is not True:
         return None
-    return _hit(ticker, result)
-
-
-def _hit(ticker: str, result: TaskResult) -> CompanyHit:
-    """The confirmed company; a tier outside ``TIERS`` (or not backed by a quote) becomes ``fields.UNKNOWN``."""
     tier = result.answer[TIER]
     return CompanyHit(
         ticker=ticker,

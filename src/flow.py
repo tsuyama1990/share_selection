@@ -120,16 +120,21 @@ def flow_memo(name: str, demand: str, urls: Sequence[str], settings: FlowSetting
 
     The flow is saved first, so a failure of the axes or the map leaves the row and its documents behind.
     """
-    flow_row = FlowRow(name, demand, list(urls), prompt_version(deps.prompts), deps.llm.primary.model)
-    flow_id = deps.flows.save_flow(flow_row)
+    flow_id = deps.flows.save_flow(
+        FlowRow(name, demand, list(urls), prompt_version(deps.prompts), deps.llm.primary.model)
+    )
     owner = OWNER.format(flow_id=flow_id)
-    query = settings.search_prompt.format(name=name, demand=demand)
-    searches_left = _gather(query, urls, owner, settings, deps)
+    searches_left = _gather(settings.search_prompt.format(name=name, demand=demand), urls, owner, settings, deps)
     axes = _axes(name, demand, owner, settings, deps)
     deps.flows.record_axes(flow_id, axes)
-    companies, rows = _companies(_hits(demand, settings, deps), settings, deps)
+    if not deps.store.profiles():
+        raise MissingProfilesError("the document store holds no profile text; run `main.py profiles` first")
+    hits = build_map(demand, settings.map, MapDeps(deps.llm, deps.prompts, deps.store)).hits
+    companies, rows = _companies(hits, settings, deps)
     deps.flows.record_companies(flow_id, rows)
-    memo_path = _write_memo(name, demand, axes, companies, settings)
+    settings.memo_dir.mkdir(parents=True, exist_ok=True)
+    memo_path = settings.memo_dir / f"{name}-{datetime.date.today():%Y-%m-%d}.md"
+    memo_path.write_text(render_flow_memo(name, demand, axes, companies), encoding="utf-8")
     unknown = [row.axis for row in axes if _axis_value(row) == F.UNKNOWN]
     return FlowSummary(flow_id, memo_path, unknown, [line.ticker for line in companies], searches_left)
 
@@ -142,7 +147,9 @@ def company_numbers(
     An item the run record does not hold is ``None``. A PER at or above ``per_max`` marks the company as
     overvalued, while a missing PER (a loss, say) never does.
     """
-    per = _number(row.get(PER))
+    per = row.get(PER)
+    if isinstance(per, bool) or not isinstance(per, int | float) or not math.isfinite(per):
+        per = None
     return {
         "stage1_pass": row.get(STAGE1_PASS),
         "fail_rule": row.get(FAIL_RULE),
@@ -158,19 +165,13 @@ def render_flow_memo(name: str, demand: str, axes: list[AxisRow], companies: lis
     """The memo of one demand as Markdown: each axis with its quotes, the company table and the note."""
     lines = [f"# {name}", "", f"- 需要: {demand}", "", "## 軸", ""]
     for row in axes:
-        lines += _axis_lines(row)
+        quotes = [claim["quote"] for claim in row.evidence if claim.get("quote")]
+        lines += [f"### {row.axis}", "", _axis_value(row), ""] + [f"> {quote}" for quote in quotes] + [""]
     lines += ["## 恩恵企業", "", *_table_lines(companies), ""]
     lines += _overvalued_lines(companies)
     if any(company.note for company in companies):
         lines += [f"注記: {NOTE}", ""]
     return "\n".join(lines)
-
-
-def _number(value: Any) -> int | float | None:
-    """The value when it is a finite number (a bool and NaN are not), else ``None``."""
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        return None
-    return value if math.isfinite(value) else None
 
 
 def _text(value: Any) -> str:
@@ -184,12 +185,6 @@ def _axis_value(row: AxisRow) -> str:
     """The answer of one axis, or ``fields.UNKNOWN`` when the run left it empty."""
     value = row.answer.get("value") if isinstance(row.answer, dict) else None
     return F.UNKNOWN if value is None or value == "" else str(value)
-
-
-def _axis_lines(row: AxisRow) -> list[str]:
-    """One axis: its answer, then the quotes of the documents that support it."""
-    quotes = [claim["quote"] for claim in row.evidence if claim.get("quote")]
-    return [f"### {row.axis}", "", _axis_value(row), ""] + [f"> {quote}" for quote in quotes] + [""]
 
 
 def _comparison(comparison: Any) -> str:
@@ -269,25 +264,19 @@ def _axes(name: str, demand: str, owner: str, settings: FlowSettings, deps: Flow
     return [AxisRow(axis, {"value": result.answer.get(axis)}, result.evidence, ratio) for axis in settings.axes]
 
 
-def _hits(demand: str, settings: FlowSettings, deps: FlowDeps) -> list[CompanyHit]:
-    """The confirmed companies of the demand; without any profile text there is nothing to rank."""
-    if not deps.store.profiles():
-        raise MissingProfilesError("the document store holds no profile text; run `main.py profiles` first")
-    return build_map(demand, settings.map, MapDeps(deps.llm, deps.prompts, deps.store)).hits
-
-
 def _companies(
     hits: list[CompanyHit], settings: FlowSettings, deps: FlowDeps
 ) -> tuple[list[CompanyLine], list[CompanyRow]]:
     """One line and one row per mapped company: its screen row, its sector comparison and its momentum."""
     run_id = deps.records.resolve_run(None)
     metrics = deps.records.run_metrics(run_id)
-    tickers = list(metrics)
+    tickers = tuple(metrics)
+    sector_metrics = list(settings.sector_metrics)
     peers = Peers(
-        sector_medians(metrics, deps.sectors, list(settings.sector_metrics), settings.min_peers),
+        sector_medians(metrics, deps.sectors, sector_metrics, settings.min_peers),
         deps.sectors,
-        list(settings.sector_metrics),
-        tuple(tickers),
+        sector_metrics,
+        tickers,
     )
     universe = Universe(deps.history, tickers, deps.sectors)
     today = datetime.date.today()
@@ -321,16 +310,6 @@ def _companies(
             )
         )
     return lines, rows
-
-
-def _write_memo(
-    name: str, demand: str, axes: list[AxisRow], companies: list[CompanyLine], settings: FlowSettings
-) -> Path:
-    """Write the rendered memo to ``flow.memo_dir`` as ``<name>-<today>.md`` and return its path."""
-    settings.memo_dir.mkdir(parents=True, exist_ok=True)
-    path = settings.memo_dir / f"{name}-{datetime.date.today():%Y-%m-%d}.md"
-    path.write_text(render_flow_memo(name, demand, axes, companies), encoding="utf-8")
-    return path
 
 
 ACTIONS = ("buy", "skip")
