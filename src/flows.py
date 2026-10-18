@@ -6,7 +6,7 @@ from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
-from .collect import CollectClients, CollectSettings, collect_documents, companies
+from .collect import CollectClients, CollectSettings, collect_documents, collect_profiles, companies
 from .docstore import DocStore
 from .records import RecordStore
 from .research import prompt_version
@@ -37,6 +37,17 @@ def collect_run(cfg: dict[str, Any], root: Path, env: Mapping[str, str], run: st
     text = f"{summary.edinet_docs} documents stored for {len(candidates) - summary.edinet_failed} tickers; "
     text += f"{summary.edinet_failed} tickers failed."
     print(f"{text} {summary.web_docs} web documents stored." if clients.search else text)
+
+
+def profiles_run(
+    cfg: dict[str, Any], root: Path, env: Mapping[str, str], tickers: list[str], today: datetime.date
+) -> None:
+    """Collect the EDINET annual report sections of every ticker and print a summary."""
+    with ExitStack() as stack:
+        clients = CollectClients.from_config(cfg, env, stack, False)
+        store = stack.enter_context(DocStore.from_config(cfg, root))
+        summary = collect_profiles(tickers, CollectSettings.from_config(cfg), clients, store, today)
+    print(f"{summary.edinet_docs} reports stored, {summary.edinet_failed} failed.")
 
 
 def review_run(

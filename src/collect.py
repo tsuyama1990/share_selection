@@ -91,13 +91,27 @@ def collect_documents(
 
     ``companies`` come best first; searches go in that order and stop at the search quota.
     """
-    update_index(clients.edinet, store, today, settings.index_days)
-    stored = [
-        fetch_annual_report(clients.edinet, store, c.ticker, settings.doc_type_code, settings.sections)
-        for c in tqdm(companies)
-    ]
+    stored = _collect_edinet([c.ticker for c in companies], settings, clients, store, today)
     web_docs, searches_left = _collect_web(companies, settings, clients, store)
     return CollectSummary(sum(map(len, stored)), sum(not ids for ids in stored), web_docs, searches_left)
+
+
+def collect_profiles(
+    tickers: list[str], settings: CollectSettings, clients: CollectClients, store: DocStore, today: datetime.date
+) -> CollectSummary:
+    """EDINET sections of every ticker (no search); a report with all sections stored is not downloaded again."""
+    stored = _collect_edinet(tickers, settings, clients, store, today)
+    return CollectSummary(sum(map(len, stored)), sum(not ids for ids in stored), 0, 0)
+
+
+def _collect_edinet(
+    tickers: list[str], settings: CollectSettings, clients: CollectClients, store: DocStore, today: datetime.date
+) -> list[list[str]]:
+    update_index(clients.edinet, store, today, settings.index_days)
+    return [
+        fetch_annual_report(clients.edinet, store, ticker, settings.doc_type_code, settings.sections)
+        for ticker in tqdm(tickers)
+    ]
 
 
 def _collect_web(

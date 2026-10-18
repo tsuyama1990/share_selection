@@ -17,7 +17,7 @@
 
 | モジュール | 公開する名前 | 責務 | 状態 |
 |---|---|---|---|
-| `collect.py` | `CollectClients`、`CollectSettings`、`CollectSummary`、`collect_documents`、`companies` | `docs` の流れ：EDINET の索引の更新と有価証券報告書、Web 文書がまだ無い候補だけを優先順に検索し出典を取得、検索の割り当てで停止 | ✅ |
+| `collect.py` | `CollectClients`、`CollectSettings`、`CollectSummary`、`collect_documents`、`collect_profiles`、`companies` | `docs` の流れ：EDINET の索引の更新と有価証券報告書、Web 文書がまだ無い候補だけを優先順に検索し出典を取得、検索の割り当てで停止 | ✅ |
 | `review.py` | `ReviewDeps`、`ReviewSettings`、`ReviewSummary`、`review_candidates` | `review` の流れ：候補ごとに文書の読み出し → T1〜T5（`research.py`）→ 照合（`verify.py`）→ 業種の比較（`sector.py`）→ 記録 → 調査メモ（`memo.py`）。銘柄の失敗は状態として記録して次へ | ✅ |
 | `review_eval.py` | `EvalCase`、`EvalResult`、`EvalThresholds`、`EvalGate`、`load_eval_cases`、`score_case`、`judge`、`combine`、`evaluate_model` | モデルの品質の関門：正解のある銘柄の調査結果の採点と合否 | ✅ |
 

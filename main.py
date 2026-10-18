@@ -14,7 +14,7 @@ from src.cache import StockCache, refresh_all
 from src.collect import CollectClients, CollectSettings, collect_documents
 from src.config import CONFIG_FILE, ROOT, MissingKeyError, load_config
 from src.earnings_calendar import load_calendar, update_calendar_csv
-from src.flows import EvalNotPassedError, collect_run, review_run
+from src.flows import EvalNotPassedError, collect_run, profiles_run, review_run
 from src.llm import smoke_check
 from src.outcomes import evaluate_recorded
 from src.records import RecordStore, RunInfo, git_sha, latest_issue
@@ -99,6 +99,10 @@ def cmd_docs(cfg: Cfg, args: Args) -> None:
     collect_run(cfg, ROOT, os.environ, args.run, datetime.date.today())
 
 
+def cmd_profiles(cfg: Cfg, args: Args) -> None:
+    profiles_run(cfg, ROOT, os.environ, read_universe(cfg), datetime.date.today())
+
+
 def cmd_review(cfg: Cfg, args: Args) -> None:
     review_run(cfg, ROOT, os.environ, args.run, args.tickers.split(",") if args.tickers else None)
 
@@ -143,6 +147,7 @@ COMMANDS: dict[str, tuple[Callable[[Cfg, Args], None], str]] = {
     "analyze": (cmd_analyze, "Analyze cached data and record the run"),
     "evaluate": (cmd_evaluate, "Compute outcomes of recorded runs whose horizons have elapsed"),
     "docs": (cmd_docs, "Collect EDINET annual report sections and web sources of a run's stage 2 candidates"),
+    "profiles": (cmd_profiles, "Store the EDINET annual report sections of every ticker"),
     "review": (cmd_review, "LLM research on a run's stage 2 candidates (needs a passed review-eval)"),
     "review-eval": (cmd_review_eval, "Score the model and prompt version on tickers with known answers"),
     "backup": (cmd_backup, "Copy the ignored records (reviews, memos, document store) outside the repository"),
