@@ -269,3 +269,6 @@ flow:
     max_terms: 8                 # Search terms asked from the LLM for the company map
     top_k: 20                    # Companies (by matched terms) checked by the LLM; bounds the LLM calls
   per_max: 100                   # PER at or above this is listed apart as extremely expensive (no unified PER cut; user 2026-10-18)
+  outcome_months: [6, 12]        # Horizons (months) at which a recorded decision is scored
+  control:                       # Reference group of a decision: same-sector laggards
+    past_months: 3               # Look-back window of the past gain that must be at or below the sector median

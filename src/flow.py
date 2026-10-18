@@ -17,7 +17,7 @@ import pandas as pd
 from . import fields as F
 from .company_map import CompanyHit, MapDeps, MapSettings, build_map
 from .docstore import DocStore
-from .flow_store import AxisRow, CompanyRow, FlowRow, FlowStore
+from .flow_store import AxisRow, CompanyRow, DecisionRow, FlowRow, FlowStore
 from .llm import GeminiSearch, LLMClient, QuotaExceeded
 from .records import RecordStore
 from .research import prompt_version, run_task
@@ -331,3 +331,31 @@ def _write_memo(
     path = settings.memo_dir / f"{name}-{datetime.date.today():%Y-%m-%d}.md"
     path.write_text(render_flow_memo(name, demand, axes, companies), encoding="utf-8")
     return path
+
+
+ACTIONS = ("buy", "skip")
+
+
+@dataclass(frozen=True)
+class Decision:
+    """A human decision on one company of a flow; a cap of 0 yen differs from no cap (None)."""
+
+    flow_id: str
+    ticker: str
+    action: str
+    reason: str
+    max_yen: int | None
+
+    def __post_init__(self) -> None:
+        if self.action not in ACTIONS:
+            raise ValueError(f"action must be one of {', '.join(ACTIONS)}: {self.action}")
+        if self.max_yen is not None and self.max_yen < 0:
+            raise ValueError(f"max yen must not be negative: {self.max_yen}")
+
+
+def flow_decide(decision: Decision, flows: FlowStore) -> None:
+    """Record the decision at the current minute (a skip is recorded too)."""
+    now = datetime.datetime.now().replace(second=0, microsecond=0)
+    flows.record_decision(
+        DecisionRow(decision.flow_id, decision.ticker, now, decision.action, decision.reason, decision.max_yen)
+    )

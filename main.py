@@ -14,7 +14,8 @@ from src.cache import StockCache, refresh_all
 from src.collect import CollectClients, CollectSettings, collect_documents
 from src.config import CONFIG_FILE, ROOT, MissingKeyError, load_config
 from src.earnings_calendar import load_calendar, update_calendar_csv
-from src.flow import MissingProfilesError
+from src.flow import Decision, MissingProfilesError, flow_decide
+from src.flow_store import FlowStore
 from src.flows import EvalNotPassedError, MemoRequest, collect_run, flow_memo_run, profiles_run, review_run
 from src.llm import smoke_check
 from src.outcomes import evaluate_recorded
@@ -129,6 +130,12 @@ def cmd_flow_memo(cfg: Cfg, args: Args) -> None:
     flow_memo_run(cfg, ROOT, os.environ, MemoRequest(args.name, args.demand, args.url))
 
 
+def cmd_flow_decide(cfg: Cfg, args: Args) -> None:
+    with FlowStore.from_config(cfg, ROOT) as flows:
+        flow_decide(Decision(args.flow, args.ticker, args.action, args.reason, args.max_yen), flows)
+    print(f"Decision recorded: {args.flow} {args.ticker} {args.action}.")
+
+
 def cmd_backup(cfg: Cfg, args: Args) -> None:
     try:
         snapshot = backup_from_config(cfg, ROOT, datetime.datetime.now())
@@ -150,12 +157,13 @@ COMMANDS: dict[str, tuple[Callable[[Cfg, Args], None], str]] = {
     "calendar": (cmd_calendar, "Update the earnings calendar CSV from the JPX announcement schedule"),
     "fetch": (cmd_fetch, "Fetch data from Yahoo Finance"),
     "analyze": (cmd_analyze, "Analyze cached data and record the run"),
-    "evaluate": (cmd_evaluate, "Compute outcomes of recorded runs whose horizons have elapsed"),
+    "evaluate": (cmd_evaluate, "Compute outcomes of recorded runs and decisions whose horizons have elapsed"),
     "docs": (cmd_docs, "Collect EDINET annual report sections and web sources of a run's stage 2 candidates"),
     "profiles": (cmd_profiles, "Store the EDINET annual report sections of every ticker"),
     "review": (cmd_review, "LLM research on a run's stage 2 candidates (needs a passed review-eval)"),
     "review-eval": (cmd_review_eval, "Score the model and prompt version on tickers with known answers"),
     "flow-memo": (cmd_flow_memo, "Research a flow the user names and write its memo (run `profiles` first)"),
+    "flow-decide": (cmd_flow_decide, "Record a decision (buy or skip) on a flow's company"),
     "backup": (cmd_backup, "Copy the ignored records (reviews, memos, document store) outside the repository"),
     "llm-check": (cmd_llm_check, "Smoke-test the LLM fallback chain and Gemini search"),
 }
@@ -179,6 +187,16 @@ def build_parser() -> argparse.ArgumentParser:
     commands["flow-memo"].add_argument(
         "--url", action="append", default=[], help="A source the user already found (repeatable)"
     )
+    commands["flow-decide"].add_argument("--flow", required=True, help="Flow id (from `flow-memo`)")
+    commands["flow-decide"].add_argument("--ticker", required=True, help="Ticker code")
+    commands["flow-decide"].add_argument("--action", required=True, choices=["buy", "skip"], help="buy or skip")
+    commands["flow-decide"].add_argument("--reason", required=True, help="Why")
+    commands["flow-decide"].add_argument(
+        "--max-yen",
+        type=int,
+        default=None,
+        help="Upper bound of the amount to buy (0 means buy nothing; omit for none)",
+    )
     return parser
 
 
@@ -195,7 +213,7 @@ def main() -> None:
     except MissingProfilesError:
         print("Error: the document store holds no profile text. Run `profiles` first.")
         sys.exit(1)
-    except (MissingKeyError, EvalNotPassedError) as e:
+    except (MissingKeyError, EvalNotPassedError, ValueError) as e:
         print(f"Error: {e}.")
         sys.exit(1)
 

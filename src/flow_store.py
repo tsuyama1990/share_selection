@@ -1,7 +1,7 @@
 """The flow records of ``flow-memo`` (their own DuckDB file, ``flow.db_file``).
 
 A flow, its axes and the company map are written here, so a memo can be rendered again without new LLM calls.
-The decision tables (``flow_decisions``, ``flow_outcomes``) come with ``flow-decide``.
+Decisions (``flow-decide``) and their outcomes (``evaluate``) are kept here too.
 """
 
 import datetime
@@ -24,6 +24,12 @@ SCHEMA = (
         flow_id TEXT, ticker TEXT, tier TEXT, exposure TEXT, evidence JSON, run_id TEXT,
         stage1_pass BOOLEAN, fail_rule TEXT, valuations JSON, past3m_rank INTEGER,
         PRIMARY KEY (flow_id, ticker))""",
+    """CREATE TABLE IF NOT EXISTS flow_decisions (
+        flow_id TEXT, ticker TEXT, decided_at TIMESTAMP, action TEXT, reason TEXT, max_yen BIGINT,
+        PRIMARY KEY (flow_id, ticker, decided_at))""",
+    """CREATE TABLE IF NOT EXISTS flow_outcomes (
+        flow_id TEXT, ticker TEXT, decided_at TIMESTAMP, months INTEGER, excess DOUBLE, control_excess DOUBLE,
+        control_n INTEGER, PRIMARY KEY (flow_id, ticker, decided_at, months))""",
 )
 
 
@@ -55,6 +61,27 @@ class CompanyRow:
     fail_rule: str | None
     valuations: dict[str, Any]
     past3m_rank: int | None
+
+
+@dataclass(frozen=True)
+class DecisionRow:
+    flow_id: str
+    ticker: str
+    decided_at: datetime.datetime
+    action: str  # buy or skip
+    reason: str
+    max_yen: int | None  # None: no cap
+
+
+@dataclass(frozen=True)
+class OutcomeRow:
+    flow_id: str
+    ticker: str
+    decided_at: datetime.datetime
+    months: int
+    excess: float | None  # against the equal-weight mean of the scored tickers
+    control_excess: float | None
+    control_n: int
 
 
 def _flow_id(row: FlowRow) -> str:
@@ -154,3 +181,40 @@ class FlowStore:
             " FROM flow_companies WHERE flow_id = ?"
         )
         return [_company_row(values) for values in self.con.execute(sql, [flow_id]).fetchall()]
+
+    def record_decision(self, row: DecisionRow) -> None:
+        """Store a decision; deciding the same company again at another time adds a row."""
+        self.con.execute(
+            "INSERT OR REPLACE INTO flow_decisions VALUES (?, ?, ?, ?, ?, ?)",
+            [row.flow_id, row.ticker, row.decided_at, row.action, row.reason, row.max_yen],
+        )
+
+    def record_outcome(self, row: OutcomeRow) -> None:
+        self.con.execute(
+            "INSERT OR REPLACE INTO flow_outcomes VALUES (?, ?, ?, ?, ?, ?, ?)",
+            [row.flow_id, row.ticker, row.decided_at, row.months, row.excess, row.control_excess, row.control_n],
+        )
+
+    def due_decisions(self, months: int, today: datetime.date) -> list[DecisionRow]:
+        """Decisions at least ``months`` old on ``today`` without an outcome for that horizon yet."""
+        rows = self.con.execute(
+            """SELECT d.flow_id, d.ticker, d.decided_at, d.action, d.reason, d.max_yen FROM flow_decisions d
+               WHERE NOT EXISTS (SELECT 1 FROM flow_outcomes o WHERE o.flow_id = d.flow_id AND o.ticker = d.ticker
+                                 AND o.decided_at = d.decided_at AND o.months = ?)
+               ORDER BY d.decided_at, d.flow_id, d.ticker""",
+            [months],
+        ).fetchall()
+        due = [DecisionRow(*r) for r in rows]
+        return [r for r in due if _months_after(r.decided_at.date(), months) <= today]
+
+
+def _months_after(day: datetime.date, months: int) -> datetime.date:
+    """The same day ``months`` later, or the month's last day when it has fewer days."""
+    total = day.month - 1 + months
+    year, month = day.year + total // 12, total % 12 + 1
+    for d in range(day.day, 0, -1):
+        try:
+            return datetime.date(year, month, d)
+        except ValueError:
+            continue
+    raise ValueError(day)

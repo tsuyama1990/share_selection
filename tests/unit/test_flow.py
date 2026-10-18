@@ -177,6 +177,35 @@ def test_render_flow_memo_adds_the_note_only_for_a_flagged_company():
     assert NOTE not in render_flow_memo("半導体", "需要の説明", [], quiet)
 
 
-@pytest.mark.xfail(strict=True, reason="U-flow-3, U-flow-5: `Decision` and `flow_decide` come with flow-decide")
-def test_decision_and_flow_decide_exist():
-    assert hasattr(flow, "Decision") and hasattr(flow, "flow_decide")
+# U-flow-3: Decision
+
+
+@pytest.mark.parametrize("action", ["buy", "skip"])
+def test_decision_accepts_buy_and_skip_and_keeps_none_apart_from_zero(action):
+    assert flow.Decision("f", "1.T", action, "why", None).max_yen is None
+    assert flow.Decision("f", "1.T", action, "why", 0).max_yen == 0
+
+
+@pytest.mark.parametrize(("action", "max_yen"), [("hold", None), ("buy", -1)])
+def test_decision_rejects_other_actions_and_negative_caps(action, max_yen):
+    with pytest.raises(ValueError):
+        flow.Decision("f", "1.T", action, "why", max_yen)
+
+
+# U-flow-5: flow_decide
+
+
+class FakeFlows:
+    def __init__(self):
+        self.rows = []
+
+    def record_decision(self, row):
+        self.rows.append(row)
+
+
+def test_flow_decide_records_the_decision_at_the_minute():
+    flows = FakeFlows()
+    flow.flow_decide(flow.Decision("f", "1.T", "skip", "too dear", None), flows)  # type: ignore[arg-type]
+    row = flows.rows[0]
+    assert (row.flow_id, row.ticker, row.action, row.reason, row.max_yen) == ("f", "1.T", "skip", "too dear", None)
+    assert row.decided_at.second == 0 and row.decided_at.microsecond == 0

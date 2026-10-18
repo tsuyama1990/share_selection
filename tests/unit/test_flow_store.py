@@ -1,5 +1,7 @@
 """U-flow_store-1・2: the flow records of `flow-memo` (decisions are out of scope here)."""
 
+import datetime
+
 import pytest
 
 from src import flow_store
@@ -122,8 +124,17 @@ def test_from_config_opens_flow_db_file_under_root(tmp_path):
     assert (tmp_path / "flow.duckdb").exists()
 
 
-@pytest.mark.xfail(
-    strict=True, reason="U-flow_store-2, 3: `DecisionRow`, `OutcomeRow` and `due_decisions` come with flow-decide"
-)
-def test_due_decisions_exists():
-    assert all(hasattr(flow_store, name) for name in ("DecisionRow", "OutcomeRow", "due_decisions"))
+# U-flow_store-2 and 3: DecisionRow, OutcomeRow, due_decisions
+
+DECIDED = datetime.datetime(2026, 1, 31, 10, 0)
+
+
+def test_decisions_are_due_after_the_horizon_until_scored(tmp_path):
+    with flow_store.FlowStore(tmp_path / "f.duckdb") as store:
+        store.record_decision(flow_store.DecisionRow("f", "1.T", DECIDED, "buy", "why", None))
+        assert store.due_decisions(6, datetime.date(2026, 7, 30)) == []
+        due = store.due_decisions(6, datetime.date(2026, 7, 31))
+        assert [(r.ticker, r.decided_at, r.max_yen) for r in due] == [("1.T", DECIDED, None)]
+        store.record_outcome(flow_store.OutcomeRow("f", "1.T", DECIDED, 6, 0.1, 0.02, 3))
+        assert store.due_decisions(6, datetime.date(2026, 8, 31)) == []
+        assert len(store.due_decisions(12, datetime.date(2027, 1, 31))) == 1
