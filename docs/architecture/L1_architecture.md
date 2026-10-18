@@ -1,6 +1,6 @@
 # L1 全体アーキテクチャ
 
-作成：2026-10-14 ／ 状態：**承認・QA 完了**（2026-10-14）。進め方は `docs/architecture/process.md`
+作成：2026-10-14 ／ 状態：**承認・QA 完了**（C9 Tailwind Watch は受け入れ待ち）。進め方は `docs/architecture/process.md`
 
 手法の名前（2026-10-18）：本書が設計するのは **Value Turn（割安改善スクリーン）**、月 1 回、割安で下値が安全なまま決算に営業利益の改善が出た会社を拾う手法（エミン・ユルマズ氏の考え方をもとに、閾値と二次調査は独自）。**Tailwind Watch（追い風ウォッチ）** は、人が指定した PEST の流れについて、引用つきの調査メモで判断を支え、判断を記録して答え合わせする仕組み（C9、R8〜R12、N7。方針と根拠は `docs/tailwind_watch_design.md`）。
 
@@ -212,36 +212,10 @@ E2E テストは、この表の形式が守られることを確かめる。
 3. 変更は設計書 → テスト → コードの順。PR／マージのメッセージに、変更した設計書の節を書く。
 4. コンポーネント間で受け渡す結果行の項目名と値（改善区分など）は `fields.py` だけが文字列で持つ。`src/`・`main.py` の他の場所にその文字列があれば失敗し、`output.columns` が `fields.py` にない項目を挙げても失敗する（`tests/unit/test_architecture.py`）。
 
-## 10. 決定事項（2026-10-14）
+## 10. 訂正履歴
 
-| 項目 | 決定 |
-|---|---|
-| 要件（1 章）とコンポーネント（3 章） | 提案どおり |
-| E2E 計画（7 章） | 提案どおり。本物の API の疎通確認は CI に入れず、手動のライブ確認とする |
-| L2 の順番 | C4 二次調査と C2 データ取得から |
+詳細は git の履歴にある。要件・コンポーネント・E2E 計画は 2026-10-14 に承認（本物の API の疎通は CI に入れず手動のライブ確認）。
 
-## 11. 訂正履歴
-
-- 2026-10-14：3 章に、追加予定のモジュール名（L2 で決定）を記載
-
-- 2026-10-14：追跡表に N5 が抜けていた。E2E ではなく関門（設計の関門・アーキテクチャテスト・コード予算）で守る要件として追加
-
-- 2026-10-15（承認済み）：文書の取得を `review` から `docs` コマンドに分けた（E7 を追加）。理由：文書の取得だけを LLM の費用なしにやり直せる。また L2 C2 のモジュールを `review` より前に呼び出し元つきでマージでき、未使用コードの関門（vulture）を通せる
-
-- 2026-10-15（承認済み）：C3 の結果行の項目名を `fields.py` に集め（3 章・5 章）、文字列の重複を禁じる関門を追加（9 章 4）。理由：項目名が 2〜4 モジュールに文字列で重複し、つづりの違いが空の値になるだけで検出されなかった。`screen_results` に `stage2_candidate` 列を追加し、使われていない `types` 列を削除、質の旗はリストのまま記録する
-
-- 2026-10-16：SOLID の見直し。順位づけを `report.py` から `selection.py` へ（`report.py` は出力だけ）、呼び出し間隔の制御を `llm.py` から `throttle.py` へ（EDINET・Web・LLM が共有）
-
-- 2026-10-17（承認済み）：組み立ての見直し（`L3_composition.md`）。`main.py` を CLI と組み立てだけにし、`docs`・`review` の流れを `collect.py`・`review.py` へ。モデルの品質の関門 `review_eval.py` と `review-eval` コマンドを追加
-
-- 2026-10-17：E1〜E4 の状態を実態（テストあり）に直した。ライブ E2E（7.1 節、LV1〜LV13）を追加
-
-- 2026-10-17：第 2 回の SOLID の見直し（`L3_composition.md` 10 章）。C5 を `records.py`・`outcomes.py`・`review_store.py` に分ける
-
-- 2026-10-17：`backup` コマンド（`backup.py`、E8）を追加。設計（L2 C4 §6）は「バックアップは公開リポジトリ以外に取る」と決めていたが、仕組みが無かった
-
-- 2026-10-17：`main.py` を 150 行以下にするため、`docs`・`review` の準備から表示までを `flows.py`（C7）へ、`evaluate` の流れを `outcomes.py` へ移した（挙動は変えない）
-
-- 2026-10-18：2 つの手法に名前を付けた（Value Turn、Tailwind Watch）
-
-- 2026-10-18：Tailwind Watch を本書に加えた（R8〜R12、N7、C9、`profiles`・`flow-memo`・`flow-decide`、E9〜E11）。同日、週 1 回の自動の取り込み（`watch`）と月 1 回の売上の確認（`confirm`）の案を検証の結果で取りやめ、人の判断を支える流れの調査にした（`docs/tailwind_watch_design.md`、ユーザー了承）
+- 2026-10-15：文書の取得を `review` から `docs` に分けた（E7）。結果行の項目名を `fields.py` に集め、文字列の重複を禁じる関門を足した（9 章 4）
+- 2026-10-16〜17：SOLID の見直し 2 回（`selection.py`・`throttle.py`、`L3_composition.md` の組み立て、C5 を `records.py`・`outcomes.py`・`review_store.py` に、`flows.py`）。品質の関門 `review-eval`、`backup`（E8）、ライブ E2E（7.1 節）を足した
+- 2026-10-18：2 つの手法に名前を付けた（Value Turn、Tailwind Watch）。Tailwind Watch を C9（R8〜R12、N7、E9〜E11）として加えた。週 1 回の自動の取り込みと月 1 回の売上の確認の案は、検証の結果で取りやめた（`docs/tailwind_watch_design.md`）

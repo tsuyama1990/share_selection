@@ -1,6 +1,6 @@
 # 記録（段階 7）設計書：フローが必要とするデータからの逆算
 
-作成：2026-10-14 ／ 状態：**実装済み**（`runs`・`screen_results`・`outcomes`。その他のテーブルは各ブランチで追加）
+作成：2026-10-14 ／ 状態：**実装済み**（`runs`・`screen_results`・`outcomes`、`reviews`・`review_evals`）
 
 根拠の表記は `docs/hypothesis_map.md` と同じ。段階番号は `docs/selection_flow.md`。
 
@@ -58,8 +58,8 @@
 | `outcomes` | 実行 × 銘柄 × 期間（6・12 か月） | price_t0、price_t1、return、benchmark_return（比較対象は config の `records.benchmark_ticker`、既定は TOPIX 連動の 1306）、excess、computed_at | 機械（`evaluate` コマンド） | `feat/record` |
 | `events` | 銘柄 × 開示 | ticker、date、kind（決算・予想修正・中計・資本政策・テーマ）、detail、source | 機械＋人 | `feat/catalyst-calendar`、`feat/company-forecast` |
 | `forecasts` | 銘柄 × 開示 × 予想の対象期 | ticker、disclosed_date、target（今期・来期・中間）、sales、op、odp、np、eps、source | 機械（J-Quants） | `feat/company-forecast` |
-| `reviews`（列の最新の定義は `docs/architecture/L2_C4_stage2_research.md` 6 章） | 実行 × 銘柄（二次で調べた銘柄のみ） | decision（採用／落選／監視）、reason、type、chokepoint、evidence_links、llm_prompt、llm_answer、sources、thesis（4 行） | 人＋LLM | 二次スクリーニングの自動化時（当面は CSV で取り込み） |
-| `trades` | 売買 1 件 | ticker、date、side、qty、price、account、review_id、exit_reason | 人 | 同上 |
+| `reviews`・`review_evals` | 実行 × 銘柄（二次で調べた銘柄のみ）、評価 1 回ごと | 列は `docs/architecture/L2_C4_stage2_research.md` 6 章（別の DB ファイル `review.db_file`、git 対象外） | LLM（照合済みの引用） | 実装済み（`review`・`review-eval`） |
+| `trades` | 売買 1 件 | ticker、date、side、qty、price、account、review_id、exit_reason | 人 | 先送り（人の判断の記録を設計するとき。CSV で取り込む） |
 
 設計上の判断：
 - **指標は JSON 列にまとめる**：フローの改修で指標が増減しても、テーブルの形を変えずに済む。よく絞り込む値（通過・型・改善区分など）だけを通常の列にする。
