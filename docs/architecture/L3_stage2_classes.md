@@ -1,6 +1,6 @@
 # L3 クラス設計：二次調査（C2 文書の取得、C4 二次調査、C5 `reviews`、C6 調査メモ）
 
-作成：2026-10-14 ／ 状態：**承認（2026-10-15）**　親：`L2_C2_data_acquisition.md`、`L2_C4_stage2_research.md`　対応テスト：単体テスト（4 章）
+作成：2026-10-14 ／ 状態：**承認・実装済み**　親：`L2_C2_data_acquisition.md`、`L2_C4_stage2_research.md`　対応テスト：単体テスト（4 章）
 
 凡例：✅ 実装済み ／ 🆕 未実装。根拠：[データ：日付]＝実測、[推論]＝未検証の判断。
 
@@ -25,7 +25,7 @@
 | `research.py` | `ReplyError`、`TaskResult`、`load_prompts`、`prompt_version`、`build_messages`、`parse_reply`、`run_task` | T1〜T5 の実行（プロンプトの組み立て、JSON の検証と 1 回の再依頼、照合） | ✅ |
 | `memo.py` | `render_memo` | 1 銘柄の調査メモ（Markdown の文字列） | ✅ |
 
-`records.py`（✅）には `reviews` テーブル、`candidates(run_id)`、`run_metrics(run_id)`、`reviewed(run_id)`、`record_review(run_id, row)` を足す。`main.py`（✅）には `docs [--run RUN_ID]`・`run_docs` と `review [--run RUN_ID]`・`run_review` を足す。
+候補と全銘柄の指標は `records.py`（`RecordStore.candidates`・`run_metrics`）、`reviews`・`review_evals` は `review_store.py`（`ReviewStore.record_review`・`reviewed`・`passed_eval`）。`docs`・`review` の流れは `collect.py`・`review.py`（`L3_composition.md`）。
 
 ## 3. クラス・関数
 
@@ -99,9 +99,9 @@ def check_claims(answer: dict, claims: list[dict], docs: dict[str, str]) -> tupl
 
 - 照合できる claim：`doc_id` が `docs` にあり、正規化した `quote` が正規化した本文の部分文字列。空の quote は不一致。
 - 照合率は銘柄ごとに `review.py` が計算する：全タスクの照合できた数 ÷ 全タスクの claims の数（0 件なら 0.0）。「unknown」と正直に答えて claims の無いタスクは、照合率を下げない。
-- `answer` の項目は、照合できた claim のどれかの `field` がその項目名のときだけ残す（下の 5 章の変更 1）。
+- `answer` の項目は、照合できた claim のどれかの `field` がその項目名のときだけ残す。
 
-### 3.5 `sector.py`（2026-10-17 見直し）
+### 3.5 `sector.py`
 
 ```python
 @dataclass(frozen=True)
@@ -136,11 +136,11 @@ def run_task(llm: LLMClient, prompts: dict[str, str], task_fields: tuple[str, li
 ```
 
 - `prompts` はファイル名の語幹をキーにした辞書（`system`、`t1`〜`t5`、再依頼の文面 `retry`。`{error}` を埋める）。文書は `<document id="doc_id">` で囲んで渡す。`TaskResult.providers` は `<プロバイダー>/<モデル>` の呼び出し順。
-- T1〜T5 の順番、T5 への文脈の渡し方、全体の照合率と `needs_attention` は `review.py`（`L3_composition.md` 5.2 節）。
+- T1〜T5 の順番、T5 への文脈の渡し方、全体の照合率と `needs_attention` は `review.py`（`L3_composition.md` 3.2 節）。
 - 各タスクの項目名（`task_fields`）は config の `review.tasks` に置く（L2 C4 §4 の表と同じ項目）。
 - 文書が長すぎないよう、`review.py` が 1 文書を `review.max_doc_chars` 文字で切ってから渡す。照合も切った後の本文に対して行う（LLM に見せた本文と照合の対象を一致させる）。
 
-### 3.7 `memo.py`（2026-10-17 見直し）
+### 3.7 `memo.py`
 
 ```python
 def render_memo(ticker: str, name: str, review: dict, comparison: dict | None, sources: dict[str, str]) -> str
@@ -150,11 +150,10 @@ def render_memo(ticker: str, name: str, review: dict, comparison: dict | None, s
 
 Markdown：見出し（銘柄・名前・提案）→ 要注意 → タスクごとの答えと、照合できた引用（出典つき）→ unknown の一覧 → 同業比較の表。ファイルは `memo.dir`（`results/` の下、git 対象外）に `memo.filename`（`{run_id}_{ticker}.md`）。
 
-### 3.8 `records.py` と `main.py` の追加
+### 3.8 記録（`review_store.py`）
 
-- `reviews`：主キー（run_id, ticker）。列は L2 C4 §6 から `human_decision`・`decided_at` を除き（5 章の変更 2）、`needs_attention`、`reviewed_at` を足す。書くたびに Parquet を git 対象外の `review.export_dir` に書き出す（公開リポジトリに引用と提案を載せない。`.gitignore` への追加は `feat/review-command` で設定と一緒に行う）。調査メモは `results/` の下（既に git 対象外）。
-- `candidates(run_id)`：`Stage2_Candidate` が真の銘柄の (ticker, metrics)。`run_metrics(run_id)`：全銘柄の metrics（業種の中央値の母集団）。`reviewed(run_id)`：status が `ok` の ticker（再実行のとき飛ばす。失敗した銘柄は取り直して上書き）。
-- `docs`・`review` の処理の流れは `collect.py`・`review.py`（`L3_composition.md` 5 章）。検索の回答文そのものは LLM の生成なので保存しない（出典の本文だけ）。
+- `reviews`：主キー（run_id, ticker）。列は L2 C4 §6。書くたびに Parquet を git 対象外の `review.export_dir` に書き出す（公開リポジトリに引用と提案を載せない）。調査メモは `results/` の下（git 対象外）。
+- `reviewed(run_id)`：status が `ok` の ticker（再実行で飛ばす。失敗した銘柄は取り直して上書き）。検索の回答文そのものは LLM の生成なので保存しない（出典の本文だけ）。
 
 ## 4. 単体テスト計画
 
@@ -181,40 +180,10 @@ Markdown：見出し（銘柄・名前・提案）→ 要注意 → タスクご
 
 `DocStore`、`EdinetClient`、`update_index`、`fetch_annual_report`、`fetch_document`、`records` の追加、`collect.py`・`review.py` の流れは、L2 の結合テスト（I-C2-3〜5、I-C4-2〜4）と E2E の E6 で確かめる。
 
-## 5. L2 の変更（L3 で分かったこと。2026-10-15 承認、L2 に反映済み）
+## 訂正履歴
 
-1. **claims に `field` を足す**（L2 C4 §4）：`{"field": "answer の項目名", "claim", "quote", "doc_id"}`。L2 C4 §5 の「answer の項目が残った主張で支えられない場合は unknown」を機械で判定するには、主張がどの項目を支えるかが要る。
-2. **`human_decision`・`decided_at` を `reviews` から外す**（L2 C4 §6）：人の判断を入れるコマンドが設計に無く、列だけ作っても使われない。人の判断を記録する方法は、調査メモを使い始めてから決める（先送り）。
-3. **`review` の「1 回の実行の呼び出し上限」を外す**（L2 C4 §7）：呼び出しは「対象の上限件数 × タスク 5 件 × 最大 2 回 ＋ 検索」で上限が決まるため、別の上限は要らない [推論]。代わりに 1 文書の文字数の上限 `review.max_doc_chars` を足す（Groq の `openai/gpt-oss-120b` などフォールバック先の文脈の長さに収めるため）。
+詳細は git の履歴にある。
 
-## 6. 設定（`config.yaml` に足す節）
-
-| 節 | キー |
-|---|---|
-| `edinet` | base_url、key_env、index_days、doc_type_code（`"120"`）、sections、request_interval_s、timeout_s |
-| `webfetch` | timeout_s、max_bytes、user_agent、request_interval_s |
-| `docs` | search、search_prompt、max_sources（1 銘柄で取る出典の数） |
-| `docstore` | db_file |
-| `sector` | metrics（`Real_PSR`、`PBR`、`Improvement_Yield(%)`）、min_peers |
-| `review` | max_tickers、min_verified_ratio、prompt_dir（`prompts`。版は内容のハッシュ）、max_doc_chars、tasks（タスクごとの項目名）、export_dir |
-| `memo` | dir（`results/` の下）、filename |
-
-## 7. 実装の順番
-
-ブランチ 1・2（`feat/docs-edinet`、`feat/docs-web`）はマージ済み。以降は `L3_composition.md` 8 章（A 組み立ての見直し → B `review` と品質の関門 → C 業種の比較と調査メモ）。各ブランチは、足すコードの呼び出し元を同じブランチに含める（vulture は `src/` と `main.py` だけを見る）。
-
-## 8. 訂正履歴
-
-- 2026-10-17（文書と実装の照合）：1 章の組み立ての場所（`main.run_review` は無い）と 3.6 節の `build_messages` の引数を実装に合わせた
-
-- 2026-10-17（ブランチ C の前の見直し）：`sector_medians` は「Ticker を含む行」ではなく ticker → 指標の辞書を受け取る（足切りで落ちた銘柄の行には Ticker が無く、全銘柄を母集団にする決定と合わない）。`Peers` を追加し、`compare` は `Peers` を受け取る。`render_memo` の同業比較は無い場合がある（評価の実行）
-
-- 2026-10-17：プロンプトの版を手で付ける番号（`prompts/v1/` など）から内容のハッシュへ。同じ版の名前で中身が違うと、評価の合格が別の文に付くため。
-
-- 2026-10-17（ライブの評価で判明）：照合率をタスクごとの平均（claims の無いタスクを 0 とする）から、銘柄の全 claims に対する割合へ（L2 C4 §5 のとおり）。`check_claims` は照合率を返さない。
-
-- 2026-10-17（承認済み）：組み立てと処理の流れを `L3_composition.md` に移す。`research.review_ticker` を削除し（流れは `review.py`）、3.8 節の `main.run_docs`・`run_review` と 7 章の実装の順番は `L3_composition.md` の 4 章・8 章に置き換える。
-
-- 2026-10-15（`feat/docs-edinet` の実装で確定）：`edinet.timeout_s` を追加。`parse_index` の戻り値の形と `update_index` の失敗時の動きを明記。ライブ確認 [データ：2026-10-15、二次候補 50 社]：50 社すべて最新の有価証券報告書を取得、191 節、失敗 0。セグメント情報が無い 9 社は単一セグメント。節の長さの最大は約 3 万字。
-
-- 2026-10-15（承認済み）：文書の取得を `docs` コマンドに分け、実装の順番を 6 ブランチから 4 ブランチ（それぞれ呼び出し元のコマンドを含む）に変えた。理由：呼び出し元のないモジュールは vulture で落ち、単独でマージできない。
+- 2026-10-15：L3 で分かったことを L2 に反映（claims に `field`、`reviews` から人の判断の列を外す、1 文書の文字数の上限）。文書の取得を `docs` コマンドに分けた
+- 2026-10-17：プロンプトの版を内容のハッシュに、照合率を銘柄の全 claims に対する割合に、`sector_medians` の母集団を実行の全銘柄にした。組み立てと流れは `L3_composition.md` へ
+- 2026-10-18：経緯の節（L2 の変更、設定の表、実装の順番）を削り、今の設計だけにした。設定は `config.yaml` のコメントが正
