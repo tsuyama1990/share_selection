@@ -102,8 +102,8 @@ FlowStore  # from_config(cfg, root): flow.db_file；context manager
 - `collect.py`：`profiles` の流れ。全銘柄に既存の `fetch_annual_report(client, store, ticker, doc_type_code, sections)` を回し（`docs` と同じ節）、取得済みは飛ばす。失敗は記録して次の銘柄へ（全体は止めない）。
 - `outcomes.py`：`evaluate` は引数が 5 個で埋まっているので変えない。判断の答え合わせは別の `evaluate_decisions(flows, history, controls, months, today) -> int` にし、`controls(sector, date) -> list[str]`（同じ 33 業種で、直近 3 か月の上昇と PBR が業種の中央値以下の会社）を `evaluate_recorded` が実行の記録と `sector.py` から作って渡す（`history` を callable で渡すのと同じ形。日付で変わるので判断の月ごとに呼ぶ）。`evaluate_recorded` は `FlowStore.from_config` を開き、返す行数に足す。
 - `main.py`：`COMMANDS` に `profiles`・`flow-memo`・`flow-decide` を足す（CLI と組み立てだけ）。`flow-memo` は `--name`・`--demand`・`--url`（複数可）、`flow-decide` は `--flow`・`--ticker`・`--action`・`--reason`・`--max-yen`。`except` に `MissingProfilesError`・`ValueError` を足し、案内と終了コード 1。
-- `fields.py`：PER は今の `fields.py` に無い（`sector.metrics` も `Real_PSR`・`PBR`・`Improvement_Yield(%)`）。R10 の PER は、PER を計算して `fields.py` に足す変更と同じブランチで載せる（それまではメモに載せない）。
-- `config.yaml`：`flow:`（`db_file`、`memo_dir`、`prompts_dir`、`search_prompt`、`max_sources`、`max_doc_chars`、`axes`、`map.max_terms`、`map.top_k`、`outcome_months`、`control.past_months`）と `sector.momentum_months`・`sector.momentum_note_top_share`・`sector.momentum_note_position`。
+- PER（ユーザー決定 2026-10-18）：業種で統一した PER の足切りは難しいため、Value Turn の足切りには使わない。流れの調査メモでは、キャッシュの `info.trailingPE` を会社ごとの数値に並べ、`flow.per_max`（初期値 100）以上の会社だけを「超割高」として一覧から外し、理由つきで別の欄に載せる。PER が無い（赤字など）会社は外さない
+- `config.yaml`：`flow:`（`db_file`、`memo_dir`、`prompts_dir`、`search_prompt`、`max_sources`、`max_doc_chars`、`axes`、`map.max_terms`、`map.top_k`、`outcome_months`、`control.past_months`、`per_max`）と `sector.momentum_months`・`sector.momentum_note_top_share`・`sector.momentum_note_position`。
 
 ## 4. 単体テスト計画
 
@@ -114,7 +114,7 @@ FlowStore  # from_config(cfg, root): flow.db_file；context manager
 | U-company_map-3 | `build_map` | `sells` を照合できない会社は載らない、`sells` が偽の会社は載らない、`tier` の語彙（1次・2次・3次以上・不明）、各社の確かめはその会社の `edinet` の文書だけ、呼び出しは 1 ＋ `top_k` 回以内、`LLMError` の会社は飛ばして続ける |
 | U-company_map-4 | `MapSettings` | 設定から作る（`from_config`）。`flow.map` と `flow.max_doc_chars` のキーを読む |
 | U-flow-1 | `render_flow_memo` | 軸が引用つきで並ぶ、軸が「不明」のときの表記、会社ごとの数値の表、注記の 1 行は `note` が真のときだけ |
-| U-flow-2 | `company_numbers` | 通過・落ちた条件・改善区分・`sector.compare` の値と中央値・`position` をそのまま入れる、記録に無い項目は null |
+| U-flow-2 | `company_numbers` | 通過・落ちた条件・改善区分・`sector.compare` の値と中央値・`position`・PER をそのまま入れる、記録に無い項目は null。PER が `per_max` 以上なら超割高の印、PER が無ければ印なし |
 | U-flow-3 | `Decision` | `action` は buy・skip だけ、それ以外は `ValueError`。`max_yen` は `None` と 0 を区別し、負の値は `ValueError` |
 | U-flow-4 | `FlowSettings` | 設定から作る（`from_config`）。`flow:` のキーを読み、`memo_dir`・`prompts_dir` を `root` で解決し、`max_bytes` は `webfetch.max_bytes` |
 | U-flow-5 | `flow_decide` | 判断を 1 行記録する（見送るも記録する）、`decided_at` は分単位に丸める。同じ流れ・銘柄を別の日に決め直すと行が増える |
