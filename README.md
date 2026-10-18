@@ -5,7 +5,7 @@ A Japanese stock selection pipeline with two screening methods:
 | Method | Cadence | Idea | Status |
 |---|---|---|---|
 | **Value Turn**（割安改善スクリーン） | monthly | Cheap and safe on the downside, with an operating-income improvement that already shows in the results: buy after it is confirmed. Based on Emin Yurumazu's screening theory, with our own thresholds and stage 2 research. | built (this README) |
-| **Tailwind Watch**（追い風ウォッチ） | on demand | For a PEST flow (politics, economy, society, technology) you name: a research memo with checked quotes on five axes, the companies selling into it, and their Value Turn results and valuations; your decisions are recorded and scored against a mechanical baseline. Also adds industry momentum facts to Value Turn's memos. | designed (`docs/tailwind_watch_design.md`) |
+| **Tailwind Watch**（追い風ウォッチ） | on demand | For a PEST flow (politics, economy, society, technology) you name: a research memo with checked quotes on five axes, the companies selling into it, and their Value Turn results and valuations; your decisions are recorded and scored against a mechanical baseline. Also adds industry momentum facts to Value Turn's memos. | built: `profiles`, `flow-memo`, `flow-decide` (`docs/tailwind_watch_design.md`) |
 
 Value Turn screens all listed stocks with a gatekeeper, ranks them by improvement of earnings, and researches the top candidates with an LLM whose claims must quote the documents. Data accumulation (Yahoo Finance into DuckDB) is separate from analysis, so screening runs offline on the local cache.
 

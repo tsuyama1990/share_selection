@@ -1,6 +1,6 @@
 # Tailwind Watch（追い風ウォッチ）：PEST の流れの判断を支える調査
 
-作成：2026-10-18 ／ 状態：**方針は決定（ユーザー了承）。未実装**。設計は `docs/architecture/L1_architecture.md` C9・`L2_C9_tailwind.md`（流れの調査）、`L2_C4_stage2_research.md`（Value Turn への追加）
+作成：2026-10-18 ／ 状態：**実装済み（2026-10-18）**。設計は `docs/architecture/L1_architecture.md` C9・`L2_C9_tailwind.md`（流れの調査）、`L2_C4_stage2_research.md`（Value Turn への追加）
 
 月 1 回の今の仕組みは **Value Turn（割安改善スクリーン）**、本書の手法は **Tailwind Watch**。根拠の表記は `docs/hypothesis_map.md` と同じ。
 
