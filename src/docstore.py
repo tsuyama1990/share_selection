@@ -89,6 +89,14 @@ class DocStore:
         )
         return [Document(*row) for row in self.con.execute(sql, [ticker]).fetchall()]
 
+    def profiles(self) -> dict[str, str]:
+        """Ticker -> text of its EDINET documents joined by a newline (a web page holds no company profile)."""
+        sql = "SELECT ticker, text FROM documents WHERE source = ? ORDER BY ticker, doc_id"
+        texts: dict[str, list[str]] = {}
+        for ticker, text in self.con.execute(sql, ["edinet"]).fetchall():
+            texts.setdefault(ticker, []).append(text)
+        return {ticker: "\n".join(parts) for ticker, parts in texts.items()}
+
     def record_error(self, ticker: str, source: str, ref: str, error: str) -> None:
         self.con.execute(
             "INSERT INTO fetch_errors VALUES (?, ?, ?, ?, ?)", [ticker, source, ref, error, datetime.datetime.now()]

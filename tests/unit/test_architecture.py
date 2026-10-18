@@ -43,6 +43,7 @@ CONFIG_NAMES = {
     "ed",
     "check",
     "docs",
+    "flow",
     "rev",
     "sec",
     "thresholds",

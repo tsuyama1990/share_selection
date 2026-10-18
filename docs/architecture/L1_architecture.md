@@ -85,7 +85,7 @@
 | C6 | 出力 | 結果 CSV、二次候補の一覧、調査メモ | `report.py`、`memo.py`（調査メモ） | ✅ |
 | C7 | 設定と起動 | 設定の読み込み、`.env`、CLI、各コンポーネントの組み立て | `config.py`、`flows.py`（複数のコンポーネントにまたがる `docs`・`review` の流れ）、`main.py`（CLI と組み立てだけ。処理の流れは各コンポーネントのモジュール。`L3_composition.md`） | ✅ |
 | C8 | 実験 | 過去の記録を別の設定で再現し比較する（R7） | 🆕（結果が貯まる 2027 年春以降） | 🆕 |
-| C9 | 流れの調査（Tailwind Watch） | 根拠と 5 つの軸（R8）、恩恵企業の地図（R9）、会社ごとの数値と調査メモ（R10）、判断の記録（R11）（詳細は `L2_C9_tailwind.md`） | 🆕 `company_map.py`（会社の地図）、`flow.py`（`flow-memo`・`flow-decide` の流れ、調査メモ）、`flow_store.py`（記録 `flow.db_file`） | 🆕 |
+| C9 | 流れの調査（Tailwind Watch） | 根拠と 5 つの軸（R8）、恩恵企業の地図（R9）、会社ごとの数値と調査メモ（R10）、判断の記録（R11）（詳細は `L2_C9_tailwind.md`） | `company_map.py`（会社の地図）、`flow.py`（`flow-memo`・`flow-decide` の流れ、調査メモ）、`flow_store.py`（記録 `flow.db_file`） | 一部（`flow-decide`・答え合わせは 🆕） |
 
 ## 4. 処理の流れ（コマンド）
 
@@ -109,7 +109,7 @@ tickers ─▶ fetch ─▶ calendar ─▶ analyze ─▶ docs ─▶ review �
 | `backup` | `review.db_file`・`review.export_dir`・`memo.dir`・`docstore.db_file` | `backup.dir/<日時>/` の写し（新しい `backup.keep` 個だけ残す）。`backup.dir` がリポジトリの中なら拒否（公開リポジトリ） | `review` の後 |
 | `llm-check` | LLM、検索 | 疎通の結果 | 任意（ライブ確認。CI では実行しない） |
 | `profiles` | 銘柄一覧、EDINET | 文書ストア（全銘柄の有価証券報告書の「事業の内容」）、取得の失敗 | 年 1 回＋新しい報告書の差分（月 1 回） |
-| `flow-memo` 🆕 | 流れの名前と需要の説明（任意の URL）、Web 検索、文書ストア、最新の実行の記録、キャッシュ、LLM | 調査メモ（`flow.memo_dir`）、記録（`flow.db_file`） | 人が流れに気づいたとき |
+| `flow-memo` | 流れの名前と需要の説明（任意の URL）、Web 検索、文書ストア、最新の実行の記録、キャッシュ、LLM | 調査メモ（`flow.memo_dir`）、記録（`flow.db_file`） | 人が流れに気づいたとき |
 | `flow-decide` 🆕 | 流れ・銘柄・買う／見送る・理由・金額の上限 | 記録（判断） | 調査メモを読んだ後 |
 
 ## 5. データの受け渡し（コンポーネント間の約束）
@@ -155,7 +155,7 @@ E2E テストは、この表の形式が守られることを確かめる。
 | E7 | 二次候補で `docs`（EDINET・検索・Web をモック、一部失敗） | 候補ごとの文書が文書ストアに入り、失敗は記録されて全体は止まらない。キーが出力に現れない | R5・N2・N6 | ある |
 | E8 | 一時ディレクトリで `backup` | 4 つの対象が日時のフォルダに写り、古いものは `backup.keep` 個を超えると消える。`backup.dir` がリポジトリの中なら終了コード 1 で何も写さない | N1 | ある（`tests/e2e/test_e8_backup.py`） |
 | E9 | EDINET をモックした `profiles`（一部失敗） | 銘柄ごとの「事業の内容」が文書ストアに入り、失敗は記録されて全体は止まらない。2 回目は取得済みを飛ばす | R9・N6 | ある（`tests/e2e/test_e9_profiles.py`） |
-| E10 | 検索・Web・LLM をモックし、フィクスチャの文書ストア・記録・キャッシュで `flow-memo` | 調査メモに 5 つの軸（照合できた引用だけ、無ければ「不明」）、地図（照合できた会社だけ）、会社ごとの判定と数値が出て、記録に残る。`profiles` 未実行なら案内して終了コード 1。キーが出力に現れない | R8・R9・R10・N2・N3・N7 | 🆕（`tests/e2e/test_e10_flow_memo.py`） |
+| E10 | 検索・Web・LLM をモックし、フィクスチャの文書ストア・記録・キャッシュで `flow-memo` | 調査メモに 5 つの軸（照合できた引用だけ、無ければ「不明」）、地図（照合できた会社だけ）、会社ごとの判定と数値が出て、記録に残る。`profiles` 未実行なら案内して終了コード 1。キーが出力に現れない | R8・R9・R10・N2・N3・N7 | ある（`tests/e2e/test_e10_flow_memo.py`） |
 | E11 | `flow-decide` → 期間を過ぎた記録で `evaluate`（価格をモック） | 判断が記録され、期間を過ぎた判断だけ超過リターンと比べる相手の超過リターンが計算される | R11・R12 | 🆕（`tests/e2e/test_e11_flow_decide.py`） |
 | E12 | 株価の履歴を含むフィクスチャのキャッシュで `review-eval` → `review`（LLM をモック） | 調査メモと `reviews.sector_comparison` に業種の勢い（超過リターンと順位）と業種の中の位置が入る。二次候補の顔ぶれと順位は変わらない | R13 | ある（`tests/e2e/test_e12_review_momentum.py`） |
 

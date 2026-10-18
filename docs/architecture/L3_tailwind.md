@@ -15,11 +15,13 @@
 
 | モジュール | 公開する名前 | 責務 | 状態 |
 |---|---|---|---|
-| `company_map.py` | `MapSettings`、`MapDeps`、`CompanyHit`、`MapResult`、`search_terms`、`rank_companies`、`build_map` | 恩恵企業の地図：需要から検索語（LLM）、全銘柄の「事業の内容」とセグメント情報の部分一致での順位付け、上位 `top_k` 社の確かめ（LLM と照合） | 🆕 |
-| `flow.py` | `FlowSettings`、`Throttles`、`FlowDeps`、`FlowSummary`、`Decision`、`CompanyLine`、`MissingProfilesError`、`flow_memo`、`flow_decide`、`company_numbers`、`render_flow_memo` | `flow-memo`・`flow-decide` の流れ：根拠の文書、軸の抜き出し、地図、会社ごとの数値、調査メモ、判断の記録 | 🆕 |
-| `flow_store.py` | `FlowRow`、`AxisRow`、`CompanyRow`、`DecisionRow`、`OutcomeRow`、`FlowStore` | `flow.db_file`（git 対象外）の記録：流れ、軸、地図、判断、答え合わせ | 🆕 |
+| `company_map.py` | `MapSettings`、`MapDeps`、`CompanyHit`、`MapResult`、`search_terms`、`rank_companies`、`build_map` | 恩恵企業の地図：需要から検索語（LLM）、全銘柄の「事業の内容」とセグメント情報の部分一致での順位付け、上位 `top_k` 社の確かめ（LLM と照合） | ✅ |
+| `flow.py` | `FlowSettings`、`Throttles`、`FlowDeps`、`FlowSummary`、`CompanyLine`、`MissingProfilesError`、`flow_memo`、`company_numbers`、`render_flow_memo` | `flow-memo`・`flow-decide` の流れ：根拠の文書、軸の抜き出し、地図、会社ごとの数値、調査メモ、判断の記録 | ✅ |
+| `flow_store.py` | `FlowRow`、`AxisRow`、`CompanyRow`、`FlowStore` | `flow.db_file`（git 対象外）の記録：流れ、軸、地図、判断、答え合わせ | ✅ |
 
 ## 3. クラス・関数
+
+判断と答え合わせ（`Decision`・`flow_decide`・`DecisionRow`・`OutcomeRow`・`record_decision`・`record_outcome`・`decisions`・`due_decisions`）は flow-decide のブランチで作り、そのとき 2 章の表に足す。
 
 ### 3.1 `company_map.py`
 

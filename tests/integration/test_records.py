@@ -96,3 +96,29 @@ def test_run_metrics_cover_the_tickers_with_metrics(tmp_path):
     with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec") as store:
         run_id = store.record_run(INFO, RESULTS)
         assert sorted(store.run_metrics(run_id)) == ["1.T", "2.T", "3.T"]
+
+
+def test_screen_row_flattens_the_metrics_of_a_passing_ticker(tmp_path):
+    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec") as store:
+        run_id = store.record_run(INFO, RESULTS)
+        row = store.screen_row(run_id, "1.T")
+    assert row["stage1_pass"] is True
+    assert row["stage1_fail_rule"] is None
+    assert row["Improvement_Class"] == "clear"
+    assert row["PSR"] == 1.5
+    assert row["Name"] == "x"
+
+
+def test_screen_row_keeps_the_failed_rule_and_a_missing_value_as_none(tmp_path):
+    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec") as store:
+        run_id = store.record_run(INFO, RESULTS)
+        row = store.screen_row(run_id, "2.T")
+    assert row["stage1_pass"] is False
+    assert row["stage1_fail_rule"] == "PsrCap"
+    assert row["PSR"] is None
+
+
+def test_screen_row_of_an_unknown_ticker_is_empty(tmp_path):
+    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec") as store:
+        run_id = store.record_run(INFO, RESULTS)
+        assert store.screen_row(run_id, "9.T") == {}

@@ -1,22 +1,41 @@
-"""CLI flows that compose several components: `docs` and `review` on the candidates of a recorded run."""
+"""CLI flows that compose several components: `docs`, `profiles` and `review` on a recorded run, and `flow-memo`
+on a flow the user names."""
 
 import datetime
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import httpx
+import pandas as pd
+
+from .cache import StockCache
 from .collect import CollectClients, CollectSettings, collect_documents, collect_profiles, companies
 from .docstore import DocStore
+from .flow import FlowDeps, FlowSettings, Throttles, flow_memo
+from .flow_store import FlowStore
+from .llm import GeminiSearch, LLMClient
 from .records import RecordStore
-from .research import prompt_version
+from .research import load_prompts, prompt_version
 from .review import ReviewDeps, ReviewSettings, review_candidates
 from .sector import Peers
+from .throttle import RateLimiter
 from .tickers import read_column
 
 
 class EvalNotPassedError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class MemoRequest:
+    """The flow the user names: its name, the demand behind it and the sources they already found."""
+
+    name: str
+    demand: str
+    urls: Sequence[str]
 
 
 def collect_run(cfg: dict[str, Any], root: Path, env: Mapping[str, str], run: str | None, today: datetime.date) -> None:
@@ -70,3 +89,47 @@ def review_run(
         f"Run {run_id}: {summary.reviewed} reviewed, {summary.failed} failed, {summary.needs_attention} need attention."
     )
     print(f"Memos written to {deps.memo_dir}.")
+
+
+def flow_memo_run(cfg: dict[str, Any], root: Path, env: Mapping[str, str], request: MemoRequest) -> None:
+    """Research the flow the user names (sources, axes, map, numbers) and print where the memo went."""
+    settings = FlowSettings.from_config(cfg, root)
+    csv_path = root / cfg["system"]["input_csv"]
+    with ExitStack() as stack:
+        llm_http = stack.enter_context(httpx.Client(timeout=cfg["llm"]["timeout_s"]))
+        web_http = stack.enter_context(
+            httpx.Client(timeout=cfg["webfetch"]["timeout_s"], headers={"User-Agent": cfg["webfetch"]["user_agent"]})
+        )
+        deps = FlowDeps(
+            llm=LLMClient.from_config(cfg, llm_http, env),
+            prompts=load_prompts(settings.prompts_dir),
+            search=GeminiSearch.from_config(cfg, llm_http, env),
+            store=stack.enter_context(DocStore.from_config(cfg, root)),
+            flows=stack.enter_context(FlowStore.from_config(cfg, root)),
+            records=stack.enter_context(RecordStore.from_config(cfg, root)),
+            history=closes_of(stack.enter_context(StockCache.from_config(cfg, root))),
+            sectors=read_column(csv_path, "sector33"),
+            names=read_column(csv_path, "name"),
+            http=web_http,
+            throttles=Throttles(
+                search=RateLimiter.per_minute(cfg["llm"]["max_calls_per_minute"]),
+                fetch=RateLimiter(1, cfg["webfetch"]["request_interval_s"]),
+            ),
+        )
+        summary = flow_memo(request.name, request.demand, request.urls, settings, deps)
+    print(
+        f"Flow memo written to {summary.memo_path}: "
+        f"{len(summary.companies)} companies, {len(summary.unknown_axes)} axes unknown."
+    )
+    if summary.searches_left is not None:
+        print("Search quota used up: only the `--url` sources were collected.")
+
+
+def closes_of(cache: StockCache) -> Callable[[str], pd.Series]:
+    """The adjusted daily closes the cache holds (an empty series for a ticker it does not have)."""
+
+    def closes(ticker: str) -> pd.Series:
+        data = cache.get(ticker)
+        return pd.Series(dtype="float64") if data is None else data.history["Close"].astype("float64")
+
+    return closes

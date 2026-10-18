@@ -10,4 +10,4 @@ import pytest
 
 @pytest.mark.xfail(strict=True, reason="I-C9-6: src/flow_store.py not implemented")
 def test_module_exists():
-    importlib.import_module("src.flow_store")
+    assert hasattr(importlib.import_module("src.flow_store"), "record_outcome")
