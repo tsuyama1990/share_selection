@@ -1,22 +1,26 @@
 """The `review` flow: per candidate, documents -> tasks T1..T5 with verified quotes -> a record. A failing ticker is
 recorded with its status and the flow goes on."""
 
-from collections.abc import Mapping
+import datetime
+import functools
+from collections.abc import Callable, Mapping
 from contextlib import ExitStack
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 import httpx
+import pandas as pd
 from tqdm import tqdm
 
 from . import fields as F
+from .cache import StockCache
 from .docstore import DocStore
 from .llm import LLMClient, LLMError
 from .memo import render_memo
 from .research import ReplyError, load_prompts, prompt_version, run_task
 from .review_store import ReviewRow, ReviewStore
-from .sector import Peers, compare
+from .sector import MomentumSettings, Peers, Universe, compare, momentum, momentum_note
 
 VERIFIED_ANSWERS = "verified_answers"  # context key: what the last task sees of the tasks before it
 SUGGESTION = ("T5", "suggestion")  # (task, answer item) copied to the columns of the same name
@@ -55,6 +59,17 @@ class ReviewSummary:
     needs_attention: int
 
 
+def _close_history(cache: StockCache) -> Callable[[str], pd.Series]:
+    @functools.cache  # every candidate reads the whole universe; load each ticker once per run
+    def history(ticker: str) -> pd.Series:
+        data = cache.get(ticker)
+        if data is None or data.history.empty or "Close" not in data.history:
+            return pd.Series(dtype=float)
+        return data.history["Close"].dropna()
+
+    return history
+
+
 @dataclass(frozen=True)
 class ReviewDeps:
     llm: LLMClient
@@ -63,6 +78,8 @@ class ReviewDeps:
     store: DocStore
     peers: Peers | None  # sector comparison of each reviewed ticker
     memo_dir: Path | None  # where a memo per reviewed ticker is written
+    universe: Universe | None = None  # daily closes of the run's tickers (industry momentum)
+    momentum_settings: MomentumSettings | None = None
 
     @classmethod
     def from_config(
@@ -76,8 +93,15 @@ class ReviewDeps:
         llm = LLMClient.from_config(cfg, http, env)
         prompts = load_prompts(root / cfg["review"]["prompt_dir"])
         reviews = stack.enter_context(ReviewStore.from_config(cfg, root))
-        memo_dir = root / cfg["memo"]["dir"] if peers else None
-        return cls(llm, prompts, reviews, stack.enter_context(DocStore.from_config(cfg, root)), peers, memo_dir)
+        memo_dir = root / cfg["memo"]["dir"] if peers is not None else None
+        universe: Universe | None = None
+        momentum_settings: MomentumSettings | None = None
+        if peers is not None:
+            cache = stack.enter_context(StockCache.from_config(cfg, root))
+            universe = Universe(_close_history(cache), peers.tickers, peers.sectors)
+            momentum_settings = MomentumSettings.from_config(cfg)
+        store = stack.enter_context(DocStore.from_config(cfg, root))
+        return cls(llm, prompts, reviews, store, peers, memo_dir, universe, momentum_settings)
 
 
 def review_candidates(
@@ -104,8 +128,13 @@ def _process(
 ) -> ReviewRow:
     """Review one ticker, record it with its sector comparison and write its memo."""
     row = _review_ticker(ticker, metrics, settings, deps)
-    if deps.peers:
-        row = replace(row, sector_comparison=compare(ticker, metrics, deps.peers))
+    if deps.peers is not None:
+        comparison = compare(ticker, metrics, deps.peers)
+        if deps.universe is not None and deps.momentum_settings is not None:
+            mom = momentum(deps.universe, ticker, deps.momentum_settings, datetime.date.today())
+            mom["note"] = momentum_note(mom, deps.momentum_settings)
+            comparison["momentum"] = mom
+        row = replace(row, sector_comparison=comparison)
     deps.reviews.record_review(run_id, row)
     if deps.memo_dir and row.status == F.ReviewStatus.OK:
         sources = {d.doc_id: d.source_ref for d in deps.store.documents(ticker) if d.doc_id in row.doc_ids}

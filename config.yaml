@@ -234,6 +234,9 @@ review:
 sector:
   metrics: [Real_PSR, PBR, Improvement_Yield(%)]  # Compared metrics (names of src/fields.py)
   min_peers: 5                   # A sector's median needs at least this many tickers with a value; else it is missing
+  momentum_months: 3             # Look-back window of the industry momentum (months of daily closes)
+  momentum_note_top_share: 0.334 # Note only when industry_rank / industries <= this (top third)
+  momentum_note_position: 0.5    # ... and the candidate's position in its industry is above this (lower half)
 
 # ------------------------------------------
 # 16. memo: one Markdown research memo per reviewed ticker (`main.py review`; under results/, git-ignored)

@@ -30,6 +30,24 @@ def _peers_table(comparison: dict[str, Any]) -> list[str]:
     return lines
 
 
+def _momentum_lines(momentum: dict[str, Any]) -> list[str]:
+    excess = momentum.get("industry_excess")
+    rank = momentum.get("industry_rank")
+    industries = momentum.get("industries")
+    position = momentum.get("position")
+    excess_text = "-" if excess is None else f"{excess:+.2%}"
+    rank_text = "-" if rank is None or not industries else f"{rank} / {industries}"
+    position_text = "-" if position is None else f"{position:.1f}"
+    lines = [
+        "",
+        f"業種の勢い（{momentum.get('months')} か月）: 超過リターン {excess_text}、"
+        f"全業種の中の順位 {rank_text}、業種の中の位置 {position_text}",
+    ]
+    if momentum.get("note"):
+        lines.append("先に上がった会社はその後負けやすい（有意ではない）")
+    return lines
+
+
 def render_memo(
     ticker: str, name: str, review: dict[str, Any], comparison: dict[str, Any] | None, sources: dict[str, str]
 ) -> str:
@@ -42,4 +60,6 @@ def render_memo(
         lines += ["", *_task_lines(task, answer, review["evidence"][task], sources)]
     if comparison:
         lines += ["", *_peers_table(comparison)]
+        if comparison.get("momentum"):
+            lines += _momentum_lines(comparison["momentum"])
     return "\n".join(lines) + "\n"
