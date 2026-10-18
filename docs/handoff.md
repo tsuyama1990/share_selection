@@ -8,7 +8,7 @@
 |---|---|---|
 | Value Turn（月 1 回のスクリーン） | 実装済み。一次（足切り・改善・順位）、二次（`docs`・`review`、品質の関門 `review-eval`）、記録と答え合わせ（`evaluate`）、`backup` | `docs/selection_flow.md`、`docs/architecture/L1_architecture.md`（C1〜C7） |
 | Tailwind Watch（流れの調査） | 実装済み（2026-10-18）。`profiles`・`flow-memo`・`flow-decide`、`evaluate` での判断の答え合わせ、Value Turn の調査メモへの業種の勢い | `docs/tailwind_watch_design.md`（方針と学び）、L1 C9・R8〜R13、`L2_C9_tailwind.md`、`L3_tailwind.md` |
-| git | main は origin より 29 コミット先。**プッシュしていない**（ユーザーの指示があるときだけ） | — |
+| git | main は origin より先に進んでいて、**プッシュしていない**（`git log --oneline origin/main..main` で確認。プッシュはユーザーの指示があるときだけ） | — |
 
 ## 2. 運用の手順
 
