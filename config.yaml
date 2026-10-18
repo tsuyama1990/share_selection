@@ -251,3 +251,21 @@ memo:
 backup:
   dir: "~/share_selection_backup"   # Must be OUTSIDE the repository (it is public); `~` is expanded; one folder per run, named by date and time
   keep: 5                           # Newest snapshots kept; older ones are deleted
+
+# ------------------------------------------
+# 18. flow: Tailwind Watch research memos on a PEST flow the user names (`main.py flow-memo`; docs/architecture/L3_tailwind.md)
+# ------------------------------------------
+flow:
+  db_file: "flow.duckdb"         # Flows, axes, maps and decisions (git-ignored: quotes and per-company calls)
+  memo_dir: "results/flows"      # Research memos (Markdown), one per flow and date
+  prompts_dir: "prompts/flow"    # Prompt files; the version is the hash of their content
+  search_prompt: >-
+    「{name}」（{demand}）について、政府・業界団体・企業の一次情報（予算、法令・指針、取引条件、市場規模）と、
+    関連する報道を調べてください。
+  max_sources: 5                 # Cited sources fetched per flow
+  max_doc_chars: 20000           # A document is cut to this many characters before the LLM sees it
+  axes: [scale, compulsion, persistence, attention, priced_in, ending]  # Answer items of the axes task, in order
+  map:
+    max_terms: 8                 # Search terms asked from the LLM for the company map
+    top_k: 20                    # Companies (by matched terms) checked by the LLM; bounds the LLM calls
+  per_max: 100                   # PER at or above this is listed apart as extremely expensive (no unified PER cut; user 2026-10-18)

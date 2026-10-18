@@ -19,7 +19,7 @@
 |---|---|---|---|
 | `docstore.py` | `Company`、`Document`、`DocStore`、`DocumentRewriteError` | 文書・EDINET の索引・取得の失敗の保存と検索。同じ doc_id への別の本文の保存を拒む | ✅ |
 | `edinet.py` | `EdinetClient`、`parse_index`、`extract_sections`、`sec_code`、`update_index`、`fetch_annual_report` | EDINET API v2 の呼び出し、書類一覧の解析、ZIP の本文 CSV からの節の抽出、索引の差分更新、最新の有価証券報告書の保存 | ✅ |
-| `webfetch.py` | `extract_text`、`web_doc_id`、`fetch_document` | URL の取得（リダイレクト追従・サイズ上限）、HTML・PDF の本文抽出、保存 | ✅ |
+| `webfetch.py` | `extract_text`、`web_doc_id`、`fetch_document`、`download`、`fetch_page` | URL の取得（リダイレクト追従・サイズ上限）、HTML・PDF の本文抽出、保存 | ✅ |
 | `verify.py` | `normalize`、`check_claims` | 引用の照合と照合率、支えのない項目の unknown への置き換え | ✅ |
 | `sector.py` | `Peers`、`sector_medians`、`compare`、`Universe`、`MomentumSettings`、`momentum`、`momentum_note` | 業種ごとの中央値と、候補の同業比較。業種の勢い（`L2_C4_stage2_research.md` 3.1 節） | ✅ |
 | `research.py` | `ReplyError`、`TaskResult`、`load_prompts`、`prompt_version`、`build_messages`、`parse_reply`、`run_task` | T1〜T5 の実行（プロンプトの組み立て、JSON の検証と 1 回の再依頼、照合） | ✅ |

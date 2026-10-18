@@ -14,7 +14,8 @@ from src.cache import StockCache, refresh_all
 from src.collect import CollectClients, CollectSettings, collect_documents
 from src.config import CONFIG_FILE, ROOT, MissingKeyError, load_config
 from src.earnings_calendar import load_calendar, update_calendar_csv
-from src.flows import EvalNotPassedError, collect_run, profiles_run, review_run
+from src.flow import MissingProfilesError
+from src.flows import EvalNotPassedError, MemoRequest, collect_run, flow_memo_run, profiles_run, review_run
 from src.llm import smoke_check
 from src.outcomes import evaluate_recorded
 from src.records import RecordStore, RunInfo, git_sha, latest_issue
@@ -124,6 +125,10 @@ def cmd_review_eval(cfg: Cfg, args: Args) -> None:
         sys.exit(1)
 
 
+def cmd_flow_memo(cfg: Cfg, args: Args) -> None:
+    flow_memo_run(cfg, ROOT, os.environ, MemoRequest(args.name, args.demand, args.url))
+
+
 def cmd_backup(cfg: Cfg, args: Args) -> None:
     try:
         snapshot = backup_from_config(cfg, ROOT, datetime.datetime.now())
@@ -150,6 +155,7 @@ COMMANDS: dict[str, tuple[Callable[[Cfg, Args], None], str]] = {
     "profiles": (cmd_profiles, "Store the EDINET annual report sections of every ticker"),
     "review": (cmd_review, "LLM research on a run's stage 2 candidates (needs a passed review-eval)"),
     "review-eval": (cmd_review_eval, "Score the model and prompt version on tickers with known answers"),
+    "flow-memo": (cmd_flow_memo, "Research a flow the user names and write its memo (run `profiles` first)"),
     "backup": (cmd_backup, "Copy the ignored records (reviews, memos, document store) outside the repository"),
     "llm-check": (cmd_llm_check, "Smoke-test the LLM fallback chain and Gemini search"),
 }
@@ -168,6 +174,11 @@ def build_parser() -> argparse.ArgumentParser:
     commands["review"].add_argument(
         "--tickers", help="Comma-separated tickers to review (default: the unreviewed candidates)"
     )
+    commands["flow-memo"].add_argument("--name", required=True, help="Name of the flow")
+    commands["flow-memo"].add_argument("--demand", required=True, help="The demand the flow stands for")
+    commands["flow-memo"].add_argument(
+        "--url", action="append", default=[], help="A source the user already found (repeatable)"
+    )
     return parser
 
 
@@ -181,6 +192,9 @@ def main() -> None:
         return
     try:
         COMMANDS[args.command][0](cfg, args)
+    except MissingProfilesError:
+        print("Error: the document store holds no profile text. Run `profiles` first.")
+        sys.exit(1)
     except (MissingKeyError, EvalNotPassedError) as e:
         print(f"Error: {e}.")
         sys.exit(1)

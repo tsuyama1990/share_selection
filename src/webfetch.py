@@ -18,6 +18,7 @@ DEFAULT_CHARSET = "utf-8"
 NOT_ABOUT_COMPANY = "not about the company"
 PDF_LOG_LEVEL = logging.ERROR  # pypdf warns about fonts on many valid PDFs
 CHARSET = re.compile(rb"charset\s*=\s*[\"']?([\w-]+)", re.IGNORECASE)
+FETCH_ERRORS: tuple[type[BaseException], ...] = (httpx.HTTPError, ValueError, LookupError, PyPdfError)
 
 logging.getLogger("pypdf").setLevel(PDF_LOG_LEVEL)
 
@@ -68,7 +69,7 @@ def extract_text(body: bytes, content_type: str) -> tuple[str, str]:
     return _collapse("".join(parser.title)), _collapse(" ".join(parser.text))
 
 
-def _download(url: str, http: httpx.Client, max_bytes: int) -> tuple[str, str, bytes]:
+def download(url: str, http: httpx.Client, max_bytes: int) -> tuple[str, str, bytes]:
     """``(final_url, content_type, body)``; raises ValueError on an error status or a body over ``max_bytes``."""
     with http.stream("GET", url, follow_redirects=True) as resp:
         if resp.is_error:
@@ -81,24 +82,50 @@ def _download(url: str, http: httpx.Client, max_bytes: int) -> tuple[str, str, b
         return str(resp.url), resp.headers.get("content-type", ""), bytes(body)
 
 
+def _error_reason(error: BaseException) -> str:
+    """The reason to record: the message of a ValueError, else the exception's class name."""
+    return str(error) if isinstance(error, ValueError) else type(error).__name__
+
+
 def fetch_document(url: str, company: Company, http: httpx.Client, store: DocStore, max_bytes: int) -> str | None:
     """Store the page behind ``url`` (first fetch of a final URL wins).
 
     A failure, or a page that does not name the company, is recorded and gives None.
     """
     try:
-        final_url, content_type, body = _download(url, http, max_bytes)
+        final_url, content_type, body = download(url, http, max_bytes)
         doc_id = web_doc_id(final_url)
         if store.has(doc_id):
             return doc_id
         title, text = extract_text(body, content_type)
         if not text:
             raise ValueError("empty text")
-    except (httpx.HTTPError, ValueError, LookupError, PyPdfError) as e:
-        store.record_error(company.ticker, "web", url, str(e) if isinstance(e, ValueError) else type(e).__name__)
+    except FETCH_ERRORS as e:
+        store.record_error(company.ticker, "web", url, _error_reason(e))
         return None
     if not company.mentioned_in(title + text):
         store.record_error(company.ticker, "web", url, NOT_ABOUT_COMPANY)
         return None
     store.put(Document(doc_id, company.ticker, "web", final_url, title, datetime.datetime.now(), text))
+    return doc_id
+
+
+def fetch_page(url: str, http: httpx.Client, store: DocStore, max_bytes: int, owner: str) -> str | None:
+    """Store the page behind ``url`` under ``owner`` (first fetch of a final URL wins).
+
+    The page is not matched to a company: it is the source of a flow memo, not of a ticker. A failure is recorded
+    under ``owner`` and gives None.
+    """
+    try:
+        final_url, content_type, body = download(url, http, max_bytes)
+        doc_id = web_doc_id(final_url)
+        if store.has(doc_id):
+            return doc_id
+        title, text = extract_text(body, content_type)
+        if not text:
+            raise ValueError("empty text")
+    except FETCH_ERRORS as e:
+        store.record_error(owner, "web", url, _error_reason(e))
+        return None
+    store.put(Document(doc_id, owner, "web", final_url, title, datetime.datetime.now(), text))
     return doc_id

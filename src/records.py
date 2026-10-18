@@ -138,6 +138,15 @@ class RecordStore:
         sql = "SELECT ticker, metrics FROM screen_results WHERE run_id = ? AND metrics IS NOT NULL"
         return {t: json.loads(m) for t, m in self.con.execute(sql, [run_id]).fetchall()}
 
+    def screen_row(self, run_id: str, ticker: str) -> dict[str, Any]:
+        """One ``screen_results`` row: the flags plus the flattened metrics JSON; empty when the ticker has no row."""
+        sql = "SELECT stage1_pass, stage1_fail_rule, metrics FROM screen_results WHERE run_id = ? AND ticker = ?"
+        row = self.con.execute(sql, [run_id, ticker]).fetchone()
+        if row is None:
+            return {}
+        passed, fail_rule, metrics = row
+        return {"stage1_pass": passed, "stage1_fail_rule": fail_rule, **(json.loads(metrics) if metrics else {})}
+
     def has_outcomes(self, run_id: str, horizon_months: int) -> bool:
         sql = "SELECT 1 FROM outcomes WHERE run_id = ? AND horizon_months = ? LIMIT 1"
         return self.con.execute(sql, [run_id, horizon_months]).fetchone() is not None
