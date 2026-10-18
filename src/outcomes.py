@@ -52,14 +52,6 @@ def _returns(
     return [r for r in (_ticker_return(get, t, t0, t1) for t in tickers) if r is not None]
 
 
-def _mean_return(
-    tickers: Iterable[str], get: Callable[[str], pd.Series], t0: pd.Timestamp, t1: pd.Timestamp
-) -> float | None:
-    """The equal-weight mean of the tickers' returns; None when no ticker has both closes."""
-    rets = _returns(tickers, get, t0, t1)
-    return sum(rets) / len(rets) if rets else None
-
-
 def evaluate(
     store: RecordStore,
     history: Callable[[str], pd.Series],
@@ -106,22 +98,21 @@ def evaluate_decisions(
     laggards to compare against.
     """
     get = _history_cache(history)
-    due = [(row, h) for h in months for row in flows.due_decisions(h, today.date())]
+    due = [
+        (row, pd.Timestamp(row.decided_at).normalize(), h)
+        for h in months
+        for row in flows.due_decisions(h, today.date())
+    ]
     if not due:
         return 0
-    control_of = {
-        (row.ticker, pd.Timestamp(row.decided_at).normalize()): list(
-            controls(row.ticker, pd.Timestamp(row.decided_at).normalize().date())
-        )
-        for row, _ in due
-    }
-    universe = {row.ticker for row, _ in due} | {t for ts in control_of.values() for t in ts}
+    control_of = {(row.ticker, t0): list(controls(row.ticker, t0.date())) for row, t0, _ in due}
+    universe = {row.ticker for row, _, _ in due} | {t for ts in control_of.values() for t in ts}
     added = 0
-    for row, h in due:
-        t0 = pd.Timestamp(row.decided_at).normalize()
+    for row, t0, h in due:
         t1 = t0 + pd.DateOffset(months=h)
         ret = _ticker_return(get, row.ticker, t0, t1)
-        bench = _mean_return(universe, get, t0, t1)
+        rets = _returns(universe, get, t0, t1)
+        bench = sum(rets) / len(rets) if rets else None
         ctl_rets = _returns(control_of[(row.ticker, t0)], get, t0, t1)
         ctl_mean = sum(ctl_rets) / len(ctl_rets) if ctl_rets else None
         flows.record_outcome(
@@ -142,8 +133,8 @@ def evaluate_decisions(
 def _select_controls(
     cfg: dict[str, Any], root: Path, store: RecordStore, history: Callable[[str], pd.Series]
 ) -> Callable[[str, datetime.date], list[str]]:
-    """A closure that returns the same-sector companies of a decision ticker whose past gain and PBR are at or below
-    the sector's median as of the decision month (a lambda when there is nothing to compare against)."""
+    """A closure that lists the same-sector companies of a ticker whose past gain and PBR are at or below the
+    sector's median at the decision date."""
     sectors = read_column(root / cfg["system"]["input_csv"], "sector33")
     past = int(cfg["flow"]["control"]["past_months"])
     metrics = store.run_metrics(store.resolve_run(None))

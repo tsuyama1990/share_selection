@@ -4,6 +4,7 @@ A flow, its axes and the company map are written here, so a memo can be rendered
 Decisions (``flow-decide``) and their outcomes (``evaluate``) are kept here too.
 """
 
+import calendar
 import datetime
 import hashlib
 import json
@@ -84,12 +85,6 @@ class OutcomeRow:
     control_n: int
 
 
-def _flow_id(row: FlowRow) -> str:
-    """Today plus a digest of the name and demand: a retry of the same run overwrites it, a new run does not."""
-    digest = hashlib.blake2s(f"{row.name}\n{row.demand}".encode()).hexdigest()[:8]
-    return f"{datetime.date.today():%Y%m%d}-{digest}"
-
-
 def _company_row(values: tuple[Any, ...]) -> CompanyRow:
     ticker, tier, exposure, evidence, run_id, passed, fail_rule, valuations, rank = values
     return CompanyRow(
@@ -117,8 +112,9 @@ class FlowStore:
         self.con.close()
 
     def save_flow(self, row: FlowRow) -> str:
-        """Store the flow and return its id; saving the same flow again (a retry) replaces it."""
-        flow_id = _flow_id(row)
+        """Store the flow and return its id (the same name and demand on the same day replaces the row)."""
+        digest = hashlib.blake2s(f"{row.name}\n{row.demand}".encode()).hexdigest()[:8]
+        flow_id = f"{datetime.date.today():%Y%m%d}-{digest}"
         self.con.execute(
             "INSERT OR REPLACE INTO flows VALUES (?, ?, ?, ?, ?, ?, ?)",
             [
@@ -167,7 +163,6 @@ class FlowStore:
             )
 
     def axes(self, flow_id: str) -> list[AxisRow]:
-        """The axes recorded for the flow."""
         sql = "SELECT axis, answer, evidence, verified_ratio FROM flow_axes WHERE flow_id = ?"
         return [
             AxisRow(axis, json.loads(answer), json.loads(evidence), ratio)
@@ -175,7 +170,6 @@ class FlowStore:
         ]
 
     def companies(self, flow_id: str) -> list[CompanyRow]:
-        """The company map recorded for the flow."""
         sql = (
             "SELECT ticker, tier, exposure, evidence, run_id, stage1_pass, fail_rule, valuations, past3m_rank"
             " FROM flow_companies WHERE flow_id = ?"
@@ -212,9 +206,4 @@ def _months_after(day: datetime.date, months: int) -> datetime.date:
     """The same day ``months`` later, or the month's last day when it has fewer days."""
     total = day.month - 1 + months
     year, month = day.year + total // 12, total % 12 + 1
-    for d in range(day.day, 0, -1):
-        try:
-            return datetime.date(year, month, d)
-        except ValueError:
-            continue
-    raise ValueError(day)
+    return datetime.date(year, month, min(day.day, calendar.monthrange(year, month)[1]))
