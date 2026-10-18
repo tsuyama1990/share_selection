@@ -27,7 +27,7 @@
 ```
 入力：最新の実行の二次候補（screen_results / 結果 CSV）
  1. 業種の文脈（sector.py）：同じ実行の全銘柄の指標から、業種ごとの中央値（実質PSR、PBR、改善の大きさ）→ 候補ごとの同業比較
-    🆕 追加（Tailwind Watch の ①、`docs/tailwind_watch_design.md` 3 章）：キャッシュの株価から、候補の業種の直近 3 か月の超過リターン（全銘柄の等加重に対して）と全業種の中の順位、候補の直近 3 か月の上昇の業種の中の位置（上から何割目か）。選ぶ条件には使わず、調査メモに事実と注記（先に上がった会社はその後負けやすい、有意ではない）を載せる
+    業種の勢い（3.1 節）も計算し、同業比較の表の下に 1 行で載せる。選ぶ条件には使わない
  2. 文書の読み出し：文書ストアから候補の文書（`docs` コマンドが事前に取得。L2 C2 2.1 節）
  3. 調査（research.py）：T1 改善の源泉、T2 一時的な損益、T3 資本の使い方、T4 忘れられている理由 → T5 総合
  4. 照合（verify.py）：各主張の引用が、渡した文書の本文に含まれるか
@@ -35,6 +35,35 @@
 ```
 
 銘柄の失敗（文書が取れない、全プロバイダーの失敗、JSON 不正）は、その銘柄の `reviews` に状態として残し、次の銘柄へ進む。
+
+### 3.1 業種の勢い（R13）
+
+同業比較の表の下に、事実として 1 行を足す。二次候補と順位は変えない（選ぶ条件に使わない）。
+
+| 項目 | 内容 |
+|---|---|
+| データ | キャッシュ（`stock_cache` の `history`、日次 1 年）の終値。業種は `japan_tickers.csv` の sector33。母集団はその実行の全銘柄（足切りの前） |
+| 期間 | `sector.momentum_months`（初期値 3）。基準日はキャッシュの最新の営業日、始点はその `months` か月前。始点以前の最後の終値と基準日の終値で単純リターンを出す |
+| 業種の超過リターン | 業種の全銘柄の期間リターンの等加重平均 − 全銘柄の期間リターンの等加重平均。単純リターン（対数にしない） |
+| 全業種の中の順位 | 業種の超過リターンを高い順に並べた順位（1 が最も高い）。同値は同じ順位（最も小さい順位を付ける） |
+| 業種の中の位置 | 候補の期間リターンの、同じ業種の中での順位（1 が最も高い）÷ 業種の銘柄数。0〜1。記録はそのまま、表示は四捨五入して 0.1 刻み |
+| 記録 | `reviews.sector_comparison` の `momentum` キーに {months, industry_excess, industry_rank, industries, position}。計算できない（履歴が足りない、銘柄がない）値は null |
+| 調査メモ | 業種の順位が全業種の上位 `sector.momentum_note_top_share`（初期値 1/3。`industry_rank ÷ industries` がこれ以下）に入り、かつ候補の位置が `sector.momentum_note_position`（初期値 0.5）より大きい（下半分）ときだけ「先に上がった会社はその後負けやすい（有意ではない）」と注記する |
+| 関数 | `sector.py` の `momentum`。C9（`flow-memo`）は同じ関数で地図の中の位置を計算する（重複させない） |
+
+```python
+def momentum(
+    history: Callable[[str], pd.Series],
+    tickers: Sequence[str],
+    sectors: dict[str, str],
+    target: str,
+    months: int,
+    today: datetime.date,
+) -> dict[str, Any]:
+    """Industry excess return, its rank, and the position of ``target`` in its industry (None if short)."""
+```
+
+`history(ticker)` は日次の終値（新しい順）、`today` は基準日。履歴が始点に届かない銘柄は母集団から外す。
 
 ## 4. 調査タスクのインタフェース
 
@@ -75,7 +104,7 @@
 
 ## 7. 設定（`config.yaml` に追加する節）
 
-`llm:`（✅ 実装済み）、`review:`（対象の上限件数、照合率の下限、プロンプトの版、1 文書の文字数の上限、書き出し先）、`sector:`（比較に使う指標。🆕 勢いを測る月数）。
+`llm:`（✅ 実装済み）、`review:`（対象の上限件数、照合率の下限、プロンプトの版、1 文書の文字数の上限、書き出し先）、`sector:`（比較に使う指標、`momentum_months`（初期値 3）、`momentum_note_top_share`（初期値 1/3）、`momentum_note_position`（初期値 0.5））。
 
 ## 8. 結合テスト計画
 
@@ -84,10 +113,11 @@ LLM・検索・EDINET・Web はモック、DB は一時ファイル。
 | ID | 対象 | 確かめること | 状態 |
 |---|---|---|---|
 | I-C4-1 | `llm.py` とモックの HTTP | フォールバックの順番、キーのないプロバイダーを飛ばす、全失敗のエラー、検索の解析、キーが URL・例外・出力に出ない | ✅（`tests/integration/test_llm.py`） |
-| I-C4-2 | `sector.py` と実行記録 | 業種ごとの中央値、候補の同業比較、同業が少ない業種の扱い（🆕 業種の勢いと業種の中の位置は、実装と同じブランチでこのテストに足す） | ✅ `tests/integration/test_i_c4_2_sector.py` |
+| I-C4-2 | `sector.py` と実行記録 | 業種ごとの中央値、候補の同業比較、同業が少ない業種の扱い | ✅ `tests/integration/test_i_c4_2_sector.py` |
 | I-C4-3 | `research.py`＋`verify.py`＋モックの LLM | JSON の検証と 1 回の再依頼、引用の照合で捨てる主張、unknown への置き換え、照合率 | ✅ `tests/integration/test_i_c4_3_research_verify.py` |
 | I-C4-4 | `review` の 1 銘柄分（文書ストア・LLM・記録） | `reviews` に 1 行、照合できた根拠だけが残る、失敗は状態として残り次へ進む | ✅ `tests/integration/test_i_c4_4_review_one.py` |
 | I-C4-5 | `review-eval`（偽の LLM・一時 DB） | 正解との一致・JSON の不正・照合率で合否、合格の記録が無いと `review` が拒む（拒否は E2E の E6） | ✅ `tests/integration/test_i_c4_5_review_eval.py` |
+| I-C4-6 | `sector.py` の勢いと `reviews.sector_comparison`・調査メモ（フィクスチャのキャッシュ：2 業種、片方だけ上昇、履歴の足りない銘柄 1 つ） | 業種の超過リターンと全業種の中の順位、業種の中の位置が計算どおり。履歴の足りない銘柄は null。上昇した業種で候補が下半分のときだけ注記が付く。二次候補と順位は変わらない | 🆕 |
 
 E2E（L1 E6）は、複数銘柄で `review` を通しで実行し、調査メモまで出ることを確かめる。
 
