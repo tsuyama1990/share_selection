@@ -157,7 +157,7 @@ E2E テストは、この表の形式が守られることを確かめる。
 | E9 | EDINET をモックした `profiles`（一部失敗） | 銘柄ごとの「事業の内容」が文書ストアに入り、失敗は記録されて全体は止まらない。2 回目は取得済みを飛ばす | R9・N6 | 🆕（`tests/e2e/test_e9_profiles.py`） |
 | E10 | 検索・Web・LLM をモックし、フィクスチャの文書ストア・記録・キャッシュで `flow-memo` | 調査メモに 5 つの軸（照合できた引用だけ、無ければ「不明」）、地図（照合できた会社だけ）、会社ごとの判定と数値が出て、記録に残る。`profiles` 未実行なら案内して終了コード 1。キーが出力に現れない | R8・R9・R10・N2・N3・N7 | 🆕（`tests/e2e/test_e10_flow_memo.py`） |
 | E11 | `flow-decide` → 期間を過ぎた記録で `evaluate`（価格をモック） | 判断が記録され、期間を過ぎた判断だけ超過リターンと比べる相手の超過リターンが計算される | R11・R12 | 🆕（`tests/e2e/test_e11_flow_decide.py`） |
-| E12 | 株価の履歴を含むフィクスチャのキャッシュで `review-eval` → `review`（LLM をモック） | 調査メモと `reviews.sector_comparison` に業種の勢い（超過リターンと順位）と業種の中の位置が入る。二次候補の顔ぶれと順位は変わらない | R13 | 🆕（`tests/e2e/test_e12_review_momentum.py`） |
+| E12 | 株価の履歴を含むフィクスチャのキャッシュで `review-eval` → `review`（LLM をモック） | 調査メモと `reviews.sector_comparison` に業種の勢い（超過リターンと順位）と業種の中の位置が入る。二次候補の顔ぶれと順位は変わらない | R13 | ある（`tests/e2e/test_e12_review_momentum.py`） |
 
 ### 7.1 ライブ E2E（本物の API。CI に入れない）
 

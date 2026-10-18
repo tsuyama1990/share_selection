@@ -1,6 +1,22 @@
+import datetime
+
+import pandas as pd
 import pytest
 
-from src.sector import Peers, compare, sector_medians
+from src.sector import MomentumSettings, Peers, Universe, compare, momentum, momentum_note, sector_medians
+
+TODAY = datetime.date(2026, 4, 1)
+START = datetime.date(2026, 1, 1)
+SETTINGS = MomentumSettings(3, 1 / 3, 0.5)
+
+
+def _series(prices: dict[datetime.date, float]) -> pd.Series:
+    return pd.Series(list(prices.values()), index=pd.to_datetime(list(prices)), dtype=float)
+
+
+def _universe(prices: dict[str, dict[datetime.date, float]], sectors: dict[str, str]) -> Universe:
+    return Universe(lambda ticker: _series(prices[ticker]), list(prices), sectors)
+
 
 SECTORS = {"1.T": "A", "2.T": "A", "3.T": "A", "4.T": "B", "5.T": "B"}
 METRICS = ["PBR", "Real_PSR"]
@@ -59,3 +75,72 @@ def test_a_ticker_without_a_sector_has_no_medians():
 def test_ratio_to_a_negative_median_is_plain_division():
     peers = Peers({"A": {"PBR": -2.0}}, {"1.T": "A"}, ["PBR"])
     assert compare("1.T", {"PBR": 3.0}, peers)["metrics"]["PBR"]["ratio"] == pytest.approx(-1.5)
+
+
+def test_momentum_gives_the_industry_excess_rank_and_position():
+    prices = {
+        "1.T": {START: 100.0, TODAY: 200.0},
+        "2.T": {START: 100.0, TODAY: 100.0},
+        "3.T": {START: 100.0, TODAY: 300.0},
+    }
+    sectors = {"1.T": "A", "2.T": "A", "3.T": "B"}
+    result = momentum(_universe(prices, sectors), "1.T", SETTINGS, TODAY)
+    assert result["months"] == 3
+    assert result["industry_excess"] == pytest.approx(-0.5)
+    assert result["industry_rank"] == 2
+    assert result["industries"] == 2
+    assert result["position"] == pytest.approx(0.5)
+
+
+def test_momentum_uses_the_last_close_on_or_before_each_date_and_ignores_the_future():
+    prices = {
+        "1.T": {
+            datetime.date(2025, 12, 31): 100.0,
+            datetime.date(2026, 1, 1): 200.0,
+            datetime.date(2026, 3, 31): 300.0,
+            datetime.date(2026, 4, 2): 999.0,
+        }
+    }
+    result = momentum(_universe(prices, {"1.T": "A"}), "1.T", SETTINGS, TODAY)
+    assert result["industry_excess"] == pytest.approx(0.0)
+    assert result["position"] == pytest.approx(1.0)
+
+
+def test_a_ticker_without_a_close_before_the_start_is_left_out():
+    prices = {
+        "1.T": {START: 100.0, TODAY: 110.0},
+        "2.T": {datetime.date(2026, 2, 1): 100.0, TODAY: 200.0},
+    }
+    result = momentum(_universe(prices, {"1.T": "A", "2.T": "A"}), "1.T", SETTINGS, TODAY)
+    assert result["position"] == pytest.approx(1.0)
+    assert result["industry_excess"] == pytest.approx(0.0)
+
+
+def test_an_unknown_target_has_no_industry_or_position():
+    prices = {"1.T": {START: 1.0, TODAY: 2.0}}
+    result = momentum(_universe(prices, {"1.T": "A"}), "9.T", SETTINGS, TODAY)
+    assert result == {
+        "months": 3,
+        "industry_excess": None,
+        "industry_rank": None,
+        "industries": 1,
+        "position": None,
+    }
+
+
+def test_equal_returns_share_the_smallest_rank():
+    prices = {ticker: {START: 100.0, TODAY: 200.0} for ticker in ("1.T", "2.T", "3.T", "4.T")}
+    sectors = {"1.T": "A", "2.T": "A", "3.T": "B", "4.T": "B"}
+    result = momentum(_universe(prices, sectors), "1.T", SETTINGS, TODAY)
+    assert result["industry_rank"] == 1
+    assert result["industries"] == 2
+    assert result["position"] == pytest.approx(0.5)
+
+
+def test_note_needs_the_top_share_and_the_lower_half():
+    assert momentum_note({"industry_rank": 1, "industries": 3, "position": 0.6}, SETTINGS) is True
+    assert momentum_note({"industry_rank": 1, "industries": 3, "position": 0.5}, SETTINGS) is False
+    assert momentum_note({"industry_rank": 2, "industries": 3, "position": 0.6}, SETTINGS) is False
+    assert momentum_note({"industry_rank": None, "industries": 3, "position": 0.6}, SETTINGS) is False
+    assert momentum_note({"industry_rank": 1, "industries": 0, "position": 0.6}, SETTINGS) is False
+    assert momentum_note({"industry_rank": 1, "industries": 3, "position": None}, SETTINGS) is False
