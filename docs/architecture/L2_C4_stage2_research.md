@@ -51,19 +51,9 @@
 | 調査メモ | 業種の順位が全業種の上位 `sector.momentum_note_top_share`（初期値 1/3。`industry_rank ÷ industries` がこれ以下）に入り、かつ候補の位置が `sector.momentum_note_position`（初期値 0.5）より大きい（下半分）ときだけ「先に上がった会社はその後負けやすい（有意ではない）」と注記する |
 | 関数 | `sector.py` の `momentum`。C9（`flow-memo`）は同じ関数で地図の中の位置を計算する（重複させない） |
 
-```python
-def momentum(
-    history: Callable[[str], pd.Series],
-    tickers: Sequence[str],
-    sectors: dict[str, str],
-    target: str,
-    months: int,
-    today: datetime.date,
-) -> dict[str, Any]:
-    """Industry excess return, its rank, and the position of ``target`` in its industry (None if short)."""
-```
+シグネチャは `L3_tailwind.md` 3.4 節（母集団を `Universe`、設定を `MomentumSettings` にまとめる）。
 
-`history(ticker)` は日次の終値（新しい順）、`today` は基準日。履歴が始点に届かない銘柄は母集団から外す。
+履歴が始点に届かない銘柄は母集団から外す。
 
 ## 4. 調査タスクのインタフェース
 
@@ -137,3 +127,4 @@ E2E（L1 E6）は、複数銘柄で `review` を通しで実行し、調査メ�
 - 2026-10-15：文書の取得と検索を `docs` コマンド（C2）へ。claims に `field` を足し、`reviews` から人の判断の列を外し、1 文書の文字数の上限を足した。`reviews` と調査メモはコミットしない（公開リポジトリ）
 - 2026-10-17：流れを `review.py`、品質の関門を `review_eval.py`（I-C4-5）、記録を `review_store.py` に置いた。主のモデルは DeepSeek
 - 2026-10-18：業種の勢いと業種の中の位置（Tailwind Watch の ①）を追加予定として書いた。8.1 節の古い正解の表を削り、`L3_composition.md` と正解のファイルを正とした
+- 2026-10-18：`momentum` の引数を L3 でまとめた（6 → 4、`Universe`・`MomentumSettings`）
