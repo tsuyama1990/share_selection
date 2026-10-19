@@ -2,16 +2,15 @@
 on a flow the user names."""
 
 import datetime
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import httpx
-import pandas as pd
 
-from .cache import StockCache
+from .cache import StockCache, closes_of
 from .collect import CollectClients, CollectSettings, collect_documents, collect_profiles, companies
 from .docstore import DocStore
 from .flow import FlowDeps, FlowSettings, Throttles, flow_memo
@@ -22,7 +21,7 @@ from .research import load_prompts, prompt_version
 from .review import ReviewDeps, ReviewSettings, review_candidates
 from .sector import Peers
 from .throttle import RateLimiter
-from .tickers import read_column
+from .tickers import NAME, SECTOR33, read_column
 
 
 class EvalNotPassedError(RuntimeError):
@@ -46,7 +45,7 @@ def collect_run(cfg: dict[str, Any], root: Path, env: Mapping[str, str], run: st
             run_id = records.resolve_run(run)
             candidates = records.candidates(run_id)
         print(f"Collecting documents of {len(candidates)} candidates of run {run_id}...")
-        names = read_column(root / cfg["system"]["input_csv"], "name")
+        names = read_column(root / cfg["system"]["input_csv"], NAME)
         store = stack.enter_context(DocStore.from_config(cfg, root))
         summary = collect_documents(
             companies(candidates, names), CollectSettings.from_config(cfg), clients, store, today
@@ -74,7 +73,7 @@ def review_run(
 ) -> None:
     """Review the candidates of run ``run`` (default: the latest) and print a summary; refuse unless this prompt and
     model passed the eval."""
-    sectors = read_column(root / cfg["system"]["input_csv"], "sector33")
+    sectors = read_column(root / cfg["system"]["input_csv"], SECTOR33)
     with RecordStore.from_config(cfg, root) as records:
         run_id = records.resolve_run(run)
         candidates = records.candidates(run_id)
@@ -108,8 +107,8 @@ def flow_memo_run(cfg: dict[str, Any], root: Path, env: Mapping[str, str], reque
             flows=stack.enter_context(FlowStore.from_config(cfg, root)),
             records=stack.enter_context(RecordStore.from_config(cfg, root)),
             history=closes_of(stack.enter_context(StockCache.from_config(cfg, root))),
-            sectors=read_column(csv_path, "sector33"),
-            names=read_column(csv_path, "name"),
+            sectors=read_column(csv_path, SECTOR33),
+            names=read_column(csv_path, NAME),
             http=web_http,
             throttles=Throttles(
                 search=RateLimiter.per_minute(cfg["llm"]["max_calls_per_minute"]),
@@ -124,13 +123,3 @@ def flow_memo_run(cfg: dict[str, Any], root: Path, env: Mapping[str, str], reque
     )
     if summary.searches_left is not None:
         print("Search quota used up: only the `--url` sources were collected.")
-
-
-def closes_of(cache: StockCache) -> Callable[[str], pd.Series]:
-    """The adjusted daily closes the cache holds (an empty series for a ticker it does not have)."""
-
-    def closes(ticker: str) -> pd.Series:
-        data = cache.get(ticker)
-        return pd.Series(dtype="float64") if data is None else data.history["Close"].astype("float64")
-
-    return closes

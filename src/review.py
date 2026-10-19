@@ -2,19 +2,17 @@
 recorded with its status and the flow goes on."""
 
 import datetime
-import functools
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from contextlib import ExitStack
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
 import httpx
-import pandas as pd
 from tqdm import tqdm
 
 from . import fields as F
-from .cache import StockCache
+from .cache import StockCache, closes_of
 from .docstore import DocStore
 from .llm import LLMClient, LLMError
 from .memo import render_memo
@@ -59,17 +57,6 @@ class ReviewSummary:
     needs_attention: int
 
 
-def _close_history(cache: StockCache) -> Callable[[str], pd.Series]:
-    @functools.cache  # every candidate reads the whole universe; load each ticker once per run
-    def history(ticker: str) -> pd.Series:
-        data = cache.get(ticker)
-        if data is None or data.history.empty or "Close" not in data.history:
-            return pd.Series(dtype=float)
-        return data.history["Close"].dropna()
-
-    return history
-
-
 @dataclass(frozen=True)
 class ReviewDeps:
     llm: LLMClient
@@ -98,7 +85,7 @@ class ReviewDeps:
         momentum_settings: MomentumSettings | None = None
         if peers is not None:
             cache = stack.enter_context(StockCache.from_config(cfg, root))
-            universe = Universe(_close_history(cache), peers.tickers, peers.sectors)
+            universe = Universe(closes_of(cache), peers.tickers, peers.sectors)
             momentum_settings = MomentumSettings.from_config(cfg)
         store = stack.enter_context(DocStore.from_config(cfg, root))
         return cls(llm, prompts, reviews, store, peers, memo_dir, universe, momentum_settings)
