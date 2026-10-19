@@ -18,7 +18,16 @@ DEFAULT_CHARSET = "utf-8"
 NOT_ABOUT_COMPANY = "not about the company"
 PDF_LOG_LEVEL = logging.ERROR  # pypdf warns about fonts on many valid PDFs
 CHARSET = re.compile(rb"charset\s*=\s*[\"']?([\w-]+)", re.IGNORECASE)
-FETCH_ERRORS: tuple[type[BaseException], ...] = (httpx.HTTPError, ValueError, LookupError, PyPdfError)
+# pypdf also raises TypeError, AttributeError and AssertionError on broken files [推論]; a bad page must not stop a flow
+FETCH_ERRORS: tuple[type[BaseException], ...] = (
+    httpx.HTTPError,
+    ValueError,
+    LookupError,
+    PyPdfError,
+    TypeError,
+    AttributeError,
+    AssertionError,
+)
 
 logging.getLogger("pypdf").setLevel(PDF_LOG_LEVEL)
 

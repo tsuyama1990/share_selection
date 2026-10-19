@@ -102,7 +102,10 @@ def cmd_docs(cfg: Cfg, args: Args) -> None:
 
 
 def cmd_profiles(cfg: Cfg, args: Args) -> None:
-    profiles_run(cfg, ROOT, os.environ, read_universe(cfg), datetime.date.today())
+    tickers = (
+        [t if t.endswith(".T") else f"{t}.T" for t in args.tickers.split(",")] if args.tickers else read_universe(cfg)
+    )
+    profiles_run(cfg, ROOT, os.environ, tickers, datetime.date.today())
 
 
 def cmd_review(cfg: Cfg, args: Args) -> None:
@@ -178,6 +181,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--issue", help="Shikiho issue (YYYY-MM) the ticker research is based on (default: latest released)"
     )
     commands["docs"].add_argument("--run", help="Run id (default: the latest run)")
+    commands["profiles"].add_argument("--tickers", help="Comma-separated codes (default: every listed ticker)")
     commands["review"].add_argument("--run", help="Run id (default: the latest run)")
     commands["review"].add_argument(
         "--tickers", help="Comma-separated tickers to review (default: the unreviewed candidates)"

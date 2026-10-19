@@ -130,7 +130,8 @@ class FlowStore:
         return flow_id
 
     def record_axes(self, flow_id: str, rows: list[AxisRow]) -> None:
-        """Store the axes of the flow, replacing an axis recorded earlier under the same name."""
+        """Store the axes of the flow, replacing every axis recorded earlier for it."""
+        self.con.execute("DELETE FROM flow_axes WHERE flow_id = ?", [flow_id])
         for row in rows:
             self.con.execute(
                 "INSERT OR REPLACE INTO flow_axes VALUES (?, ?, ?, ?, ?)",
@@ -144,7 +145,8 @@ class FlowStore:
             )
 
     def record_companies(self, flow_id: str, rows: list[CompanyRow]) -> None:
-        """Store the company map of the flow, replacing a company recorded earlier for the same ticker."""
+        """Store the company map of the flow; a company of an earlier run that is not in ``rows`` is removed."""
+        self.con.execute("DELETE FROM flow_companies WHERE flow_id = ?", [flow_id])
         for row in rows:
             self.con.execute(
                 "INSERT OR REPLACE INTO flow_companies VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",

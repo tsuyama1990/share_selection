@@ -17,7 +17,7 @@ CFG = {
         "max_sources": 5,
         "max_doc_chars": 20000,
         "axes": ["需要の波", "終わりの手がかり", "競合", "値決め", "リスク"],
-        "map": {"max_terms": 5, "top_k": 10},
+        "map": {"max_terms": 5, "top_k": 10, "sections": ["Biz"]},
         "per_max": 100,
     },
     "webfetch": {"max_bytes": 20000000},

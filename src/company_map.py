@@ -27,12 +27,15 @@ class MapSettings:
     max_terms: int
     top_k: int
     max_doc_chars: int
+    sections: tuple[str, ...]  # the report sections that say what a company sells; the ranking reads only these
 
     @classmethod
     def from_config(cls, cfg: dict[str, Any]) -> "MapSettings":
-        """``flow.map.max_terms``, ``flow.map.top_k`` and ``flow.max_doc_chars`` (the same cut as the review)."""
+        """``flow.map`` and ``flow.max_doc_chars`` (the same cut as the review)."""
         flow = cfg["flow"]
-        return cls(flow["map"]["max_terms"], flow["map"]["top_k"], flow["max_doc_chars"])
+        return cls(
+            flow["map"]["max_terms"], flow["map"]["top_k"], flow["max_doc_chars"], tuple(flow["map"]["sections"])
+        )
 
 
 @dataclass(frozen=True)
@@ -56,6 +59,7 @@ class MapResult:
     terms: list[str]
     ranked: list[tuple[str, int]]
     hits: list[CompanyHit]
+    failed: list[str]  # tickers whose confirmation raised an LLM or reply error
 
 
 def search_terms(demand: str, settings: MapSettings, deps: MapDeps) -> list[str]:
@@ -95,25 +99,26 @@ def rank_companies(terms: list[str], profiles: dict[str, str], limit: int) -> li
 def build_map(demand: str, settings: MapSettings, deps: MapDeps) -> MapResult:
     """Search terms, the ranking over every profile text, then the top ``top_k`` companies confirmed by quotes."""
     terms = search_terms(demand, settings, deps)
-    ranked = rank_companies(terms, deps.store.profiles(), settings.top_k)
-    hits = []
+    ranked = rank_companies(terms, deps.store.profiles(settings.sections), settings.top_k)
+    hits, failed = [], []
     for ticker, _matched in ranked:
-        hit = _confirm(ticker, demand, settings, deps)
+        try:
+            hit = _confirm(ticker, demand, settings, deps)
+        except (LLMError, ReplyError):
+            failed.append(ticker)
+            continue
         if hit is not None:
             hits.append(hit)
-    return MapResult(terms, ranked, hits)
+    return MapResult(terms, ranked, hits, failed)
 
 
 def _confirm(ticker: str, demand: str, settings: MapSettings, deps: MapDeps) -> CompanyHit | None:
-    """The company as a hit when ``sells`` is verified true, else ``None`` (an LLM or reply error skips it too)."""
+    """The company as a hit when ``sells`` is verified true, else ``None``."""
     docs = {
         doc.doc_id: doc.text[: settings.max_doc_chars] for doc in deps.store.documents(ticker) if doc.source == SOURCE
     }
     context = {"ticker": ticker, "demand": demand}
-    try:
-        result = run_task(deps.llm, deps.prompts, (CONFIRM_TASK, CONFIRM_FIELDS), docs, context)
-    except (LLMError, ReplyError):
-        return None
+    result = run_task(deps.llm, deps.prompts, (CONFIRM_TASK, CONFIRM_FIELDS), docs, context)
     if result.answer[SELLS] is not True:
         return None
     tier = result.answer[TIER]

@@ -13,7 +13,7 @@ from src.research import ReplyError
 
 WHEN = datetime.datetime(2026, 10, 18, 9, 0)
 DEMAND = "生成AIの普及でデータセンターの電力需要が増える"
-SETTINGS = MapSettings(max_terms=3, top_k=3, max_doc_chars=2000)
+SETTINGS = MapSettings(max_terms=3, top_k=3, max_doc_chars=2000, sections=("Biz",))
 PROMPTS = {
     "system": "Every claim needs a quote of a document.",
     "user": "documents {documents} context {context} task {task}",
@@ -108,8 +108,10 @@ def test_search_terms_rejects_a_term_that_is_not_a_string(store):
 
 
 def test_map_settings_from_config():
-    cfg = {"flow": {"max_doc_chars": 5000, "map": {"max_terms": 8, "top_k": 3}}}
-    assert MapSettings.from_config(cfg) == MapSettings(max_terms=8, top_k=3, max_doc_chars=5000)
+    cfg = {"flow": {"max_doc_chars": 5000, "map": {"max_terms": 8, "top_k": 3, "sections": ["Biz", "Seg"]}}}
+    assert MapSettings.from_config(cfg) == MapSettings(
+        max_terms=8, top_k=3, max_doc_chars=5000, sections=("Biz", "Seg")
+    )
 
 
 TEXT_1301 = "当社はデータセンターの運営を手がけている。電源は扱っていない。"
@@ -120,9 +122,9 @@ TEXT_1303 = (
 
 
 def test_build_map_keeps_only_verified_sellers(store):
-    put(store, "EDINET-1301", "1301", TEXT_1301)
-    put(store, "EDINET-1302", "1302", TEXT_1302)
-    put(store, "EDINET-1303", "1303", TEXT_1303)
+    put(store, "edinet:1301:Biz", "1301", TEXT_1301)
+    put(store, "edinet:1302:Biz", "1302", TEXT_1302)
+    put(store, "edinet:1303:Biz", "1303", TEXT_1303)
     put(store, "WEB-1301", "1301", "当社は電源ユニットを販売している。", source="web")
     put(store, "WEB-1302", "1302", "電源市場の記事。", source="web")
     llm = FakeLLM(
@@ -132,13 +134,13 @@ def test_build_map_keeps_only_verified_sellers(store):
             "2次",
             "売上の3割",
             [
-                claim("sells", "電源ユニットと食品包装材を販売している", "EDINET-1303"),
-                claim("tier", "2次のサプライヤーにあたる", "EDINET-1303"),
-                claim("exposure", "売上の3割", "EDINET-1303"),
+                claim("sells", "電源ユニットと食品包装材を販売している", "edinet:1303:Biz"),
+                claim("tier", "2次のサプライヤーにあたる", "edinet:1303:Biz"),
+                claim("exposure", "売上の3割", "edinet:1303:Biz"),
             ],
         ),
         reply(True, "1次", "不明", [claim("sells", "電源ユニットを販売している", "WEB-1301")]),
-        reply(False, "不明", "不明", [claim("sells", "冷凍食品を販売している", "EDINET-1302")]),
+        reply(False, "不明", "不明", [claim("sells", "冷凍食品を販売している", "edinet:1302:Biz")]),
     )
 
     result = build_map(DEMAND, SETTINGS, MapDeps(llm, PROMPTS, store))
@@ -152,20 +154,23 @@ def test_build_map_keeps_only_verified_sellers(store):
     assert result.hits[0].verified_ratio == 1.0
     assert len(llm.calls) == 1 + SETTINGS.top_k
     confirms = [call[-1]["content"] for call in llm.calls[1:]]
-    assert "EDINET-1303" in confirms[0]
-    assert "EDINET-1301" not in confirms[0]
+    assert "edinet:1303:Biz" in confirms[0]
+    assert "edinet:1301:Biz" not in confirms[0]
     assert all("WEB-" not in content for content in confirms)
 
 
 def test_build_map_maps_an_unknown_tier_and_exposure(store):
-    put(store, "EDINET-1301", "1301", "当社は電源を販売している。")
+    put(store, "edinet:1301:Biz", "1301", "当社は電源を販売している。")
     llm = FakeLLM(
         '{"terms": ["電源"]}',
         reply(
             True,
             "4次",
             "不明",
-            [claim("sells", "電源を販売している", "EDINET-1301"), claim("tier", "電源を販売している", "EDINET-1301")],
+            [
+                claim("sells", "電源を販売している", "edinet:1301:Biz"),
+                claim("tier", "電源を販売している", "edinet:1301:Biz"),
+            ],
         ),
     )
 
@@ -177,27 +182,44 @@ def test_build_map_maps_an_unknown_tier_and_exposure(store):
 
 
 def test_build_map_skips_a_failed_call(store):
-    put(store, "EDINET-1301", "1301", "当社は電源を販売している。")
-    put(store, "EDINET-1302", "1302", "当社は電源を販売している。")
+    put(store, "edinet:1301:Biz", "1301", "当社は電源を販売している。")
+    put(store, "edinet:1302:Biz", "1302", "当社は電源を販売している。")
     llm = FakeLLM(
         '{"terms": ["電源"]}',
         LLMError("all LLM providers failed"),
-        reply(True, "1次", "大半", [claim("sells", "電源を販売している", "EDINET-1302")]),
+        reply(True, "1次", "大半", [claim("sells", "電源を販売している", "edinet:1302:Biz")]),
     )
 
     result = build_map(DEMAND, SETTINGS, MapDeps(llm, PROMPTS, store))
 
     assert result.ranked == [("1301", 1), ("1302", 1)]
     assert [hit.ticker for hit in result.hits] == ["1302"]
+    assert result.failed == ["1301"]
     assert len(llm.calls) == 3
 
 
 def test_build_map_skips_a_reply_that_stays_invalid(store):
-    put(store, "EDINET-1301", "1301", "当社は電源を販売している。")
+    put(store, "edinet:1301:Biz", "1301", "当社は電源を販売している。")
     llm = FakeLLM('{"terms": ["電源"]}', "no json", "still no json")
 
     result = build_map(DEMAND, SETTINGS, MapDeps(llm, PROMPTS, store))
 
     assert result.ranked == [("1301", 1)]
     assert result.hits == []
+    assert result.failed == ["1301"]
     assert len(llm.calls) == 3
+
+
+def test_build_map_ranks_on_the_given_sections_only(store):
+    """A risk section names the demand for almost every company, so it must not rank one (live check 2026-10-18)."""
+    put(store, "edinet:1301:Risk", "1301", "サイバー攻撃で電源が止まるリスクがある。")
+    put(store, "edinet:1301:Biz", "1301", "当社は冷凍食品を販売している。")
+    put(store, "edinet:1302:Biz", "1302", "当社は電源を販売している。")
+    sells = [claim("sells", "電源を販売している", "edinet:1302:Biz")]
+    llm = FakeLLM('{"terms": ["電源"]}', reply(True, "1次", "不明", sells))
+
+    result = build_map(DEMAND, SETTINGS, MapDeps(llm, PROMPTS, store))
+
+    assert result.ranked == [("1302", 1)]
+    assert [hit.ticker for hit in result.hits] == ["1302"]
+    assert result.failed == []

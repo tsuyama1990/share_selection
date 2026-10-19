@@ -119,7 +119,8 @@ def flow_memo_run(cfg: dict[str, Any], root: Path, env: Mapping[str, str], reque
         summary = flow_memo(request.name, request.demand, request.urls, settings, deps)
     print(
         f"Flow memo written to {summary.memo_path}: "
-        f"{len(summary.companies)} companies, {len(summary.unknown_axes)} axes unknown."
+        f"{len(summary.companies)} companies, {len(summary.unknown_axes)} axes unknown, "
+        f"{summary.ranked} ranked, {summary.failed} failed to confirm."
     )
     if summary.searches_left is not None:
         print("Search quota used up: only the `--url` sources were collected.")
