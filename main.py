@@ -3,35 +3,35 @@ import datetime
 import os
 import sys
 from collections.abc import Callable
-from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 
 from src.backup import BackupInsideRepoError, backup_from_config
-from src.cache import StockCache, refresh_all
-from src.collect import CollectClients, CollectSettings, collect_documents
 from src.config import CONFIG_FILE, ROOT, MissingKeyError, load_config
-from src.earnings_calendar import load_calendar, update_calendar_csv
+from src.earnings_calendar import update_calendar_csv
 from src.flow import Decision, MissingProfilesError, flow_decide
 from src.flow_store import FlowStore
-from src.flows import EvalNotPassedError, MemoRequest, collect_run, flow_memo_run, profiles_run, review_run
+from src.flows import (
+    EvalNotPassedError,
+    MemoRequest,
+    analyze_run,
+    collect_run,
+    fetch_run,
+    flow_memo_run,
+    profiles_run,
+    review_eval_run,
+    review_run,
+)
 from src.llm import smoke_check
 from src.outcomes import evaluate_recorded
-from src.records import RecordStore, RunInfo, git_sha, latest_issue
-from src.report import format_eval, write_failures, write_report
-from src.research import prompt_version
-from src.review import ReviewDeps
-from src.review_eval import evaluate_model, load_eval_cases
-from src.screener import NO_CACHE, Screener, screen_universe
-from src.selection import prioritize
+from src.records import latest_issue
 from src.tickers import read_tickers, update_ticker_csv
 from src.yahoo import YahooClient
 
 Args = argparse.Namespace
 Cfg = dict[str, Any]
-EVAL_RUN_ID = "eval-%Y%m%dT%H%M%S"
 
 
 def read_universe(cfg: Cfg) -> list[str]:
@@ -60,36 +60,11 @@ def cmd_calendar(cfg: Cfg, args: Args) -> None:
 
 
 def cmd_fetch(cfg: Cfg, args: Args) -> None:
-    tickers = read_universe(cfg)
-    print(f"Starting Data Fetch for {len(tickers)} stocks...")
-    with StockCache.from_config(cfg, ROOT) as cache:
-        failures = refresh_all(cache, YahooClient.from_config(cfg), tickers, cfg["system"]["cache_days"])
-    print(f"fetched {len(tickers) - len(failures)} / {len(tickers)}")
-    if failures:
-        write_failures(failures, ROOT / cfg["output"]["dir"], cfg["output"]["failures_filename"])
+    fetch_run(cfg, ROOT, read_universe(cfg))
 
 
 def cmd_analyze(cfg: Cfg, args: Args) -> None:
-    tickers = read_universe(cfg)
-    print(f"Starting Analysis for {len(tickers)} stocks (using cache)...")
-    output_cfg = cfg["output"]
-    with StockCache.from_config(cfg, ROOT) as cache:
-        calendar = load_calendar(ROOT / cfg["calendar"]["out_csv"])
-        results = screen_universe(tickers, cache, Screener.from_config(cfg), calendar)
-        fetched_min, fetched_max = cache.fetched_range()
-    passed = [r.row for r in results.values() if r.passed]
-    prioritize(passed, cfg["selection"]["candidates_n"])
-    issue = args.issue or default_issue(cfg)
-    list_date = datetime.date.fromtimestamp((ROOT / cfg["system"]["input_csv"]).stat().st_mtime)
-    with RecordStore.from_config(cfg, ROOT) as store:
-        run_id = store.record_run(RunInfo(issue, git_sha(), cfg, list_date, fetched_min, fetched_max), results)
-    print(f"Recorded run {run_id} ({len(results)} tickers).")
-    if no_cache := sum(r.fail_rule == NO_CACHE for r in results.values()):
-        print(f"{no_cache} tickers had no cache (run `fetch` first).")
-    if not passed:
-        print("No stocks passed the Gatekeeper.")
-        return
-    write_report(passed, ROOT / output_cfg["dir"], output_cfg["filename"], output_cfg["columns"])
+    analyze_run(cfg, ROOT, read_universe(cfg), args.issue or default_issue(cfg))
 
 
 def cmd_evaluate(cfg: Cfg, args: Args) -> None:
@@ -113,19 +88,7 @@ def cmd_review(cfg: Cfg, args: Args) -> None:
 
 
 def cmd_review_eval(cfg: Cfg, args: Args) -> None:
-    rev = cfg["review"]
-    cases = load_eval_cases(ROOT / rev["eval"]["cases_file"])
-    with ExitStack() as stack:
-        clients = CollectClients.from_config(cfg, os.environ, stack, "web" in rev["eval"]["sources"])
-        deps = ReviewDeps.from_config(cfg, ROOT, os.environ, stack, None)
-        companies = [c.company for c in cases]
-        collect_documents(companies, CollectSettings.from_config(cfg), clients, deps.store, datetime.date.today())
-        outcomes = evaluate_model(cases, cfg, deps, datetime.datetime.now().strftime(EVAL_RUN_ID))
-        lines, overall = format_eval(outcomes, deps.llm.primary.model)
-        print("\n".join(lines))
-        summary = [{"run": n, "hits": r.hits, "passed": r.passed} for n, (_, r) in enumerate(outcomes, 1)]
-        deps.reviews.record_eval(prompt_version(deps.prompts), deps.llm.primary.model, overall, summary)
-    if not overall.passed:
+    if not review_eval_run(cfg, ROOT, os.environ):
         sys.exit(1)
 
 

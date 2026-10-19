@@ -16,7 +16,7 @@
 | モジュール | 公開する名前 | 責務 | 状態 |
 |---|---|---|---|
 | `company_map.py` | `MapSettings`、`MapDeps`、`CompanyHit`、`MapResult`、`search_terms`、`rank_companies`、`build_map` | 恩恵企業の地図：需要から検索語（LLM）、全銘柄の「事業の内容」とセグメント情報の部分一致での順位付け、上位 `top_k` 社の確かめ（LLM と照合） | ✅ |
-| `flow.py` | `FlowSettings`、`Throttles`、`FlowDeps`、`FlowSummary`、`CompanyLine`、`MissingProfilesError`、`flow_memo`、`company_numbers`、`render_flow_memo`、`Decision`、`flow_decide` | `flow-memo`・`flow-decide` の流れ：根拠の文書、軸の抜き出し、地図、会社ごとの数値、調査メモ、判断の記録 | ✅ |
+| `flow.py` | `FlowSettings`、`Throttles`、`FlowDeps`、`FlowSummary`、`MissingProfilesError`、`flow_memo`、`company_numbers`、`Decision`、`flow_decide` | `flow-memo`・`flow-decide` の流れ：根拠の文書、軸の抜き出し、地図、会社ごとの数値、調査メモ、判断の記録 | ✅ |
 | `flow_store.py` | `FlowRow`、`AxisRow`、`CompanyRow`、`DecisionRow`、`OutcomeRow`、`FlowStore` | `flow.db_file`（git 対象外）の記録：流れ、軸、地図、判断、答え合わせ | ✅ |
 
 ## 3. クラス・関数
@@ -75,7 +75,7 @@ def render_flow_memo(name, demand, axes, companies) -> str
 - `flow_decide(decision, flows)`：`flows.record_decision(DecisionRow(...))`（判断の記録に LLM などは要らないので、記録だけを受け取る）。`decided_at` は実行の時刻を分単位に丸める。`ValueError`（`Decision` の検証）はそのまま送出し、`main.py` が終了コード 1。
 - `Decision`：`action` が `ACTIONS` に無ければ `ValueError`。`max_yen` は `None` か 0 以上の整数で、`None`（上限なし）と 0（1 円も買わない）を区別する。負の値は `ValueError`。
 - `company_numbers(ticker, row, peers, momentum)`：**純粋**。`sector.compare` の値・業種の中央値・比に、`row`（`RecordStore.screen_row` の 1 行）の通過・落ちた条件・改善区分と `momentum["position"]`（地図の中の位置）を並べる。記録に無い項目は null。
-- `render_flow_memo(name, demand, axes, companies)`：**純粋**。5 つの軸と終わりの手がかり（引用つき、無ければ「不明」）、地図（何次か・売上に占める割合・引用）、会社ごとの数値の表を Markdown にする。注記の 1 行（先に上がった会社はその後負けやすい）は `CompanyLine.note` が真のときだけ出す。判定は `sector.momentum_note`（3.4 節）が行い、`render_flow_memo` は印を出すだけ。小数は小数点以下 2 桁で表示する。
+- `render_flow_memo(name, demand, axes, companies)`（`memo.py`。メモの組み立ては出力の担当 C6 に置く）：**純粋**。5 つの軸と終わりの手がかり（引用つき、無ければ「不明」）、地図（何次か・売上に占める割合・引用）、会社ごとの数値の表を Markdown にする。注記の 1 行（先に上がった会社はその後負けやすい）は `CompanyLine.note` が真のときだけ出す。判定は `sector.momentum_note`（3.4 節）が行い、`render_flow_memo` は印を出すだけ。小数は小数点以下 2 桁で表示する。
 
 ### 3.3 `flow_store.py`
 

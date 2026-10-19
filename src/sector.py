@@ -10,7 +10,7 @@ from typing import Any
 
 import pandas as pd
 
-from .records import RecordStore
+from .metrics import period_return
 
 
 @dataclass(frozen=True)
@@ -40,12 +40,20 @@ class Peers:
     tickers: tuple[str, ...] = ()  # every ticker of the run
 
     @classmethod
-    def from_run(cls, records: RecordStore, run_id: str, sectors: dict[str, str], cfg: dict[str, Any]) -> "Peers":
-        """Sector medians over every ticker of the run."""
-        sec = cfg["sector"]
-        metrics = records.run_metrics(run_id)
-        medians = sector_medians(metrics, sectors, sec["metrics"], sec["min_peers"])
-        return cls(medians, sectors, sec["metrics"], tuple(metrics))
+    def build(cls, metrics: dict[str, dict[str, Any]], sectors: dict[str, str], settings: "PeerSettings") -> "Peers":
+        """Sector medians over every ticker of a run (``metrics``: ticker -> its metrics)."""
+        medians = sector_medians(metrics, sectors, list(settings.metrics), settings.min_peers)
+        return cls(medians, sectors, list(settings.metrics), tuple(metrics))
+
+
+@dataclass(frozen=True)
+class PeerSettings:
+    metrics: tuple[str, ...]
+    min_peers: int
+
+    @classmethod
+    def from_config(cls, cfg: dict[str, Any]) -> "PeerSettings":
+        return cls(tuple(cfg["sector"]["metrics"]), cfg["sector"]["min_peers"])
 
 
 def _is_number(value: Any) -> bool:
@@ -80,18 +88,6 @@ def compare(ticker: str, row: dict[str, Any], peers: Peers) -> dict[str, Any]:
     return {"sector": sector, "metrics": result}
 
 
-def _period_return(series: pd.Series, start: pd.Timestamp, end: pd.Timestamp) -> float | None:
-    series = series.dropna()
-    series.index = pd.to_datetime(series.index)
-    series = series.sort_index()
-    base = series[series.index <= end]
-    begin = series[series.index <= start]
-    if base.empty or begin.empty:
-        return None
-    start_price = float(begin.iloc[-1])
-    return None if start_price == 0 else float(base.iloc[-1]) / start_price - 1
-
-
 def _ranks(values: dict[str, float]) -> dict[str, int]:
     """1 for the highest value; ties share the smallest rank."""
     ranks: dict[str, int] = {}
@@ -114,7 +110,7 @@ def momentum(universe: Universe, target: str, settings: MomentumSettings, today:
         sector = universe.sectors.get(ticker)
         if sector is None:
             continue
-        period = _period_return(universe.history(ticker), start, end)
+        period = period_return(universe.history(ticker), start, end)
         if period is not None:
             returns[ticker] = period
     by_sector: dict[str, list[float]] = defaultdict(list)
@@ -147,3 +143,26 @@ def momentum_note(momentum: dict[str, Any], settings: MomentumSettings) -> bool:
     if rank is None or not industries or position is None:
         return False
     return rank / industries <= settings.note_top_share and position > settings.note_position
+
+
+def laggard_peers(
+    universe: Universe, pbr: dict[str, Any], target: str, start: pd.Timestamp, end: pd.Timestamp
+) -> list[str]:
+    """Companies of the target's sector whose return over the period and PBR are both at or below the medians."""
+    sector = _sector_of(universe.sectors, target)
+    if sector is None:
+        return []
+    rows = []
+    for ticker in universe.tickers:
+        gain = period_return(universe.history(ticker), start, end)
+        if _sector_of(universe.sectors, ticker) == sector and gain is not None and pbr.get(ticker) is not None:
+            rows.append((ticker, gain, pbr[ticker]))
+    if not rows:
+        return []
+    gain_median, pbr_median = median(r[1] for r in rows), median(r[2] for r in rows)
+    return [t for t, gain, value in rows if gain <= gain_median and value <= pbr_median]
+
+
+def _sector_of(sectors: dict[str, str], ticker: str) -> str | None:
+    """The ticker list holds codes without the ``.T`` suffix the records use."""
+    return sectors.get(ticker) or sectors.get(ticker.split(".")[0])

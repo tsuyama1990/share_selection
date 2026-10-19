@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 import main
+from src import flows
 from src.cache import StockCache
 from tests.fixtures.config import CFG
 
@@ -26,7 +27,7 @@ class FlakyYahoo:
 
 
 def test_fetch_caches_successes_and_lists_failures(project, monkeypatch, capsys):
-    monkeypatch.setattr(main, "YahooClient", FlakyYahoo)
+    monkeypatch.setattr(flows, "YahooClient", FlakyYahoo)
     project.write_tickers(["1.T", "2.T", "3.T"])
 
     project.run("fetch")
@@ -42,7 +43,7 @@ def test_fetch_caches_successes_and_lists_failures(project, monkeypatch, capsys)
 
 
 def test_fetch_without_failures_writes_no_failure_csv(project, monkeypatch, capsys):
-    monkeypatch.setattr(main, "YahooClient", FlakyYahoo)
+    monkeypatch.setattr(flows, "YahooClient", FlakyYahoo)
     project.write_tickers(["1.T", "3.T"])
     project.run("fetch")
     assert "fetched 2 / 2" in capsys.readouterr().out

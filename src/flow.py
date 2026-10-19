@@ -6,7 +6,8 @@ the page fetches and the LLM are reached only through ``FlowDeps``, which the ca
 
 import datetime
 import math
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -15,24 +16,23 @@ import httpx
 import pandas as pd
 
 from . import fields as F
+from .cache import StockCache, closes_of
 from .company_map import CompanyHit, MapDeps, MapSettings, build_map
 from .docstore import DocStore
 from .flow_store import AxisRow, CompanyRow, DecisionRow, FlowRow, FlowStore
 from .llm import GeminiSearch, LLMClient, QuotaExceeded
+from .memo import PER, CompanyLine, axis_value, render_flow_memo
 from .records import RecordStore
-from .research import prompt_version, run_task
-from .sector import MomentumSettings, Peers, Universe, compare, momentum, momentum_note, sector_medians
+from .research import load_prompts, prompt_version, run_task
+from .sector import MomentumSettings, Peers, PeerSettings, Universe, compare, momentum, momentum_note
 from .throttle import RateLimiter
+from .tickers import NAME, SECTOR33, read_column
 from .webfetch import fetch_page
 
 AXES_TASK = "axes"  # the task name under prompts/flow/ that asks for the axes; its file is task.lower() + ".md"
 OWNER = "flow:{flow_id}"  # documents.ticker of the pages fetched for a flow (they belong to no company)
-PER = "PER"  # the trailing PER of the cache, shown as it is (not a report column)
 STAGE1_PASS = "stage1_pass"
 FAIL_RULE = "stage1_fail_rule"
-PER_MARK = "超割高"
-COLUMNS = ("コード", "名前", "何次", "売上比率", "業種", "改善区分", "通過", "落ちた条件", "位置", "PER", "比較")
-NOTE = "先に上がった会社はその後負けやすい"
 
 
 @dataclass(frozen=True)
@@ -47,14 +47,12 @@ class FlowSettings:
     map: MapSettings
     per_max: float
     momentum: MomentumSettings
-    sector_metrics: tuple[str, ...]
-    min_peers: int
+    peers: PeerSettings
 
     @classmethod
     def from_config(cls, cfg: dict[str, Any], root: Path) -> "FlowSettings":
         """``flow:``, the page size of ``webfetch`` and the ``sector:`` values the memo compares with."""
         flow = cfg["flow"]
-        sector = cfg["sector"]
         return cls(
             memo_dir=root / flow["memo_dir"],
             prompts_dir=root / flow["prompts_dir"],
@@ -66,8 +64,7 @@ class FlowSettings:
             map=MapSettings.from_config(cfg),
             per_max=flow["per_max"],
             momentum=MomentumSettings.from_config(cfg),
-            sector_metrics=tuple(sector["metrics"]),
-            min_peers=sector["min_peers"],
+            peers=PeerSettings.from_config(cfg),
         )
 
 
@@ -91,6 +88,35 @@ class FlowDeps:
     http: httpx.Client
     throttles: Throttles
 
+    @classmethod
+    def from_config(
+        cls, cfg: dict[str, Any], root: Path, env: Mapping[str, str], stack: ExitStack, settings: FlowSettings
+    ) -> "FlowDeps":
+        """Open the clients and stores on ``stack``; a missing LLM or search key raises before any store is opened."""
+        llm_http = stack.enter_context(httpx.Client(timeout=cfg["llm"]["timeout_s"]))
+        web = cfg["webfetch"]
+        web_http = stack.enter_context(
+            httpx.Client(timeout=web["timeout_s"], headers={"User-Agent": web["user_agent"]})
+        )
+        llm, search = LLMClient.from_config(cfg, llm_http, env), GeminiSearch.from_config(cfg, llm_http, env)
+        csv_path = root / cfg["system"]["input_csv"]
+        return cls(
+            llm=llm,
+            prompts=load_prompts(settings.prompts_dir),
+            search=search,
+            store=stack.enter_context(DocStore.from_config(cfg, root)),
+            flows=stack.enter_context(FlowStore.from_config(cfg, root)),
+            records=stack.enter_context(RecordStore.from_config(cfg, root)),
+            history=closes_of(stack.enter_context(StockCache.from_config(cfg, root))),
+            sectors=read_column(csv_path, SECTOR33),
+            names=read_column(csv_path, NAME),
+            http=web_http,
+            throttles=Throttles(
+                search=RateLimiter.per_minute(cfg["llm"]["max_calls_per_minute"]),
+                fetch=RateLimiter(1, web["request_interval_s"]),
+            ),
+        )
+
 
 @dataclass(frozen=True)
 class FlowSummary:
@@ -101,16 +127,6 @@ class FlowSummary:
     searches_left: int | None  # None: the search was not cut short, so nothing was used up
     ranked: int  # companies the ranking passed to the LLM
     failed: int  # of those, companies whose confirmation failed
-
-
-@dataclass(frozen=True)
-class CompanyLine:
-    ticker: str
-    name: str
-    tier: str
-    exposure: str
-    numbers: dict[str, Any]
-    note: bool
 
 
 class MissingProfilesError(RuntimeError):
@@ -138,7 +154,7 @@ def flow_memo(name: str, demand: str, urls: Sequence[str], settings: FlowSetting
     settings.memo_dir.mkdir(parents=True, exist_ok=True)
     memo_path = settings.memo_dir / f"{name}-{datetime.date.today():%Y-%m-%d}.md"
     memo_path.write_text(render_flow_memo(name, demand, axes, companies), encoding="utf-8")
-    unknown = [row.axis for row in axes if _axis_value(row) == F.UNKNOWN]
+    unknown = [row.axis for row in axes if axis_value(row) == F.UNKNOWN]
     return FlowSummary(
         flow_id,
         memo_path,
@@ -170,82 +186,6 @@ def company_numbers(
         "per": per,
         "overvalued": per is not None and per >= per_max,
     }
-
-
-def render_flow_memo(name: str, demand: str, axes: list[AxisRow], companies: list[CompanyLine]) -> str:
-    """The memo of one demand as Markdown: each axis with its quotes, the company table and the note."""
-    lines = [f"# {name}", "", f"- 需要: {demand}", "", "## 軸", ""]
-    for row in axes:
-        quotes = [claim["quote"] for claim in row.evidence if claim.get("quote")]
-        lines += [f"### {row.axis}", "", _axis_value(row), ""] + [f"> {quote}" for quote in quotes] + [""]
-    lines += ["## 恩恵企業", "", *_table_lines(companies), ""]
-    lines += _overvalued_lines(companies)
-    if any(company.note for company in companies):
-        lines += [f"注記: {NOTE}", ""]
-    return "\n".join(lines)
-
-
-def _text(value: Any) -> str:
-    """The value as text (a bool as ○/×), or ``fields.UNKNOWN`` when the record holds nothing."""
-    if isinstance(value, bool):
-        return "○" if value else "×"
-    if isinstance(value, float):
-        return f"{value:.2f}"
-    return F.UNKNOWN if value is None or value == "" else str(value)
-
-
-def _axis_value(row: AxisRow) -> str:
-    """The answer of one axis, or ``fields.UNKNOWN`` when the run left it empty."""
-    value = row.answer.get("value") if isinstance(row.answer, dict) else None
-    return F.UNKNOWN if value is None or value == "" else str(value)
-
-
-def _comparison(comparison: Any) -> str:
-    """The cells of a ``sector.compare`` result: each metric as value / sector median (ratio)."""
-    metrics = comparison.get("metrics") if isinstance(comparison, dict) else None
-    if not isinstance(metrics, dict):
-        return ""
-    return "; ".join(
-        f"{metric} {_text(item.get('value'))} / {_text(item.get('median'))} (x{_text(item.get('ratio'))})"
-        for metric, item in metrics.items()
-        if isinstance(item, dict)
-    )
-
-
-def _cells(company: CompanyLine) -> list[str]:
-    """The cells of one company, in the order of ``COLUMNS``."""
-    numbers = company.numbers
-    comparison = numbers.get("sector_comparison")
-    sector = comparison.get("sector") if isinstance(comparison, dict) else None
-    return [
-        company.ticker,
-        company.name,
-        company.tier,
-        company.exposure,
-        _text(sector),
-        _text(numbers.get("improvement_class")),
-        _text(numbers.get("stage1_pass")),
-        _text(numbers.get("fail_rule")),
-        _text(numbers.get("position")),
-        _text(numbers.get("per")),
-        _comparison(comparison),
-    ]
-
-
-def _table_lines(companies: list[CompanyLine]) -> list[str]:
-    """The company table, one row per mapped company."""
-    header = "| " + " | ".join(COLUMNS) + " |"
-    rule = "|" + "---|" * len(COLUMNS)
-    return [header, rule] + ["| " + " | ".join(_cells(company)) + " |" for company in companies]
-
-
-def _overvalued_lines(companies: list[CompanyLine]) -> list[str]:
-    """The companies whose PER is at or above the cap, apart from the table, or nothing when none is."""
-    flagged = [company for company in companies if company.numbers.get("overvalued")]
-    if not flagged:
-        return []
-    items = [f"- {c.ticker} {c.name}（PER {_text(c.numbers.get('per'))}）" for c in flagged]
-    return [f"## {PER_MARK}", "", *items, ""]
 
 
 def _gather(query: str, urls: Sequence[str], owner: str, settings: FlowSettings, deps: FlowDeps) -> int | None:
@@ -286,15 +226,8 @@ def _companies(
     """One line and one row per mapped company: its screen row, its sector comparison and its momentum."""
     run_id = deps.records.resolve_run(None)
     metrics = deps.records.run_metrics(run_id)
-    tickers = tuple(metrics)
-    sector_metrics = list(settings.sector_metrics)
-    peers = Peers(
-        sector_medians(metrics, deps.sectors, sector_metrics, settings.min_peers),
-        deps.sectors,
-        sector_metrics,
-        tickers,
-    )
-    universe = Universe(deps.history, tickers, deps.sectors)
+    peers = Peers.build(metrics, deps.sectors, settings.peers)
+    universe = Universe(deps.history, peers.tickers, deps.sectors)
     today = datetime.date.today()
     lines: list[CompanyLine] = []
     rows: list[CompanyRow] = []

@@ -13,7 +13,7 @@ from src.research import load_prompts
 from src.review import ReviewDeps, ReviewSettings, review_candidates
 from src.review_store import ReviewStore
 from src.screener import NO_CACHE, ScreenResult
-from src.sector import Peers, sector_medians
+from src.sector import Peers, PeerSettings, sector_medians
 from tests.fixtures.config import CFG
 from tests.fixtures.review_flow import PROMPT_DIR, FakeLLM, good
 
@@ -61,7 +61,7 @@ def test_medians_use_tickers_that_failed_the_gate_and_thin_sectors_are_none(stor
 
 def test_the_comparison_is_stored_with_the_review(stores):
     rec, docs, reviews, run_id = stores
-    peers = Peers.from_run(rec, run_id, SECTORS, CFG_SECTOR)
+    peers = Peers.build(rec.run_metrics(run_id), SECTORS, PeerSettings.from_config(CFG_SECTOR))
     deps = ReviewDeps(FakeLLM(good), load_prompts(PROMPT_DIR), reviews, docs, peers, None)
     review_candidates(run_id, rec.candidates(run_id), None, ReviewSettings.from_config(CFG), deps)
     sql = "SELECT sector_comparison FROM reviews WHERE run_id = ? AND ticker = '1.T'"
