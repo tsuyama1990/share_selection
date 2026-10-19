@@ -1,5 +1,6 @@
 """The Markdown research memo of one reviewed ticker."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -82,9 +83,14 @@ class CompanyLine:
     note: bool
 
 
-def render_flow_memo(name: str, demand: str, axes: list[AxisRow], companies: list[CompanyLine]) -> str:
-    """The memo of one demand as Markdown: each axis with its quotes, the company table and the note."""
-    lines = [f"# {name}", "", f"- 需要: {demand}", "", "## 軸", ""]
+def render_flow_memo(
+    name: str, demand: str, axes: list[AxisRow], companies: list[CompanyLine], terms: Sequence[str] = ()
+) -> str:
+    """The memo of one demand as Markdown: each axis with its quotes, the company table and the note.
+
+    ``terms`` are the words the company map searched for; they change between runs, so the memo shows them.
+    """
+    lines = [f"# {name}", "", f"- 需要: {demand}", f"- 地図の検索語: {'、'.join(terms) or F.UNKNOWN}", "", "## 軸", ""]
     for row in axes:
         quotes = [claim["quote"] for claim in row.evidence if claim.get("quote")]
         lines += [f"### {row.axis}", "", axis_value(row), ""] + [f"> {quote}" for quote in quotes] + [""]
@@ -146,7 +152,8 @@ def _table_lines(companies: list[CompanyLine]) -> list[str]:
     """The company table, one row per mapped company."""
     header = "| " + " | ".join(COLUMNS) + " |"
     rule = "|" + "---|" * len(COLUMNS)
-    return [header, rule] + ["| " + " | ".join(_cells(company)) + " |" for company in companies]
+    listed = [company for company in companies if not company.numbers.get("overvalued")]  # those go apart
+    return [header, rule] + ["| " + " | ".join(_cells(company)) + " |" for company in listed]
 
 
 def _overvalued_lines(companies: list[CompanyLine]) -> list[str]:

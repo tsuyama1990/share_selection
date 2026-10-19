@@ -136,3 +136,14 @@ def closes_of(cache: "StockCache") -> Callable[[str], pd.Series]:
         return data.history["Close"].dropna().astype("float64")
 
     return closes
+
+
+def trailing_per(cache: "StockCache") -> Callable[[str], float | None]:
+    """The trailing PER in the cached quote (None for a loss or a ticker the cache does not have)."""
+
+    def per(ticker: str) -> float | None:
+        data = cache.get(ticker)
+        value = data.info.get("trailingPE") if data is not None else None
+        return float(value) if isinstance(value, int | float) else None
+
+    return per

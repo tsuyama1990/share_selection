@@ -68,7 +68,7 @@ def profiles_run(
         clients = CollectClients.from_config(cfg, env, stack, False)
         store = stack.enter_context(DocStore.from_config(cfg, root))
         summary = collect_profiles(tickers, CollectSettings.from_config(cfg), clients, store, today)
-    print(f"{summary.edinet_docs} reports stored, {summary.edinet_failed} failed.")
+    print(f"{summary.edinet_docs} sections stored, {summary.edinet_failed} companies failed.")
 
 
 def review_run(

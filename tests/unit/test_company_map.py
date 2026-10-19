@@ -223,3 +223,8 @@ def test_build_map_ranks_on_the_given_sections_only(store):
     assert result.ranked == [("1302", 1)]
     assert [hit.ticker for hit in result.hits] == ["1302"]
     assert result.failed == []
+
+
+def test_rank_companies_ignores_a_middle_dot():
+    profiles = {"3692.T": "サイバー・セキュリティ事業を主な事業内容とし"}
+    assert rank_companies(["サイバーセキュリティ"], profiles, 5) == [("3692.T", 1)]

@@ -86,13 +86,18 @@ def rank_companies(terms: list[str], profiles: dict[str, str], limit: int) -> li
     """Tickers whose profile text holds the most search terms (ties by ticker), at most ``limit``.
 
     A term counts once however often it appears; a company that holds no term is not ranked. Terms are
-    normalized like the profiles, so a half-width term matches full-width text and the other way around.
+    normalized like the profiles, so a half-width term matches full-width text and the other way around, and a
+    middle dot is ignored (a report writes サイバー・セキュリティ where the term says サイバーセキュリティ).
     """
-    wanted = [term for term in (normalize(term) for term in terms) if term]
-    normalized = {ticker: normalize(text) for ticker, text in profiles.items()}
+    wanted = [term for term in (_key(term) for term in terms) if term]
+    normalized = {ticker: _key(text) for ticker, text in profiles.items()}
     counted = [(ticker, sum(1 for term in wanted if term in text)) for ticker, text in normalized.items()]
     ranked = sorted((pair for pair in counted if pair[1]), key=lambda pair: (-pair[1], pair[0]))
     return ranked[:limit]
+
+
+def _key(text: str) -> str:
+    return normalize(text).replace("・", "")
 
 
 def build_map(demand: str, settings: MapSettings, deps: MapDeps) -> MapResult:

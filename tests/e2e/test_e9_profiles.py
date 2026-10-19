@@ -37,7 +37,7 @@ def test_profiles_stores_reports_and_retries_only_the_failure(project, monkeypat
     write_tickers(project.root)
 
     project.run("profiles", cfg=CFG_PROFILES)
-    assert capsys.readouterr().out.endswith("3 reports stored, 1 failed.\n")
+    assert capsys.readouterr().out.endswith("3 sections stored, 1 companies failed.\n")
     with duckdb.connect(str(project.root / "profiles_test.duckdb")) as con:
         docs = con.execute("SELECT ticker, doc_id, text FROM documents ORDER BY doc_id").fetchall()
         errors = con.execute("SELECT ticker, source, ref, error FROM fetch_errors").fetchall()
@@ -50,5 +50,5 @@ def test_profiles_stores_reports_and_retries_only_the_failure(project, monkeypat
 
     downloads.clear()
     project.run("profiles", cfg=CFG_PROFILES)
-    assert capsys.readouterr().out.endswith("3 reports stored, 1 failed.\n")
+    assert capsys.readouterr().out.endswith("3 sections stored, 1 companies failed.\n")
     assert downloads == [FAILING]
