@@ -12,7 +12,7 @@ import pandas as pd
 from . import fields as F
 from .flow_store import FlowStore, OutcomeRow
 from .records import RecordStore
-from .tickers import read_column
+from .tickers import SECTOR33, read_column
 from .yahoo import YahooClient
 
 
@@ -135,7 +135,7 @@ def _select_controls(
 ) -> Callable[[str, datetime.date], list[str]]:
     """A closure that lists the same-sector companies of a ticker whose past gain and PBR are at or below the
     sector's median at the decision date."""
-    sectors = read_column(root / cfg["system"]["input_csv"], "sector33")
+    sectors = read_column(root / cfg["system"]["input_csv"], SECTOR33)
     past = int(cfg["flow"]["control"]["past_months"])
     metrics = store.run_metrics(store.resolve_run(None))
     get = _history_cache(history)

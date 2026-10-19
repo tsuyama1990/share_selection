@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from . import fields as F
-from .docstore import DocStore
+from .docstore import EDINET, DocStore
 from .llm import LLMClient, LLMError
 from .research import RETRY, ReplyError, run_task
 from .verify import normalize
@@ -18,7 +18,6 @@ CONFIRM_TASK = "confirm"
 SELLS, TIER, EXPOSURE = "sells", "tier", "exposure"
 CONFIRM_FIELDS = [SELLS, TIER, EXPOSURE]
 TIERS = ("1次", "2次", "3次以上")
-SOURCE = "edinet"
 MIN_TERMS = 1
 
 
@@ -115,7 +114,7 @@ def build_map(demand: str, settings: MapSettings, deps: MapDeps) -> MapResult:
 def _confirm(ticker: str, demand: str, settings: MapSettings, deps: MapDeps) -> CompanyHit | None:
     """The company as a hit when ``sells`` is verified true, else ``None``."""
     docs = {
-        doc.doc_id: doc.text[: settings.max_doc_chars] for doc in deps.store.documents(ticker) if doc.source == SOURCE
+        doc.doc_id: doc.text[: settings.max_doc_chars] for doc in deps.store.documents(ticker) if doc.source == EDINET
     }
     context = {"ticker": ticker, "demand": demand}
     result = run_task(deps.llm, deps.prompts, (CONFIRM_TASK, CONFIRM_FIELDS), docs, context)

@@ -13,7 +13,7 @@ from typing import Any
 import httpx
 
 from src.config import require_key
-from src.docstore import DocStore, Document
+from src.docstore import EDINET, DocStore, Document
 from src.throttle import RateLimiter
 from src.tickers import TICKER_SUFFIX
 
@@ -98,7 +98,7 @@ def update_index(client: EdinetClient, store: DocStore, today: datetime.date, in
         try:
             listing = client.list_documents(day)
         except RuntimeError as e:
-            store.record_error("", "edinet", day.isoformat(), str(e))
+            store.record_error("", EDINET, day.isoformat(), str(e))
             break
         store.add_index(parse_index(listing, day))
         scanned += 1
@@ -115,7 +115,7 @@ def fetch_annual_report(
     """
     doc_id = store.latest_annual_report(sec_code(ticker), doc_type_code)
     if doc_id is None:
-        store.record_error(ticker, "edinet", sec_code(ticker), "not in index")
+        store.record_error(ticker, EDINET, sec_code(ticker), "not in index")
         return []
     wanted = [f"edinet:{doc_id}:{e}" for e in elements]
     if all(map(store.has, wanted)):
@@ -123,12 +123,12 @@ def fetch_annual_report(
     try:
         sections = extract_sections(client.download_csv_zip(doc_id), elements)
     except (RuntimeError, zipfile.BadZipFile, UnicodeError, KeyError) as e:
-        store.record_error(ticker, "edinet", doc_id, f"{type(e).__name__} {e}".strip())
+        store.record_error(ticker, EDINET, doc_id, f"{type(e).__name__} {e}".strip())
         return []
     if not sections:
-        store.record_error(ticker, "edinet", doc_id, "no listed section")
+        store.record_error(ticker, EDINET, doc_id, "no listed section")
         return []
     now = datetime.datetime.now()
     for element, text in sections.items():
-        store.put(Document(f"edinet:{doc_id}:{element}", ticker, "edinet", f"{doc_id}:{element}", element, now, text))
+        store.put(Document(f"edinet:{doc_id}:{element}", ticker, EDINET, f"{doc_id}:{element}", element, now, text))
     return [f"edinet:{doc_id}:{e}" for e in sections]

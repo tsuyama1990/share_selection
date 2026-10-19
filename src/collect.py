@@ -10,7 +10,7 @@ import httpx
 from tqdm import tqdm
 
 from . import fields as F
-from .docstore import Company, DocStore
+from .docstore import WEB, Company, DocStore
 from .edinet import EdinetClient, fetch_annual_report, update_index
 from .llm import GeminiSearch, LLMError, QuotaExceeded
 from .throttle import RateLimiter
@@ -120,7 +120,7 @@ def _collect_web(
     """(documents stored, candidates left unsearched)."""
     if clients.search is None:
         return 0, 0
-    pending = [c for c in companies if not store.has_source(c.ticker, "web")]
+    pending = [c for c in companies if not store.has_source(c.ticker, WEB)]
     stored = 0
     for done, company in enumerate(tqdm(pending)):
         clients.search_limiter.acquire()
@@ -128,10 +128,10 @@ def _collect_web(
         try:
             answer = clients.search.search(prompt)
         except QuotaExceeded as e:
-            store.record_error(company.ticker, "web", "search", str(e))
+            store.record_error(company.ticker, WEB, "search", str(e))
             return stored, len(pending) - done
         except LLMError as e:
-            store.record_error(company.ticker, "web", "search", str(e))
+            store.record_error(company.ticker, WEB, "search", str(e))
             continue
         for _, uri in answer.sources[: settings.max_sources]:
             clients.fetch_limiter.acquire()

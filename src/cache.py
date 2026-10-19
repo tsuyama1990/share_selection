@@ -1,8 +1,10 @@
 """DuckDB cache of raw stock data."""
 
 import datetime
+import functools
 import io
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -121,3 +123,16 @@ def refresh_all(cache: StockCache, client: YahooClient, tickers: list[str], max_
     """Refresh every ticker; returns the failed ones with their error message."""
     errors = {t: refresh(cache, client, t, max_age_days) for t in tqdm(tickers)}
     return {t: e for t, e in errors.items() if e is not None}
+
+
+def closes_of(cache: "StockCache") -> Callable[[str], pd.Series]:
+    """Daily closes per ticker, each read once (an empty series when the cache has none)."""
+
+    @functools.cache
+    def closes(ticker: str) -> pd.Series:
+        data = cache.get(ticker)
+        if data is None or data.history.empty or "Close" not in data.history:
+            return pd.Series(dtype="float64")
+        return data.history["Close"].dropna().astype("float64")
+
+    return closes

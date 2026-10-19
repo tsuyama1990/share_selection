@@ -11,6 +11,9 @@ import duckdb
 from .tickers import TICKER_SUFFIX
 from .verify import normalize
 
+EDINET = "edinet"  # Document.source values
+WEB = "web"
+
 SCHEMA = (
     """CREATE TABLE IF NOT EXISTS documents (
         doc_id TEXT PRIMARY KEY, ticker TEXT, source TEXT, source_ref TEXT, title TEXT, fetched_at TIMESTAMP,
@@ -93,7 +96,7 @@ class DocStore:
         """Ticker -> text of its EDINET documents of ``sections`` (the doc_id's last part), joined by a newline."""
         sql = "SELECT ticker, doc_id, text FROM documents WHERE source = ? ORDER BY ticker, doc_id"
         texts: dict[str, list[str]] = {}
-        for ticker, doc_id, text in self.con.execute(sql, ["edinet"]).fetchall():
+        for ticker, doc_id, text in self.con.execute(sql, [EDINET]).fetchall():
             if doc_id.rsplit(":", 1)[-1] in sections:
                 texts.setdefault(ticker, []).append(text)
         return {ticker: "\n".join(parts) for ticker, parts in texts.items()}
