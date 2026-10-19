@@ -93,7 +93,8 @@ def cmd_review_eval(cfg: Cfg, args: Args) -> None:
 
 
 def cmd_flow_memo(cfg: Cfg, args: Args) -> None:
-    flow_memo_run(cfg, ROOT, os.environ, MemoRequest(args.name, args.demand, args.url))
+    terms = [t.strip() for t in args.terms.split(",") if t.strip()] if args.terms else []
+    flow_memo_run(cfg, ROOT, os.environ, MemoRequest(args.name, args.demand, args.url or (), terms))
 
 
 def cmd_flow_decide(cfg: Cfg, args: Args) -> None:
@@ -153,6 +154,9 @@ def build_parser() -> argparse.ArgumentParser:
     commands["flow-memo"].add_argument("--demand", required=True, help="The demand the flow stands for")
     commands["flow-memo"].add_argument(
         "--url", action="append", default=[], help="A source the user already found (repeatable)"
+    )
+    commands["flow-memo"].add_argument(
+        "--terms", help="Comma-separated words to search the company profiles for, besides the LLM's own"
     )
     commands["flow-decide"].add_argument("--flow", required=True, help="Flow id (from `flow-memo`)")
     commands["flow-decide"].add_argument("--ticker", required=True, help="Ticker code")

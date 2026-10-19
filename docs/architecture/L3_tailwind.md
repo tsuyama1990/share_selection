@@ -16,7 +16,7 @@
 | モジュール | 公開する名前 | 責務 | 状態 |
 |---|---|---|---|
 | `company_map.py` | `MapSettings`、`MapDeps`、`CompanyHit`、`MapResult`、`search_terms`、`rank_companies`、`build_map` | 恩恵企業の地図：需要から検索語（LLM）、全銘柄の「事業の内容」とセグメント情報の部分一致での順位付け、上位 `top_k` 社の確かめ（LLM と照合） | ✅ |
-| `flow.py` | `FlowSettings`、`Throttles`、`FlowDeps`、`FlowSummary`、`MissingProfilesError`、`flow_memo`、`company_numbers`、`Decision`、`flow_decide` | `flow-memo`・`flow-decide` の流れ：根拠の文書、軸の抜き出し、地図、会社ごとの数値、調査メモ、判断の記録 | ✅ |
+| `flow.py` | `FlowSettings`、`Throttles`、`FlowDeps`、`FlowSummary`、`MemoRequest`、`MissingProfilesError`、`flow_memo`、`company_numbers`、`Decision`、`flow_decide` | `flow-memo`・`flow-decide` の流れ：根拠の文書、軸の抜き出し、地図、会社ごとの数値、調査メモ、判断の記録 | ✅ |
 | `flow_store.py` | `FlowRow`、`AxisRow`、`CompanyRow`、`DecisionRow`、`OutcomeRow`、`FlowStore` | `flow.db_file`（git 対象外）の記録：流れ、軸、地図、判断、答え合わせ | ✅ |
 
 ## 3. クラス・関数
@@ -56,7 +56,7 @@ FlowSummary(flow_id, memo_path, unknown_axes, companies, searches_left, ranked, 
 Decision(flow_id, ticker, action, reason, max_yen)
 CompanyLine(ticker, name, tier, exposure, numbers, note)
 class MissingProfilesError(RuntimeError)
-def flow_memo(name, demand, urls, settings, deps) -> FlowSummary
+def flow_memo(request, settings, deps) -> FlowSummary
 def flow_decide(decision, flows: FlowStore) -> None
 def company_numbers(ticker, row, peers, momentum) -> dict[str, Any]
 def render_flow_memo(name, demand, axes, companies) -> str
@@ -130,3 +130,4 @@ FlowStore  # from_config(cfg, root): flow.db_file；context manager
 
 - 2026-10-18 ライブ確認の結果：PDF の例外で流れ全体が止まる・全部の軸に同じ引用が付く・順位付けが L2 と違い全部の節を使っていた・再実行で前の地図の行が残る、を直した（なぜなぜは `fix/flow-memo-live` のマージ文）。
 - 2026-10-20 ライブ確認（2 回目）：暗号化された PDF の `DependencyError` で流れが止まった（推測で足していた例外を外し、実際の例外を捕まえる）。PER は実行の記録ではなくキャッシュの `trailingPE`（`cache.trailing_per`）から読む。超割高の会社を表から外す。地図の照合で中黒を無視する。使った検索語をメモに出す（実行ごとに変わるため）
+- 2026-10-20：「超割高」は実績と予想の PER の低いほうが `flow.per_max` 以上のときだけ（実績が一時的に落ち込んだ会社を外さない。野村総合研究所は実績 172 倍・予想 32 倍）。`flow-memo --terms` で人（将来は自動化した呼び出し）が地図の検索語を足せる（`MemoRequest.terms`、LLM の語より先）。`flow_memo` の引数は `MemoRequest` にまとめた

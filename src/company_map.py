@@ -3,6 +3,7 @@ listed companies, then an LLM confirmation of the top companies. The confirmatio
 so a mapped company is always backed by a quote of its own documents."""
 
 import json
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -100,9 +101,10 @@ def _key(text: str) -> str:
     return normalize(text).replace("・", "")
 
 
-def build_map(demand: str, settings: MapSettings, deps: MapDeps) -> MapResult:
-    """Search terms, the ranking over every profile text, then the top ``top_k`` companies confirmed by quotes."""
-    terms = search_terms(demand, settings, deps)
+def build_map(demand: str, settings: MapSettings, deps: MapDeps, extra_terms: Sequence[str] = ()) -> MapResult:
+    """Search terms (``extra_terms`` first, then the LLM's), the ranking over the profiles, then the top ``top_k``
+    companies confirmed by quotes."""
+    terms = list(dict.fromkeys([*extra_terms, *search_terms(demand, settings, deps)]))
     ranked = rank_companies(terms, deps.store.profiles(settings.sections), settings.top_k)
     hits, failed = [], []
     for ticker, _matched in ranked:

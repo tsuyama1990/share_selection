@@ -2,9 +2,8 @@
 on a flow the user names."""
 
 import datetime
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from contextlib import ExitStack
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -12,7 +11,7 @@ from .cache import StockCache, refresh_all
 from .collect import CollectClients, CollectSettings, collect_documents, collect_profiles, companies
 from .docstore import WEB, DocStore
 from .earnings_calendar import load_calendar
-from .flow import FlowDeps, FlowSettings, flow_memo
+from .flow import FlowDeps, FlowSettings, MemoRequest, flow_memo
 from .records import RecordStore, RunInfo, git_sha
 from .report import format_eval, write_failures, write_report
 from .research import prompt_version
@@ -29,15 +28,6 @@ EVAL_RUN_ID = "eval-%Y%m%dT%H%M%S"
 
 class EvalNotPassedError(RuntimeError):
     pass
-
-
-@dataclass(frozen=True)
-class MemoRequest:
-    """The flow the user names: its name, the demand behind it and the sources they already found."""
-
-    name: str
-    demand: str
-    urls: Sequence[str]
 
 
 def collect_run(cfg: dict[str, Any], root: Path, env: Mapping[str, str], run: str | None, today: datetime.date) -> None:
@@ -98,7 +88,7 @@ def flow_memo_run(cfg: dict[str, Any], root: Path, env: Mapping[str, str], reque
     settings = FlowSettings.from_config(cfg, root)
     with ExitStack() as stack:
         deps = FlowDeps.from_config(cfg, root, env, stack, settings)
-        summary = flow_memo(request.name, request.demand, request.urls, settings, deps)
+        summary = flow_memo(request, settings, deps)
     print(
         f"Flow memo written to {summary.memo_path}: "
         f"{len(summary.companies)} companies, {len(summary.unknown_axes)} axes unknown, "
