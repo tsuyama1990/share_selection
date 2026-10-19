@@ -16,12 +16,12 @@ import httpx
 import pandas as pd
 
 from . import fields as F
-from .cache import StockCache, closes_of, trailing_per
+from .cache import StockCache, closes_of, price_earnings
 from .company_map import CompanyHit, MapDeps, MapSettings, build_map
 from .docstore import DocStore
 from .flow_store import AxisRow, CompanyRow, DecisionRow, FlowRow, FlowStore
 from .llm import GeminiSearch, LLMClient, QuotaExceeded
-from .memo import PER, CompanyLine, axis_value, render_flow_memo
+from .memo import PER, PER_FORWARD, CompanyLine, axis_value, render_flow_memo
 from .records import RecordStore
 from .research import load_prompts, prompt_version, run_task
 from .sector import MomentumSettings, Peers, PeerSettings, Universe, compare, momentum, momentum_note
@@ -83,7 +83,7 @@ class FlowDeps:
     flows: FlowStore
     records: RecordStore
     history: Callable[[str], pd.Series]  # the adjusted daily closes, as outcomes.evaluate gets them
-    per: Callable[[str], float | None]  # the trailing PER of the cached quote
+    per: Callable[[str], tuple[float | None, float | None]]  # the trailing and forward PER of the cached quote
     sectors: dict[str, str]  # ticker -> 33-sector (read from the input csv by the caller)
     names: dict[str, str]  # ticker -> company name
     http: httpx.Client
@@ -110,7 +110,7 @@ class FlowDeps:
             flows=stack.enter_context(FlowStore.from_config(cfg, root)),
             records=stack.enter_context(RecordStore.from_config(cfg, root)),
             history=closes_of(cache),
-            per=trailing_per(cache),
+            per=price_earnings(cache),
             sectors=read_column(csv_path, SECTOR33),
             names=read_column(csv_path, NAME),
             http=web_http,
@@ -136,11 +136,25 @@ class MissingProfilesError(RuntimeError):
     """The document store holds no profile text, so no company can be mapped for the demand."""
 
 
-def flow_memo(name: str, demand: str, urls: Sequence[str], settings: FlowSettings, deps: FlowDeps) -> FlowSummary:
+@dataclass(frozen=True)
+class MemoRequest:
+    """The flow the user names: its name, the demand behind it, sources already found and search terms of their own.
+
+    ``terms`` are searched before the LLM's own terms; an automated caller can pass its terms here.
+    """
+
+    name: str
+    demand: str
+    urls: Sequence[str] = ()
+    terms: Sequence[str] = ()
+
+
+def flow_memo(request: MemoRequest, settings: FlowSettings, deps: FlowDeps) -> FlowSummary:
     """The memo of one demand: its sources, axes, company map, the numbers of each company and the file.
 
     The flow is saved first, so a failure of the axes or the map leaves the row and its documents behind.
     """
+    name, demand, urls = request.name, request.demand, request.urls
     flow_id = deps.flows.save_flow(
         FlowRow(name, demand, list(urls), prompt_version(deps.prompts), deps.llm.primary.model)
     )
@@ -150,7 +164,7 @@ def flow_memo(name: str, demand: str, urls: Sequence[str], settings: FlowSetting
     deps.flows.record_axes(flow_id, axes)
     if not deps.store.profiles(settings.map.sections):
         raise MissingProfilesError("the document store holds no profile text; run `main.py profiles` first")
-    mapped = build_map(demand, settings.map, MapDeps(deps.llm, deps.prompts, deps.store))
+    mapped = build_map(demand, settings.map, MapDeps(deps.llm, deps.prompts, deps.store), request.terms)
     hits = mapped.hits
     companies, rows = _companies(hits, settings, deps)
     deps.flows.record_companies(flow_id, rows)
@@ -174,12 +188,12 @@ def company_numbers(
 ) -> dict[str, Any]:
     """The numbers of one mapped company: its screen row, its sector comparison and its momentum.
 
-    An item the run record does not hold is ``None``. A PER at or above ``per_max`` marks the company as
-    overvalued, while a missing PER (a loss, say) never does.
+    An item the run record does not hold is ``None``. The lower of the trailing and forward PER at or above
+    ``per_max`` marks the company as overvalued (a one-off drop in profit or a data error in one of them does not),
+    while a company with neither PER (a loss, say) never is.
     """
-    per = row.get(PER)
-    if isinstance(per, bool) or not isinstance(per, int | float) or not math.isfinite(per):
-        per = None
+    per, per_forward = _finite(row.get(PER)), _finite(row.get(PER_FORWARD))
+    known = [value for value in (per, per_forward) if value is not None]
     return {
         "stage1_pass": row.get(STAGE1_PASS),
         "fail_rule": row.get(FAIL_RULE),
@@ -187,7 +201,8 @@ def company_numbers(
         "sector_comparison": compare(ticker, row, peers),
         "position": momentum.get("position"),
         "per": per,
-        "overvalued": per is not None and per >= per_max,
+        "per_forward": per_forward,
+        "overvalued": bool(known) and min(known) >= per_max,
     }
 
 
@@ -235,7 +250,8 @@ def _companies(
     lines: list[CompanyLine] = []
     rows: list[CompanyRow] = []
     for hit in hits:
-        row = {**deps.records.screen_row(run_id, hit.ticker), PER: deps.per(hit.ticker)}
+        per, per_forward = deps.per(hit.ticker)
+        row = {**deps.records.screen_row(run_id, hit.ticker), PER: per, PER_FORWARD: per_forward}
         mom = momentum(universe, hit.ticker, settings.momentum, today)
         numbers = company_numbers(hit.ticker, row, peers, mom, settings.per_max)
         lines.append(
@@ -289,4 +305,12 @@ def flow_decide(decision: Decision, flows: FlowStore) -> None:
     now = datetime.datetime.now().replace(second=0, microsecond=0)
     flows.record_decision(
         DecisionRow(decision.flow_id, decision.ticker, now, decision.action, decision.reason, decision.max_yen)
+    )
+
+
+def _finite(value: Any) -> float | None:
+    return (
+        float(value)
+        if isinstance(value, int | float) and not isinstance(value, bool) and math.isfinite(value)
+        else None
     )

@@ -7,9 +7,22 @@ from typing import Any
 from . import fields as F
 from .flow_store import AxisRow
 
-PER = "PER"  # the trailing PER of the cache, shown as it is (not a report column)
+PER = "PER"  # the trailing PER of the cached quote, shown as it is (not a report column)
+PER_FORWARD = "Forward_PER"  # the forward PER of the cached quote
 PER_MARK = "超割高"
-COLUMNS = ("コード", "名前", "何次", "売上比率", "業種", "改善区分", "通過", "落ちた条件", "位置", "PER", "比較")
+COLUMNS = (
+    "コード",
+    "名前",
+    "何次",
+    "売上比率",
+    "業種",
+    "改善区分",
+    "通過",
+    "落ちた条件",
+    "位置",
+    "PER（実績 / 予想）",
+    "比較",
+)
 NOTE = "先に上がった会社はその後負けやすい（有意ではない）"
 
 ATTENTION = "要注意"
@@ -143,7 +156,7 @@ def _cells(company: CompanyLine) -> list[str]:
         _text(numbers.get("stage1_pass")),
         _text(numbers.get("fail_rule")),
         _text(numbers.get("position")),
-        _text(numbers.get("per")),
+        f"{_text(numbers.get('per'))} / {_text(numbers.get('per_forward'))}",
         _comparison(comparison),
     ]
 
@@ -161,5 +174,8 @@ def _overvalued_lines(companies: list[CompanyLine]) -> list[str]:
     flagged = [company for company in companies if company.numbers.get("overvalued")]
     if not flagged:
         return []
-    items = [f"- {c.ticker} {c.name}（PER {_text(c.numbers.get('per'))}）" for c in flagged]
+    items = [
+        f"- {c.ticker} {c.name}（PER 実績 {_text(c.numbers.get('per'))} / 予想 {_text(c.numbers.get('per_forward'))}）"
+        for c in flagged
+    ]
     return [f"## {PER_MARK}", "", *items, ""]

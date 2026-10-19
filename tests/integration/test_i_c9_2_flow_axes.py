@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 
 from src import fields as F
-from src.flow import FlowDeps, FlowSettings, Throttles, flow_memo
+from src.flow import FlowDeps, FlowSettings, MemoRequest, Throttles, flow_memo
 from src.research import load_prompts
 from tests.fixtures.config import CFG
 from tests.fixtures.review_flow import FakeLLM, documents_of
@@ -175,7 +175,7 @@ def test_invalid_json_is_asked_once_more_and_unverified_claims_leave_the_axis_un
         return flow_reply(messages, ANSWER, (FABRICATED_AXIS,))
 
     lab = Lab(respond)
-    summary = flow_memo(NAME, DEMAND, (), settings, lab.deps)
+    summary = flow_memo(MemoRequest(NAME, DEMAND), settings, lab.deps)
 
     assert lab.tasks.count("axes") == 2  # the invalid reply and the one re-ask, no more
     assert summary.unknown_axes == [FABRICATED_AXIS]
@@ -195,7 +195,7 @@ def test_verified_claims_answer_every_axis(settings: FlowSettings) -> None:
         return flow_reply(messages, ANSWER)
 
     lab = Lab(respond)
-    summary = flow_memo(NAME, DEMAND, (), settings, lab.deps)
+    summary = flow_memo(MemoRequest(NAME, DEMAND), settings, lab.deps)
 
     assert summary.unknown_axes == []
     assert [row.answer for row in lab.flows.axes] == [{"value": ANSWER[axis]} for axis in AXES]
@@ -214,6 +214,6 @@ def test_each_axis_carries_only_the_claims_that_name_it(settings: FlowSettings) 
         return flow_reply(messages, ANSWER)
 
     lab = Lab(respond)
-    flow_memo(NAME, DEMAND, (), settings, lab.deps)
+    flow_memo(MemoRequest(NAME, DEMAND), settings, lab.deps)
 
     assert [[claim["field"] for claim in row.evidence] for row in lab.flows.axes] == [[axis] for axis in AXES]

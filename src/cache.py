@@ -138,12 +138,12 @@ def closes_of(cache: "StockCache") -> Callable[[str], pd.Series]:
     return closes
 
 
-def trailing_per(cache: "StockCache") -> Callable[[str], float | None]:
-    """The trailing PER in the cached quote (None for a loss or a ticker the cache does not have)."""
+def price_earnings(cache: "StockCache") -> Callable[[str], tuple[float | None, float | None]]:
+    """The trailing and forward PER of the cached quote (None where the quote has none)."""
 
-    def per(ticker: str) -> float | None:
-        data = cache.get(ticker)
-        value = data.info.get("trailingPE") if data is not None else None
-        return float(value) if isinstance(value, int | float) else None
+    def per(ticker: str) -> tuple[float | None, float | None]:
+        info = data.info if (data := cache.get(ticker)) is not None else {}
+        values = (info.get("trailingPE"), info.get("forwardPE"))
+        return tuple(float(v) if isinstance(v, int | float) else None for v in values)  # type: ignore[return-value]
 
     return per
