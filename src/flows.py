@@ -8,19 +8,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import httpx
-
-from .cache import StockCache, closes_of
 from .collect import CollectClients, CollectSettings, collect_documents, collect_profiles, companies
 from .docstore import DocStore
-from .flow import FlowDeps, FlowSettings, Throttles, flow_memo
-from .flow_store import FlowStore
-from .llm import GeminiSearch, LLMClient
+from .flow import FlowDeps, FlowSettings, flow_memo
 from .records import RecordStore
-from .research import load_prompts, prompt_version
+from .research import prompt_version
 from .review import ReviewDeps, ReviewSettings, review_candidates
 from .sector import Peers, PeerSettings
-from .throttle import RateLimiter
 from .tickers import NAME, SECTOR33, read_column
 
 
@@ -93,28 +87,8 @@ def review_run(
 def flow_memo_run(cfg: dict[str, Any], root: Path, env: Mapping[str, str], request: MemoRequest) -> None:
     """Research the flow the user names (sources, axes, map, numbers) and print where the memo went."""
     settings = FlowSettings.from_config(cfg, root)
-    csv_path = root / cfg["system"]["input_csv"]
     with ExitStack() as stack:
-        llm_http = stack.enter_context(httpx.Client(timeout=cfg["llm"]["timeout_s"]))
-        web_http = stack.enter_context(
-            httpx.Client(timeout=cfg["webfetch"]["timeout_s"], headers={"User-Agent": cfg["webfetch"]["user_agent"]})
-        )
-        deps = FlowDeps(
-            llm=LLMClient.from_config(cfg, llm_http, env),
-            prompts=load_prompts(settings.prompts_dir),
-            search=GeminiSearch.from_config(cfg, llm_http, env),
-            store=stack.enter_context(DocStore.from_config(cfg, root)),
-            flows=stack.enter_context(FlowStore.from_config(cfg, root)),
-            records=stack.enter_context(RecordStore.from_config(cfg, root)),
-            history=closes_of(stack.enter_context(StockCache.from_config(cfg, root))),
-            sectors=read_column(csv_path, SECTOR33),
-            names=read_column(csv_path, NAME),
-            http=web_http,
-            throttles=Throttles(
-                search=RateLimiter.per_minute(cfg["llm"]["max_calls_per_minute"]),
-                fetch=RateLimiter(1, cfg["webfetch"]["request_interval_s"]),
-            ),
-        )
+        deps = FlowDeps.from_config(cfg, root, env, stack, settings)
         summary = flow_memo(request.name, request.demand, request.urls, settings, deps)
     print(
         f"Flow memo written to {summary.memo_path}: "

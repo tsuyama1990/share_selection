@@ -1,8 +1,15 @@
 """The Markdown research memo of one reviewed ticker."""
 
+from dataclasses import dataclass
 from typing import Any
 
 from . import fields as F
+from .flow_store import AxisRow
+
+PER = "PER"  # the trailing PER of the cache, shown as it is (not a report column)
+PER_MARK = "超割高"
+COLUMNS = ("コード", "名前", "何次", "売上比率", "業種", "改善区分", "通過", "落ちた条件", "位置", "PER", "比較")
+NOTE = "先に上がった会社はその後負けやすい（有意ではない）"
 
 ATTENTION = "要注意"
 
@@ -44,7 +51,7 @@ def _momentum_lines(momentum: dict[str, Any]) -> list[str]:
         f"全業種の中の順位 {rank_text}、業種の中の位置 {position_text}",
     ]
     if momentum.get("note"):
-        lines.append("先に上がった会社はその後負けやすい（有意ではない）")
+        lines.append(NOTE)
     return lines
 
 
@@ -63,3 +70,89 @@ def render_memo(
         if comparison.get("momentum"):
             lines += _momentum_lines(comparison["momentum"])
     return "\n".join(lines) + "\n"
+
+
+@dataclass(frozen=True)
+class CompanyLine:
+    ticker: str
+    name: str
+    tier: str
+    exposure: str
+    numbers: dict[str, Any]
+    note: bool
+
+
+def render_flow_memo(name: str, demand: str, axes: list[AxisRow], companies: list[CompanyLine]) -> str:
+    """The memo of one demand as Markdown: each axis with its quotes, the company table and the note."""
+    lines = [f"# {name}", "", f"- 需要: {demand}", "", "## 軸", ""]
+    for row in axes:
+        quotes = [claim["quote"] for claim in row.evidence if claim.get("quote")]
+        lines += [f"### {row.axis}", "", axis_value(row), ""] + [f"> {quote}" for quote in quotes] + [""]
+    lines += ["## 恩恵企業", "", *_table_lines(companies), ""]
+    lines += _overvalued_lines(companies)
+    if any(company.note for company in companies):
+        lines += [f"注記: {NOTE}", ""]
+    return "\n".join(lines)
+
+
+def _text(value: Any) -> str:
+    """The value as text (a bool as ○/×), or ``fields.UNKNOWN`` when the record holds nothing."""
+    if isinstance(value, bool):
+        return "○" if value else "×"
+    if isinstance(value, float):
+        return f"{value:.2f}"
+    return F.UNKNOWN if value is None or value == "" else str(value)
+
+
+def axis_value(row: AxisRow) -> str:
+    """The answer of one axis, or ``fields.UNKNOWN`` when the run left it empty."""
+    value = row.answer.get("value") if isinstance(row.answer, dict) else None
+    return F.UNKNOWN if value is None or value == "" else str(value)
+
+
+def _comparison(comparison: Any) -> str:
+    """The cells of a ``sector.compare`` result: each metric as value / sector median (ratio)."""
+    metrics = comparison.get("metrics") if isinstance(comparison, dict) else None
+    if not isinstance(metrics, dict):
+        return ""
+    return "; ".join(
+        f"{metric} {_text(item.get('value'))} / {_text(item.get('median'))} (x{_text(item.get('ratio'))})"
+        for metric, item in metrics.items()
+        if isinstance(item, dict)
+    )
+
+
+def _cells(company: CompanyLine) -> list[str]:
+    """The cells of one company, in the order of ``COLUMNS``."""
+    numbers = company.numbers
+    comparison = numbers.get("sector_comparison")
+    sector = comparison.get("sector") if isinstance(comparison, dict) else None
+    return [
+        company.ticker,
+        company.name,
+        company.tier,
+        company.exposure,
+        _text(sector),
+        _text(numbers.get("improvement_class")),
+        _text(numbers.get("stage1_pass")),
+        _text(numbers.get("fail_rule")),
+        _text(numbers.get("position")),
+        _text(numbers.get("per")),
+        _comparison(comparison),
+    ]
+
+
+def _table_lines(companies: list[CompanyLine]) -> list[str]:
+    """The company table, one row per mapped company."""
+    header = "| " + " | ".join(COLUMNS) + " |"
+    rule = "|" + "---|" * len(COLUMNS)
+    return [header, rule] + ["| " + " | ".join(_cells(company)) + " |" for company in companies]
+
+
+def _overvalued_lines(companies: list[CompanyLine]) -> list[str]:
+    """The companies whose PER is at or above the cap, apart from the table, or nothing when none is."""
+    flagged = [company for company in companies if company.numbers.get("overvalued")]
+    if not flagged:
+        return []
+    items = [f"- {c.ticker} {c.name}（PER {_text(c.numbers.get('per'))}）" for c in flagged]
+    return [f"## {PER_MARK}", "", *items, ""]

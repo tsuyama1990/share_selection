@@ -4,8 +4,9 @@ import pytest
 
 from src import fields as F
 from src import flow
-from src.flow import NOTE, CompanyLine, FlowSettings, company_numbers, render_flow_memo
+from src.flow import FlowSettings, company_numbers
 from src.flow_store import AxisRow
+from src.memo import NOTE, CompanyLine, render_flow_memo
 from src.sector import Peers, PeerSettings
 
 CFG = {

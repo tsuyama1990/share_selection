@@ -23,7 +23,7 @@
 | `verify.py` | `normalize`、`check_claims` | 引用の照合と照合率、支えのない項目の unknown への置き換え | ✅ |
 | `sector.py` | `Peers`、`PeerSettings`、`sector_medians`、`compare`、`Universe`、`MomentumSettings`、`momentum`、`momentum_note`、`laggard_peers` | 業種ごとの中央値と、候補の同業比較（`Peers.build` は指標の辞書から作り、記録の置き場には依存しない）。業種の勢い（`L2_C4_stage2_research.md` 3.1 節）。業種の中のまだ上がっていない割安株（Tailwind Watch の答え合わせの比べる相手） | ✅ |
 | `research.py` | `ReplyError`、`TaskResult`、`load_prompts`、`prompt_version`、`build_messages`、`parse_reply`、`run_task` | T1〜T5 の実行（プロンプトの組み立て、JSON の検証と 1 回の再依頼、照合） | ✅ |
-| `memo.py` | `render_memo` | 1 銘柄の調査メモ（Markdown の文字列） | ✅ |
+| `memo.py` | `render_memo`、`render_flow_memo`、`CompanyLine`、`axis_value` | 調査メモ（1 銘柄の二次調査、流れの調査）の Markdown の文字列 | ✅ |
 
 候補と全銘柄の指標は `records.py`（`RecordStore.candidates`・`run_metrics`）、`reviews`・`review_evals` は `review_store.py`（`ReviewStore.record_review`・`reviewed`・`passed_eval`）。`docs`・`review` の流れは `collect.py`・`review.py`（`L3_composition.md`）。
 
