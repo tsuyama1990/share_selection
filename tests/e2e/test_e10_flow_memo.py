@@ -179,7 +179,8 @@ def test_flow_memo_writes_the_axes_the_map_and_the_numbers(setup, capsys):
 
     assert run_cmd(project, "flow-memo", "--name", NAME, "--demand", DEMAND, "--url", SOURCE_URL) == 0
     path = memo_path(project)
-    assert capsys.readouterr().out == f"Flow memo written to {path}: 2 companies, 1 axes unknown.\n"
+    summary = f"Flow memo written to {path}: 2 companies, 1 axes unknown, 3 ranked, 0 failed to confirm.\n"
+    assert capsys.readouterr().out == summary
 
     text = path.read_text(encoding="utf-8")
     assert text.startswith(f"# {NAME}") and f"- 需要: {DEMAND}" in text

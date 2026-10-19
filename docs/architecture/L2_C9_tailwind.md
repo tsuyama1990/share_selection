@@ -81,7 +81,7 @@ LLM の出力は `research.py` と同じ claims の形（answer・claims・unkno
 
 ## 5. 設定（`config.yaml` に追加する節。キーは実装と同じブランチで足す）
 
-`flow:`（`db_file`、`memo_dir`、`prompts_dir`、`search_prompt`、`max_sources`、`max_doc_chars`、`map.max_terms`、`map.top_k`、`outcome_months`、`control.past_months`）。
+`flow:`（`db_file`、`memo_dir`、`prompts_dir`、`search_prompt`、`max_sources`、`max_doc_chars`、`map.max_terms`、`map.top_k`、`map.sections`、`outcome_months`、`control.past_months`）。
 
 ## 6. 決定・先送り
 

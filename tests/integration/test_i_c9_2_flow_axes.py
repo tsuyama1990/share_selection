@@ -62,7 +62,7 @@ class FakeStore:
     def documents(self, _owner: str) -> list[Doc]:
         return self.docs
 
-    def profiles(self) -> dict[str, str]:
+    def profiles(self, _sections: tuple[str, ...]) -> dict[str, str]:
         return self.text_by_ticker
 
 
@@ -200,3 +200,19 @@ def test_verified_claims_answer_every_axis(settings: FlowSettings) -> None:
     assert [row.answer for row in lab.flows.axes] == [{"value": ANSWER[axis]} for axis in AXES]
     assert all(row.verified_ratio == 1.0 for row in lab.flows.axes)
     assert FABRICATED not in summary.memo_path.read_text(encoding="utf-8")
+
+
+def test_each_axis_carries_only_the_claims_that_name_it(settings: FlowSettings) -> None:
+    """Live check 2026-10-18: every axis showed every quote of the run."""
+
+    def respond(task: str, messages: list[dict[str, str]]) -> str:
+        if task == "terms":
+            return json.dumps({"terms": ["半導体"]}, ensure_ascii=False)
+        if task == "confirm":
+            return flow_reply(messages, NO_SELL)
+        return flow_reply(messages, ANSWER)
+
+    lab = Lab(respond)
+    flow_memo(NAME, DEMAND, (), settings, lab.deps)
+
+    assert [[claim["field"] for claim in row.evidence] for row in lab.flows.axes] == [[axis] for axis in AXES]

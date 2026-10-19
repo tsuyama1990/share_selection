@@ -99,6 +99,8 @@ class FlowSummary:
     unknown_axes: list[str]
     companies: list[str]
     searches_left: int | None  # None: the search was not cut short, so nothing was used up
+    ranked: int  # companies the ranking passed to the LLM
+    failed: int  # of those, companies whose confirmation failed
 
 
 @dataclass(frozen=True)
@@ -127,16 +129,25 @@ def flow_memo(name: str, demand: str, urls: Sequence[str], settings: FlowSetting
     searches_left = _gather(settings.search_prompt.format(name=name, demand=demand), urls, owner, settings, deps)
     axes = _axes(name, demand, owner, settings, deps)
     deps.flows.record_axes(flow_id, axes)
-    if not deps.store.profiles():
+    if not deps.store.profiles(settings.map.sections):
         raise MissingProfilesError("the document store holds no profile text; run `main.py profiles` first")
-    hits = build_map(demand, settings.map, MapDeps(deps.llm, deps.prompts, deps.store)).hits
+    mapped = build_map(demand, settings.map, MapDeps(deps.llm, deps.prompts, deps.store))
+    hits = mapped.hits
     companies, rows = _companies(hits, settings, deps)
     deps.flows.record_companies(flow_id, rows)
     settings.memo_dir.mkdir(parents=True, exist_ok=True)
     memo_path = settings.memo_dir / f"{name}-{datetime.date.today():%Y-%m-%d}.md"
     memo_path.write_text(render_flow_memo(name, demand, axes, companies), encoding="utf-8")
     unknown = [row.axis for row in axes if _axis_value(row) == F.UNKNOWN]
-    return FlowSummary(flow_id, memo_path, unknown, [line.ticker for line in companies], searches_left)
+    return FlowSummary(
+        flow_id,
+        memo_path,
+        unknown,
+        [line.ticker for line in companies],
+        searches_left,
+        len(mapped.ranked),
+        len(mapped.failed),
+    )
 
 
 def company_numbers(
@@ -178,6 +189,8 @@ def _text(value: Any) -> str:
     """The value as text (a bool as ○/×), or ``fields.UNKNOWN`` when the record holds nothing."""
     if isinstance(value, bool):
         return "○" if value else "×"
+    if isinstance(value, float):
+        return f"{value:.2f}"
     return F.UNKNOWN if value is None or value == "" else str(value)
 
 
@@ -261,7 +274,10 @@ def _axes(name: str, demand: str, owner: str, settings: FlowSettings, deps: Flow
     context = {"name": name, "demand": demand}
     result = run_task(deps.llm, deps.prompts, (AXES_TASK, list(settings.axes)), docs, context)
     ratio = len(result.evidence) / result.claims if result.claims else 0.0
-    return [AxisRow(axis, {"value": result.answer.get(axis)}, result.evidence, ratio) for axis in settings.axes]
+    return [
+        AxisRow(axis, {"value": result.answer.get(axis)}, [c for c in result.evidence if c["field"] == axis], ratio)
+        for axis in settings.axes
+    ]
 
 
 def _companies(
