@@ -24,6 +24,7 @@ COLUMNS = (
     "比較",
 )
 NOTE = "先に上がった会社はその後負けやすい（有意ではない）"
+TIER_NOTE = "「何次」は LLM の判定で、同じ文書でも実行ごとに 1次 と unknown の間で揺れる。参考にとどめ、引用で確かめる"
 
 ATTENTION = "要注意"
 
@@ -107,7 +108,7 @@ def render_flow_memo(
     for row in axes:
         quotes = [claim["quote"] for claim in row.evidence if claim.get("quote")]
         lines += [f"### {row.axis}", "", axis_value(row), ""] + [f"> {quote}" for quote in quotes] + [""]
-    lines += ["## 恩恵企業", "", *_table_lines(companies), ""]
+    lines += ["## 恩恵企業", "", *_table_lines(companies), "", f"注記: {TIER_NOTE}", ""]
     lines += _overvalued_lines(companies)
     if any(company.note for company in companies):
         lines += [f"注記: {NOTE}", ""]

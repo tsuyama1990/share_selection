@@ -6,7 +6,7 @@ from src import fields as F
 from src import flow
 from src.flow import FlowSettings, company_numbers
 from src.flow_store import AxisRow
-from src.memo import NOTE, CompanyLine, render_flow_memo
+from src.memo import NOTE, TIER_NOTE, CompanyLine, render_flow_memo
 from src.sector import Peers, PeerSettings
 
 CFG = {
@@ -210,3 +210,7 @@ def test_flow_decide_records_the_decision_at_the_minute():
     row = flows.rows[0]
     assert (row.flow_id, row.ticker, row.action, row.reason, row.max_yen) == ("f", "1.T", "skip", "too dear", None)
     assert row.decided_at.second == 0 and row.decided_at.microsecond == 0
+
+
+def test_render_flow_memo_warns_that_the_tier_is_a_judgment_that_varies():
+    assert TIER_NOTE in render_flow_memo("半導体", "需要の説明", [], COMPANIES)
