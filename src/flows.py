@@ -8,14 +8,23 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .cache import StockCache, refresh_all
 from .collect import CollectClients, CollectSettings, collect_documents, collect_profiles, companies
-from .docstore import DocStore
+from .docstore import WEB, DocStore
+from .earnings_calendar import load_calendar
 from .flow import FlowDeps, FlowSettings, flow_memo
-from .records import RecordStore
+from .records import RecordStore, RunInfo, git_sha
+from .report import format_eval, write_failures, write_report
 from .research import prompt_version
 from .review import ReviewDeps, ReviewSettings, review_candidates
+from .review_eval import evaluate_model, load_eval_cases
+from .screener import NO_CACHE, Screener, screen_universe
 from .sector import Peers, PeerSettings
+from .selection import prioritize
 from .tickers import NAME, SECTOR33, read_column
+from .yahoo import YahooClient
+
+EVAL_RUN_ID = "eval-%Y%m%dT%H%M%S"
 
 
 class EvalNotPassedError(RuntimeError):
@@ -97,3 +106,52 @@ def flow_memo_run(cfg: dict[str, Any], root: Path, env: Mapping[str, str], reque
     )
     if summary.searches_left is not None:
         print("Search quota used up: only the `--url` sources were collected.")
+
+
+def fetch_run(cfg: dict[str, Any], root: Path, tickers: list[str]) -> None:
+    """Refresh the cache from Yahoo and write the failures CSV."""
+    print(f"Starting Data Fetch for {len(tickers)} stocks...")
+    with StockCache.from_config(cfg, root) as cache:
+        failures = refresh_all(cache, YahooClient.from_config(cfg), tickers, cfg["system"]["cache_days"])
+    print(f"fetched {len(tickers) - len(failures)} / {len(tickers)}")
+    if failures:
+        write_failures(failures, root / cfg["output"]["dir"], cfg["output"]["failures_filename"])
+
+
+def analyze_run(cfg: dict[str, Any], root: Path, tickers: list[str], issue: str) -> None:
+    """Screen the cached universe, record the run and write the result CSV."""
+    print(f"Starting Analysis for {len(tickers)} stocks (using cache)...")
+    output_cfg = cfg["output"]
+    with StockCache.from_config(cfg, root) as cache:
+        calendar = load_calendar(root / cfg["calendar"]["out_csv"])
+        results = screen_universe(tickers, cache, Screener.from_config(cfg), calendar)
+        fetched_min, fetched_max = cache.fetched_range()
+    passed = [r.row for r in results.values() if r.passed]
+    prioritize(passed, cfg["selection"]["candidates_n"])
+    list_date = datetime.date.fromtimestamp((root / cfg["system"]["input_csv"]).stat().st_mtime)
+    with RecordStore.from_config(cfg, root) as store:
+        run_id = store.record_run(RunInfo(issue, git_sha(), cfg, list_date, fetched_min, fetched_max), results)
+    print(f"Recorded run {run_id} ({len(results)} tickers).")
+    if no_cache := sum(r.fail_rule == NO_CACHE for r in results.values()):
+        print(f"{no_cache} tickers had no cache (run `fetch` first).")
+    if not passed:
+        print("No stocks passed the Gatekeeper.")
+        return
+    write_report(passed, root / output_cfg["dir"], output_cfg["filename"], output_cfg["columns"])
+
+
+def review_eval_run(cfg: dict[str, Any], root: Path, env: Mapping[str, str]) -> bool:
+    """Score the model on the eval cases, record and print the result; True when it passed."""
+    rev = cfg["review"]
+    cases = load_eval_cases(root / rev["eval"]["cases_file"])
+    with ExitStack() as stack:
+        clients = CollectClients.from_config(cfg, env, stack, WEB in rev["eval"]["sources"])
+        deps = ReviewDeps.from_config(cfg, root, env, stack, None)
+        companies = [c.company for c in cases]
+        collect_documents(companies, CollectSettings.from_config(cfg), clients, deps.store, datetime.date.today())
+        outcomes = evaluate_model(cases, cfg, deps, datetime.datetime.now().strftime(EVAL_RUN_ID))
+        lines, overall = format_eval(outcomes, deps.llm.primary.model)
+        print("\n".join(lines))
+        summary = [{"run": n, "hits": r.hits, "passed": r.passed} for n, (_, r) in enumerate(outcomes, 1)]
+        deps.reviews.record_eval(prompt_version(deps.prompts), deps.llm.primary.model, overall, summary)
+    return overall.passed
