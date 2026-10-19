@@ -4,25 +4,17 @@ import datetime
 from collections.abc import Callable, Iterable, Sequence
 from functools import partial
 from pathlib import Path
-from statistics import median
 from typing import Any
 
 import pandas as pd
 
 from . import fields as F
 from .flow_store import FlowStore, OutcomeRow
+from .metrics import close_on_or_before, period_return, price_change
 from .records import RecordStore
+from .sector import Universe, laggard_peers
 from .tickers import SECTOR33, read_column
 from .yahoo import YahooClient
-
-
-def _close_on_or_before(closes: pd.Series, date: pd.Timestamp) -> float | None:
-    past = closes.loc[:date]
-    return float(past.iloc[-1]) if len(past) else None
-
-
-def _change(p0: float | None, p1: float | None) -> float | None:
-    return None if p0 is None or p1 is None else p1 / p0 - 1
 
 
 def _history_cache(history: Callable[[str], pd.Series]) -> Callable[[str], pd.Series]:
@@ -42,7 +34,7 @@ def _history_cache(history: Callable[[str], pd.Series]) -> Callable[[str], pd.Se
 
 
 def _ticker_return(get: Callable[[str], pd.Series], ticker: str, t0: pd.Timestamp, t1: pd.Timestamp) -> float | None:
-    return _change(_close_on_or_before(get(ticker), t0), _close_on_or_before(get(ticker), t1))
+    return period_return(get(ticker), t0, t1)
 
 
 def _returns(
@@ -72,10 +64,10 @@ def evaluate(
             t1 = t0 + pd.DateOffset(months=h)
             if t1 > pd.Timestamp(today) or store.has_outcomes(run_id, h):
                 continue
-            bench = _change(_close_on_or_before(get(benchmark), t0), _close_on_or_before(get(benchmark), t1))
+            bench = price_change(close_on_or_before(get(benchmark), t0), close_on_or_before(get(benchmark), t1))
             for ticker in store.tickers(run_id):
-                p0, p1 = _close_on_or_before(get(ticker), t0), _close_on_or_before(get(ticker), t1)
-                ret = _change(p0, p1)
+                p0, p1 = close_on_or_before(get(ticker), t0), close_on_or_before(get(ticker), t1)
+                ret = price_change(p0, p1)
                 rows.append([ticker, h, p0, p1, ret, bench, None if ret is None or bench is None else ret - bench])
         if rows:
             store.add_outcomes(run_id, rows)
@@ -133,35 +125,16 @@ def evaluate_decisions(
 def _select_controls(
     cfg: dict[str, Any], root: Path, store: RecordStore, history: Callable[[str], pd.Series]
 ) -> Callable[[str, datetime.date], list[str]]:
-    """A closure that lists the same-sector companies of a ticker whose past gain and PBR are at or below the
-    sector's median at the decision date."""
+    """Same-sector companies whose past gain and PBR are at or below the sector median at the decision date."""
     sectors = read_column(root / cfg["system"]["input_csv"], SECTOR33)
-    past = int(cfg["flow"]["control"]["past_months"])
     metrics = store.run_metrics(store.resolve_run(None))
-    get = _history_cache(history)
-
-    def sector_of(ticker: str) -> str | None:
-        return sectors.get(ticker) or sectors.get(ticker.split(".")[0])
+    universe = Universe(_history_cache(history), tuple(metrics), sectors)
+    pbr = {ticker: m.get(F.PBR) for ticker, m in metrics.items()}
+    months = int(cfg["flow"]["control"]["past_months"])
 
     def controls(ticker: str, date: datetime.date) -> list[str]:
-        sector = sector_of(ticker)
-        if sector is None:
-            return []
-        t1 = pd.Timestamp(date)
-        t0 = t1 - pd.DateOffset(months=past)
-        rows = []
-        for other, m in metrics.items():
-            if sector_of(other) != sector:
-                continue
-            gain = _ticker_return(get, other, t0, t1)
-            pbr = m.get(F.PBR)
-            if gain is not None and pbr is not None:
-                rows.append((other, gain, pbr))
-        if not rows:
-            return []
-        med_gain = median([r[1] for r in rows])
-        med_pbr = median([r[2] for r in rows])
-        return [t for t, g, p in rows if g <= med_gain and p <= med_pbr]
+        end = pd.Timestamp(date)
+        return laggard_peers(universe, pbr, ticker, end - pd.DateOffset(months=months), end)
 
     return controls
 

@@ -21,7 +21,7 @@ from .flow_store import AxisRow, CompanyRow, DecisionRow, FlowRow, FlowStore
 from .llm import GeminiSearch, LLMClient, QuotaExceeded
 from .records import RecordStore
 from .research import prompt_version, run_task
-from .sector import MomentumSettings, Peers, Universe, compare, momentum, momentum_note, sector_medians
+from .sector import MomentumSettings, Peers, PeerSettings, Universe, compare, momentum, momentum_note
 from .throttle import RateLimiter
 from .webfetch import fetch_page
 
@@ -47,14 +47,12 @@ class FlowSettings:
     map: MapSettings
     per_max: float
     momentum: MomentumSettings
-    sector_metrics: tuple[str, ...]
-    min_peers: int
+    peers: PeerSettings
 
     @classmethod
     def from_config(cls, cfg: dict[str, Any], root: Path) -> "FlowSettings":
         """``flow:``, the page size of ``webfetch`` and the ``sector:`` values the memo compares with."""
         flow = cfg["flow"]
-        sector = cfg["sector"]
         return cls(
             memo_dir=root / flow["memo_dir"],
             prompts_dir=root / flow["prompts_dir"],
@@ -66,8 +64,7 @@ class FlowSettings:
             map=MapSettings.from_config(cfg),
             per_max=flow["per_max"],
             momentum=MomentumSettings.from_config(cfg),
-            sector_metrics=tuple(sector["metrics"]),
-            min_peers=sector["min_peers"],
+            peers=PeerSettings.from_config(cfg),
         )
 
 
@@ -286,15 +283,8 @@ def _companies(
     """One line and one row per mapped company: its screen row, its sector comparison and its momentum."""
     run_id = deps.records.resolve_run(None)
     metrics = deps.records.run_metrics(run_id)
-    tickers = tuple(metrics)
-    sector_metrics = list(settings.sector_metrics)
-    peers = Peers(
-        sector_medians(metrics, deps.sectors, sector_metrics, settings.min_peers),
-        deps.sectors,
-        sector_metrics,
-        tickers,
-    )
-    universe = Universe(deps.history, tickers, deps.sectors)
+    peers = Peers.build(metrics, deps.sectors, settings.peers)
+    universe = Universe(deps.history, peers.tickers, deps.sectors)
     today = datetime.date.today()
     lines: list[CompanyLine] = []
     rows: list[CompanyRow] = []

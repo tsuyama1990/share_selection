@@ -119,3 +119,19 @@ def annual_operating_change(financials: pd.DataFrame) -> tuple[float | None, flo
     if oi is None or oi_prev is None or rev is None or rev_prev is None or rev <= 0 or rev_prev <= 0:
         return growth, None, delta
     return growth, (oi / rev - oi_prev / rev_prev) * 100, delta
+
+
+def close_on_or_before(closes: pd.Series, date: pd.Timestamp) -> float | None:
+    """The last close at or before ``date`` (the index may hold dates or timestamps, in any order)."""
+    series = closes.dropna()
+    series.index = pd.to_datetime(series.index)
+    past = series[series.index <= date].sort_index()
+    return float(past.iloc[-1]) if len(past) else None
+
+
+def price_change(p0: float | None, p1: float | None) -> float | None:
+    return None if p0 is None or p1 is None or p0 == 0 else p1 / p0 - 1
+
+
+def period_return(closes: pd.Series, start: pd.Timestamp, end: pd.Timestamp) -> float | None:
+    return price_change(close_on_or_before(closes, start), close_on_or_before(closes, end))

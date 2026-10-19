@@ -6,7 +6,7 @@ from src import fields as F
 from src import flow
 from src.flow import NOTE, CompanyLine, FlowSettings, company_numbers, render_flow_memo
 from src.flow_store import AxisRow
-from src.sector import Peers
+from src.sector import Peers, PeerSettings
 
 CFG = {
     "flow": {
@@ -88,8 +88,7 @@ def test_flow_settings_reads_the_numbers_of_flow_and_sector(tmp_path):
     assert settings.max_doc_chars == 20000
     assert settings.per_max == 100
     assert settings.axes == ("需要の波", "終わりの手がかり", "競合", "値決め", "リスク")
-    assert settings.sector_metrics == ("Real_PSR", "PBR")
-    assert settings.min_peers == 5
+    assert settings.peers == PeerSettings(("Real_PSR", "PBR"), 5)
     assert settings.momentum.months == 3
 
 

@@ -19,7 +19,7 @@ from .llm import GeminiSearch, LLMClient
 from .records import RecordStore
 from .research import load_prompts, prompt_version
 from .review import ReviewDeps, ReviewSettings, review_candidates
-from .sector import Peers
+from .sector import Peers, PeerSettings
 from .throttle import RateLimiter
 from .tickers import NAME, SECTOR33, read_column
 
@@ -77,7 +77,7 @@ def review_run(
     with RecordStore.from_config(cfg, root) as records:
         run_id = records.resolve_run(run)
         candidates = records.candidates(run_id)
-        peers = Peers.from_run(records, run_id, sectors, cfg)
+        peers = Peers.build(records.run_metrics(run_id), sectors, PeerSettings.from_config(cfg))
     with ExitStack() as stack:
         deps = ReviewDeps.from_config(cfg, root, env, stack, peers)
         version, model = prompt_version(deps.prompts), deps.llm.primary.model
