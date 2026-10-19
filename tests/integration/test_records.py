@@ -2,6 +2,7 @@ import datetime
 import json
 
 import duckdb
+import pytest
 
 from src import fields as F
 from src.config import load_config
@@ -122,3 +123,9 @@ def test_screen_row_of_an_unknown_ticker_is_empty(tmp_path):
     with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec") as store:
         run_id = store.record_run(INFO, RESULTS)
         assert store.screen_row(run_id, "9.T") == {}
+
+
+def test_resolve_run_without_any_run_says_to_run_analyze_first(tmp_path):
+    """The first `flow-memo` or `docs` on a fresh checkout hit an IndexError (live check, 2026-10-20)."""
+    with RecordStore(tmp_path / "r.duckdb", tmp_path / "rec") as store, pytest.raises(ValueError, match="analyze"):
+        store.resolve_run(None)

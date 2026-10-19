@@ -7,6 +7,7 @@ scenario whose prerequisite did not pass is skipped.
 
 import copy
 import functools
+import json
 import os
 import shutil
 import subprocess
@@ -22,6 +23,7 @@ from dotenv import dotenv_values
 from src.cache import StockCache
 from src.docstore import Company
 from src.tickers import read_column
+from src.verify import normalize
 
 ROOT = Path(__file__).resolve().parents[2]
 REAL_CACHE = ROOT / "stocks_cache.duckdb"
@@ -35,6 +37,9 @@ TIMEOUT_S = {
     "docs": 1800,
     "review-eval": 3600,
     "review": 3600,
+    "profiles": 1800,
+    "flow-memo": 3600,
+    "flow-decide": 180,
 }
 CANDIDATES_N = 3
 FETCH_TICKERS_N = 3
@@ -42,6 +47,11 @@ MIN_TICKERS = 3000
 MISSING_KEY_ENV = "LIVE_E2E_MISSING_KEY"
 EDITED_PROMPT = "system.md"
 MDNA = "ManagementAnalysisOfFinancialPositionOperatingResultsAndCashFlowsTextBlock"
+FLOW_TICKERS = ("2326.T", "3692.T", "2802.T")  # two security companies and one unrelated food company
+FLOW_NAME = "情報流出の続発"
+FLOW_DEMAND = "不正アクセスによる情報流出が続き、企業がサイバーセキュリティ対策への支出を増やす"
+FLOW_TERMS = "セキュリティ,脆弱性"
+UNRELATED = "2802.T"
 REFUSAL = "no passed review-eval"
 TICKER_COLUMNS = {"code", "name", "market", "sector33", "size"}
 
@@ -69,7 +79,12 @@ STATE: dict[str, object] = {}
 
 
 # Paths the commands only read; every other path-like setting must point into the scratch directory.
-READ_ONLY_PATHS = {("system", "db_file"), ("review", "prompt_dir"), ("review", "eval", "cases_file")}
+READ_ONLY_PATHS = {
+    ("system", "db_file"),
+    ("review", "prompt_dir"),
+    ("review", "eval", "cases_file"),
+    ("flow", "prompts_dir"),
+}
 PATH_KEYS = ("dir", "file", "csv")
 
 
@@ -94,6 +109,7 @@ def scratch(tmp_path_factory: pytest.TempPathFactory) -> Scratch:
     base["docstore"]["db_file"] = str(root / "documents.duckdb")
     base["review"].update(db_file=str(root / "reviews.duckdb"), export_dir=str(root / "reviews"))
     base["memo"]["dir"] = str(root / "memos")
+    base["flow"].update(db_file=str(root / "flow.duckdb"), memo_dir=str(root / "flows"))
     base["backup"]["dir"] = str(root / "backup")
     base["selection"]["candidates_n"] = CANDIDATES_N
     assert_writes_stay_in(base, root)
@@ -309,6 +325,52 @@ def test_lv12_missing_keys(scratch):
         assert result.code == 1, command
         assert "Error: set" in result.out, command
         assert "Traceback" not in result.err, command
+
+
+@scenario()
+def test_lv14_profiles(scratch):
+    tickers = ",".join(FLOW_TICKERS)
+    first = run(scratch, "profiles", "--tickers", tickers)
+    assert first.code == 0, first.err
+    db = scratch.path("docstore", "db_file")
+    stored = {t: n for t, n in query(db, "SELECT ticker, count(*) FROM documents WHERE source = 'edinet' GROUP BY 1")}
+    assert set(FLOW_TICKERS) <= set(stored), f"no EDINET sections for {set(FLOW_TICKERS) - set(stored)}"
+    again = run(scratch, "profiles", "--tickers", tickers)
+    assert again.code == 0, again.err
+    after = {t: n for t, n in query(db, "SELECT ticker, count(*) FROM documents WHERE source = 'edinet' GROUP BY 1")}
+    assert after == stored, "a second run stored more sections"
+
+
+@scenario(1, 4, 14)
+def test_lv15_flow_memo(scratch):
+    result = run(scratch, "flow-memo", "--name", FLOW_NAME, "--demand", FLOW_DEMAND, "--terms", FLOW_TERMS)
+    assert result.code == 0, result.out + result.err
+    memos = sorted(scratch.path("flow", "memo_dir").glob(f"{FLOW_NAME}-*.md"))
+    assert memos, "no flow memo"
+    text = memos[-1].read_text(encoding="utf-8")
+    db = scratch.path("docstore", "db_file")
+    corpus = "".join(normalize(body) for (body,) in query(db, "SELECT text FROM documents"))
+    flow_db = scratch.path("flow", "db_file")
+    for (evidence,) in query(flow_db, "SELECT evidence FROM flow_axes"):
+        for claim in json.loads(evidence):
+            assert normalize(claim["quote"]) in corpus, f"quote not in any document: {claim['quote'][:40]}"
+    mapped = {t for (t,) in query(flow_db, "SELECT ticker FROM flow_companies")}
+    assert mapped, "an empty company map"
+    assert UNRELATED not in mapped, "the unrelated company was mapped"
+    assert "地図の検索語" in text
+    STATE["flow_id"], STATE["flow_ticker"] = query(flow_db, "SELECT flow_id FROM flows")[-1][0], sorted(mapped)[0]
+
+
+@scenario(15)
+def test_lv16_flow_decide(scratch):
+    flow_id, ticker = str(STATE["flow_id"]), str(STATE["flow_ticker"])
+    result = run(scratch, "flow-decide", "--flow", flow_id, "--ticker", ticker, "--action", "skip", "--reason", "live")
+    assert result.code == 0, result.err
+    flow_db = scratch.path("flow", "db_file")
+    assert query(flow_db, "SELECT action FROM flow_decisions WHERE flow_id = ?", flow_id) == [("skip",)]
+    before = query(flow_db, "SELECT count(*) FROM flow_outcomes")
+    assert run(scratch, "evaluate").code == 0
+    assert query(flow_db, "SELECT count(*) FROM flow_outcomes") == before  # the decision is too young to score
 
 
 def key_values(scratch: Scratch) -> dict[str, str]:

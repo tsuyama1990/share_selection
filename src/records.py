@@ -124,8 +124,12 @@ class RecordStore:
         return [t for (t,) in self.con.execute(sql, [run_id, NO_CACHE]).fetchall()]
 
     def resolve_run(self, run_id: str | None) -> str:
-        """``run_id`` as given, else the latest run's."""
-        return run_id or self.runs()[-1][0]
+        """``run_id`` as given, else the latest run's (an error that says what to run when there is none)."""
+        if run_id:
+            return run_id
+        if not (runs := self.runs()):
+            raise ValueError("no run is recorded; run `analyze` first")
+        return runs[-1][0]
 
     def candidates(self, run_id: str) -> list[tuple[str, dict[str, Any]]]:
         """(ticker, metrics) of the run's stage 2 candidates, best ``Priority_Rank`` first."""
