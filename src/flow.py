@@ -16,7 +16,7 @@ import httpx
 import pandas as pd
 
 from . import fields as F
-from .cache import StockCache, closes_of
+from .cache import StockCache, closes_of, trailing_per
 from .company_map import CompanyHit, MapDeps, MapSettings, build_map
 from .docstore import DocStore
 from .flow_store import AxisRow, CompanyRow, DecisionRow, FlowRow, FlowStore
@@ -83,6 +83,7 @@ class FlowDeps:
     flows: FlowStore
     records: RecordStore
     history: Callable[[str], pd.Series]  # the adjusted daily closes, as outcomes.evaluate gets them
+    per: Callable[[str], float | None]  # the trailing PER of the cached quote
     sectors: dict[str, str]  # ticker -> 33-sector (read from the input csv by the caller)
     names: dict[str, str]  # ticker -> company name
     http: httpx.Client
@@ -100,6 +101,7 @@ class FlowDeps:
         )
         llm, search = LLMClient.from_config(cfg, llm_http, env), GeminiSearch.from_config(cfg, llm_http, env)
         csv_path = root / cfg["system"]["input_csv"]
+        cache = stack.enter_context(StockCache.from_config(cfg, root))
         return cls(
             llm=llm,
             prompts=load_prompts(settings.prompts_dir),
@@ -107,7 +109,8 @@ class FlowDeps:
             store=stack.enter_context(DocStore.from_config(cfg, root)),
             flows=stack.enter_context(FlowStore.from_config(cfg, root)),
             records=stack.enter_context(RecordStore.from_config(cfg, root)),
-            history=closes_of(stack.enter_context(StockCache.from_config(cfg, root))),
+            history=closes_of(cache),
+            per=trailing_per(cache),
             sectors=read_column(csv_path, SECTOR33),
             names=read_column(csv_path, NAME),
             http=web_http,
@@ -153,7 +156,7 @@ def flow_memo(name: str, demand: str, urls: Sequence[str], settings: FlowSetting
     deps.flows.record_companies(flow_id, rows)
     settings.memo_dir.mkdir(parents=True, exist_ok=True)
     memo_path = settings.memo_dir / f"{name}-{datetime.date.today():%Y-%m-%d}.md"
-    memo_path.write_text(render_flow_memo(name, demand, axes, companies), encoding="utf-8")
+    memo_path.write_text(render_flow_memo(name, demand, axes, companies, mapped.terms), encoding="utf-8")
     unknown = [row.axis for row in axes if axis_value(row) == F.UNKNOWN]
     return FlowSummary(
         flow_id,
@@ -232,7 +235,7 @@ def _companies(
     lines: list[CompanyLine] = []
     rows: list[CompanyRow] = []
     for hit in hits:
-        row = deps.records.screen_row(run_id, hit.ticker)
+        row = {**deps.records.screen_row(run_id, hit.ticker), PER: deps.per(hit.ticker)}
         mom = momentum(universe, hit.ticker, settings.momentum, today)
         numbers = company_numbers(hit.ticker, row, peers, mom, settings.per_max)
         lines.append(

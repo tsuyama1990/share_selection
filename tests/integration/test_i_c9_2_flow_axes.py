@@ -146,6 +146,7 @@ class Lab:
             flows=self.flows,  # type: ignore[arg-type]
             records=FakeRecords(),  # type: ignore[arg-type]
             history=lambda _ticker: pd.Series(dtype="float64"),
+            per=lambda _ticker: None,
             sectors={"1.T": SECTOR},
             names={"1.T": "会社1"},
             http=None,  # type: ignore[arg-type]

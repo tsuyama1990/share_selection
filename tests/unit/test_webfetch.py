@@ -1,6 +1,8 @@
 import httpx
 import pytest
+from pypdf.errors import DependencyError
 
+from src import webfetch
 from src.docstore import Document
 from src.webfetch import download, extract_text, fetch_page, web_doc_id
 from tests.fixtures.web import html_page, pdf_bytes
@@ -143,3 +145,16 @@ def test_fetch_page_records_a_failed_fetch_under_the_owner():
         assert fetch_page("https://example.com/news/gone.html", http, store, MAX_BYTES, OWNER) is None
     assert store.errors == [(OWNER, "web", "https://example.com/news/gone.html", "HTTP 500")]
     assert store.documents == []
+
+
+def test_fetch_page_records_an_encrypted_pdf_it_cannot_read(monkeypatch):
+    """An AES-encrypted PDF made pypdf raise DependencyError, which stopped a live flow-memo run (2026-10-20)."""
+
+    def encrypted(_stream):
+        raise DependencyError("cryptography>=3.1 is required for AES algorithm")
+
+    monkeypatch.setattr(webfetch, "PdfReader", encrypted)
+    store = FakeDocStore()
+    with page_client(pdf_bytes("text"), "application/pdf") as http:
+        assert fetch_page("https://example.com/report.pdf", http, store, MAX_BYTES, OWNER) is None
+    assert [e[:3] for e in store.errors] == [(OWNER, "web", "https://example.com/report.pdf")]

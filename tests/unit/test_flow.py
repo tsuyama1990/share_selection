@@ -167,6 +167,7 @@ def test_render_flow_memo_lists_an_overvalued_company_apart():
     text = render_flow_memo("半導体", "需要の説明", [], COMPANIES)
     assert "## 超割高" in text
     assert "- 1302 サンプル電機" in text
+    assert "| 1302 |" not in text  # not in the company table as well
     quiet = [CompanyLine("1301", "サンプル商事", "1次", "30%", NUMBERS, False)]
     assert "超割高" not in render_flow_memo("半導体", "需要の説明", [], quiet)
 
