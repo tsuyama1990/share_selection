@@ -20,7 +20,7 @@ from .cache import StockCache, closes_of, price_earnings
 from .company_map import CompanyHit, MapDeps, MapSettings, build_map
 from .docstore import DocStore
 from .flow_store import AxisRow, CompanyRow, DecisionRow, FlowRow, FlowStore
-from .llm import GeminiSearch, LLMClient, QuotaExceeded
+from .llm import GeminiSearch, LLMClient, LLMError
 from .memo import PER, PER_FORWARD, CompanyLine, axis_value, render_flow_memo
 from .records import RecordStore
 from .research import load_prompts, prompt_version, run_task
@@ -207,11 +207,14 @@ def company_numbers(
 
 
 def _gather(query: str, urls: Sequence[str], owner: str, settings: FlowSettings, deps: FlowDeps) -> int | None:
-    """Fetch the caller's urls and the first cited sources; ``0`` left when the search quota is gone."""
+    """Fetch the caller's urls and the first cited sources; ``0`` left when the search gave nothing.
+
+    A used-up quota and a failed search (a 503 under load) both leave only the caller's urls: the flow goes on.
+    """
     try:
         deps.throttles.search.acquire()
         answer = deps.search.search(query)
-    except QuotaExceeded:
+    except LLMError:  # QuotaExceeded is one of them
         _fetch(urls, owner, settings, deps)
         return 0
     cited = [uri for _title, uri in answer.sources[: settings.max_sources] if uri]

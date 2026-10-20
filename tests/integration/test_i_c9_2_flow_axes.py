@@ -3,7 +3,7 @@ document supports leaves its axis unknown, and the verified ratio is recorded wi
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +12,7 @@ import pytest
 
 from src import fields as F
 from src.flow import FlowDeps, FlowSettings, MemoRequest, Throttles, flow_memo
+from src.llm import LLMError
 from src.research import load_prompts
 from tests.fixtures.config import CFG
 from tests.fixtures.review_flow import FakeLLM, documents_of
@@ -217,3 +218,28 @@ def test_each_axis_carries_only_the_claims_that_name_it(settings: FlowSettings) 
     flow_memo(MemoRequest(NAME, DEMAND), settings, lab.deps)
 
     assert [[claim["field"] for claim in row.evidence] for row in lab.flows.axes] == [[axis] for axis in AXES]
+
+
+class FailingSearch:
+    """A search that fails the way Gemini does under load (HTTP 503)."""
+
+    def search(self, _query: str) -> NoSource:
+        raise LLMError("Gemini search failed: HTTP 503")
+
+
+def test_a_failing_search_does_not_stop_the_flow(settings: FlowSettings) -> None:
+    """The live run stopped on a 503 from the search although the pages the person gave were enough (2026-10-20)."""
+
+    def respond(task: str, messages: list[dict[str, str]]) -> str:
+        if task == "terms":
+            return json.dumps({"terms": ["半導体"]}, ensure_ascii=False)
+        if task == "confirm":
+            return flow_reply(messages, NO_SELL)
+        return flow_reply(messages, ANSWER)
+
+    lab = Lab(respond)
+    lab.deps = replace(lab.deps, search=FailingSearch())  # type: ignore[arg-type]
+    summary = flow_memo(MemoRequest(NAME, DEMAND), settings, lab.deps)
+
+    assert summary.memo_path.exists()
+    assert summary.searches_left == 0  # reported like an used-up quota: only the given urls were collected
