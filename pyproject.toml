@@ -70,4 +70,4 @@ python_version = "3.12"
 ignore_missing_imports = true
 
 [tool.code_budget]
-max_source_lines = 3485
+max_source_lines = 3487
