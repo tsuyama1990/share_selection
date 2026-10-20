@@ -6,15 +6,15 @@
 
 | 対象 | 状態 | 設計 |
 |---|---|---|
-| Value Turn（月 1 回のスクリーン） | 実装済み。一次（足切り・改善・順位）、二次（`docs`・`review`、品質の関門 `review-eval`）、記録と答え合わせ（`evaluate`）、`backup` | `docs/selection_flow.md`、`docs/architecture/L1_architecture.md`（C1〜C7） |
-| Tailwind Watch（流れの調査） | 実装済み（2026-10-18）。`profiles`・`flow-memo`・`flow-decide`、`evaluate` での判断の答え合わせ、Value Turn の調査メモへの業種の勢い | `docs/tailwind_watch_design.md`（方針と学び）、L1 C9・R8〜R13、`L2_C9_tailwind.md`、`L3_tailwind.md` |
-| git | main は origin より先に進んでいて、**プッシュしていない**（`git log --oneline origin/main..main` で確認。プッシュはユーザーの指示があるときだけ） | — |
+| Value Turn（月 1 回のスクリーン） | 実装済み。一次（足切り・改善・順位）、二次（`docs`・`review`、品質の関門 `review-eval`）、記録と答え合わせ（`evaluate`）、`backup` | 使い方は `docs/value_turn.md`、方針は `docs/selection_flow.md`、設計は `docs/architecture/L1_architecture.md`（C1〜C7） |
+| Tailwind Watch（流れの調査） | 実装済み（2026-10-18）。`profiles`・`flow-memo`・`flow-decide`、`evaluate` での判断の答え合わせ、Value Turn の調査メモへの業種の勢い | `docs/tailwind_watch_design.md`（方針・学び・使い方）、L1 C9・R8〜R13、`L2_C9_tailwind.md`、`L3_tailwind.md` |
+| git | プッシュはユーザーの指示があるときだけ（未プッシュの確認は `git log --oneline origin/main..main`） | — |
 
 ## 2. 運用の手順
 
 - 月 1 回（Value Turn）：`tickers` → `fetch` → `calendar` → `analyze` → `docs` → `review`（モデルやプロンプトを変えたら先に `review-eval`）→ `backup`。`evaluate` は随時
 - Tailwind Watch：
-  1. `profiles`：全上場企業の有価証券報告書の節を文書ストアへ。全社で数時間かかる見込み（EDINET の間隔 0.5 秒）[推論]。年 1 回＋月 1 回の差分
+  1. `profiles`：全上場企業の有価証券報告書の節を文書ストアへ。全社で約 30 分（2026-10-20 の実測：3,702 社、EDINET の間隔 0.5 秒）。年 1 回＋月 1 回の差分
   2. `flow-memo --name "…" --demand "…" [--url …]`：流れの調査メモ（`results/flows/`）。`profiles` が無いと案内して終了コード 1
   3. `flow-decide --flow <ID> --ticker <コード> --action buy|skip --reason "…" [--max-yen N]`
   4. 答え合わせは `evaluate` が判断の 6・12 か月後に行う（比べる相手：同じ業種のまだ上がっていない割安株）
@@ -24,7 +24,7 @@
 | 項目 | 内容 |
 |---|---|
 | ライブ確認 | 済み（2026-10-20）。LV14〜16（`profiles`・`flow-memo`・`flow-decide`）を本物の EDINET・検索・LLM で通した。見つかった不具合は修正済み。残る注意：何次の判定は実行ごとに揺れる（メモに注記）、地図は LLM の検索語に左右される（`flow-memo --terms` で人が語を足せる。将来の自動化もここに渡す） |
-| 止める基準（ユーザー） | 流れの調査は「買う」が 10 件たまって機械の合図に負けていればやめる、という初期値でよいか。記録を始める前に確定（`tailwind_watch_design.md` 6 章） |
+| 止める基準（ユーザー） | 流れの調査は「買う」が 10 件たまって機械の合図に負けていればやめる、という初期値でよいか。記録を始める前に確定（`tailwind_watch_design.md` 7 章） |
 | 調査メモの品質の関門（ユーザー） | 最初の数件のメモを人が採点して正解を作り、`review-eval` と同じ関門にするか |
 | 通知・定期実行（ユーザー） | どちらも未設定（ファイルの出力と手動の実行） |
 | TDnet の文章 | 閲覧ページは robots.txt で断られている。使うなら J-Quants の TDnet アドオン（有料）か、使わない |
@@ -49,4 +49,4 @@
 
 ## 6. 文書の地図
 
-`CLAUDE.md`（決まり）→ 本書 → `docs/architecture/process.md`（進め方）→ `L1_architecture.md`（要件・構成・E2E）→ L2・L3 → 方針と根拠（`selection_flow.md`、`hypothesis_map.md`、`selection_tuning.md`、`tailwind_watch_design.md`）
+`README.md`（2 つの手法の全体像）→ `CLAUDE.md`（決まり）→ 本書 → `docs/architecture/process.md`（進め方）→ `L1_architecture.md`（要件・構成・E2E）→ L2・L3 → 方針と根拠（`value_turn.md`、`selection_flow.md`、`hypothesis_map.md`、`selection_tuning.md`、`tailwind_watch_design.md`）

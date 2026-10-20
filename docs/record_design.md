@@ -51,14 +51,15 @@
 
 保存先：`records.duckdb`（キャッシュとは別ファイル。DuckDB は既存の依存で、追加不要）。
 
-| テーブル | 1 行の単位 | 主な列 | 書く担当 | 実装するブランチ |
+| テーブル | 1 行の単位 | 主な列 | 書く担当 | 状態 |
 |---|---|---|---|---|
-| `runs` | 1 回のスクリーニング実行 | run_id、run_at、issue（四季報の号）、git_sha、config（JSON）、ticker_list_date、data_fetched_min/max | 機械 | `feat/record` |
-| `screen_results` | 実行 × 銘柄（**全銘柄**） | run_id、ticker、stage1_pass、stage1_fail_rule、improvement_class、stage2_candidate、next_earnings_date、rebuttal_flags（質の旗のリスト。列名は旧称のまま）、metrics（その時の出力行すべてを JSON） | 機械 | `feat/record`（段階 2〜5 の列は各ブランチで埋める） |
-| `outcomes` | 実行 × 銘柄 × 期間（6・12 か月） | price_t0、price_t1、return、benchmark_return（比較対象は config の `records.benchmark_ticker`、既定は TOPIX 連動の 1306）、excess、computed_at | 機械（`evaluate` コマンド） | `feat/record` |
-| `events` | 銘柄 × 開示 | ticker、date、kind（決算・予想修正・中計・資本政策・テーマ）、detail、source | 機械＋人 | `feat/catalyst-calendar`、`feat/company-forecast` |
-| `forecasts` | 銘柄 × 開示 × 予想の対象期 | ticker、disclosed_date、target（今期・来期・中間）、sales、op、odp、np、eps、source | 機械（J-Quants） | `feat/company-forecast` |
+| `runs` | 1 回のスクリーニング実行 | run_id、run_at、issue（四季報の号）、git_sha、config（JSON）、ticker_list_date、data_fetched_min/max | 機械 | 実装済み |
+| `screen_results` | 実行 × 銘柄（**全銘柄**） | run_id、ticker、stage1_pass、stage1_fail_rule、improvement_class、stage2_candidate、next_earnings_date、rebuttal_flags（質の旗のリスト。列名は旧称のまま）、metrics（その時の出力行すべてを JSON） | 機械 | 実装済み |
+| `outcomes` | 実行 × 銘柄 × 期間（6・12 か月） | price_t0、price_t1、return、benchmark_return（比較対象は config の `records.benchmark_ticker`、既定は TOPIX 連動の 1306）、excess、computed_at | 機械（`evaluate` コマンド） | 実装済み |
+| `events` | 銘柄 × 開示 | ticker、date、kind（決算・予想修正・中計・資本政策・テーマ）、detail、source | 機械＋人 | 未実装（決算発表予定日は `earnings_calendar.csv` と `screen_results.next_earnings_date` に入っている） |
+| `forecasts` | 銘柄 × 開示 × 予想の対象期 | ticker、disclosed_date、target（今期・来期・中間）、sales、op、odp、np、eps、source | 機械（J-Quants） | 未実装（後日。無料は 12 週遅れ） |
 | `reviews`・`review_evals` | 実行 × 銘柄（二次で調べた銘柄のみ）、評価 1 回ごと | 列は `docs/architecture/L2_C4_stage2_research.md` 6 章（別の DB ファイル `review.db_file`、git 対象外） | LLM（照合済みの引用） | 実装済み（`review`・`review-eval`） |
+| `flow_decisions`・`flow_outcomes` | 流れ × 会社 × 判断、判断 × 期間（6・12 か月） | 列は `docs/architecture/L3_tailwind.md` 3.3 節（別の DB ファイル `flow.db_file`、git 対象外） | 人（判断）、機械（`evaluate` の答え合わせ） | 実装済み（`flow-decide`、`evaluate`） |
 | `trades` | 売買 1 件 | ticker、date、side、qty、price、account、review_id、exit_reason | 人 | 先送り（人の判断の記録を設計するとき。CSV で取り込む） |
 
 設計上の判断：
@@ -66,20 +67,13 @@
 - **全銘柄を記録する**：約 3,700 行 × 年 4 回。段階 1 で落ちた銘柄の指標は、落ちた条件までに計算できたものだけ。
 - **レイヤーマスター手法書 Step 7 の表**の列は、`screen_results`（stage1_score → metrics）、`reviews`（stage2_decision、reason_forgotten、theme、tier、exposure_pct、closing_paths、llm_prompt/answer/sources）、`outcomes`（price_t0、topix_t0）、`trades`（exit_date、exit_reason）に対応する。
 
-## 4. コードへの影響（`feat/record` の範囲）
-
-1. `Screener` が、足切りで落ちた銘柄についても「どの条件で落ちたか」と計算済みの指標を返すようにする（現在は None を返すだけ）
-2. `analyze` の実行時に、`runs` と `screen_results` を書く（CSV の出力はそのまま）
-3. `evaluate` コマンド：判定日から 6・12 か月が経過した実行について、`outcomes` を計算して保存する
-4. 往復テスト、全銘柄の記録件数のテスト。既存の出力（CSV）は変えない
-
-## 5. 決定事項（2026-10-14、ユーザー承認）
+## 4. 決定事項（2026-10-14、ユーザー承認）
 
 1. **バックアップ**：実行ごとに `records/` へ Parquet で書き出し、リポジトリにコミットする（`records.duckdb` 本体は `.gitignore` のまま）。`reviews`・`review_evals` は公開リポジトリに載せないため、別の DB ファイル `review.db_file`（`reviews.duckdb`）に保存し、git 対象外の `review.export_dir` に書き出す（2026-10-15 決定、2026-10-17 に別ファイルへ、`docs/architecture/L2_C4_stage2_research.md` 6 章）
 2. **全銘柄を記録する**（段階 1 で落ちた銘柄も、落ちた条件と計算済みの指標を記録）
 3. **最初の記録**：再取得の完了後、すぐに初回を記録する
 
-## 6. 実装メモ（2026-10-14）
+## 5. 実装メモ
 
 - `run_id` は実行時刻（`YYYYMMDDTHHMMSSffffff`、マイクロ秒まで）。
 - `evaluate` は、記録のうち最も古い実行の 14 日前から調整済み日足を取得する（休日をまたいでも「判定日以前の終値」が取れるように）。
@@ -88,4 +82,4 @@
 - `rebuttal_flags` には段階 5 の旗（現在は `Quality_Flags` の一覧）を記録する。キャッシュがない銘柄は NULL。
 - 足切りで落ちた銘柄も、すべての条件・指標を計算して `metrics` に記録する（落ちた条件は最初の 1 つ）。過去の実行を別の閾値で再現する実験のため（`--config` で別の設定ファイルを使う）。
 - `stage2_candidate`（2026-10-15 追加）：その実行で二次候補に選ばれたか。追加より前の実行は NULL。使われていなかった `types` 列は同日に削除した（既存の `records.duckdb` は一度だけ移行。それ以前の Parquet には `types` が残る）。
-- `backup`（2026-10-17 追加）：git 対象外で取り直せない記録（`reviews.duckdb`、その Parquet、調査メモ）と、取り直しに日数がかかる文書ストアを、リポジトリの外の `backup.dir` に日時のフォルダで写す。新しい `backup.keep` 個を残す。`records.duckdb` は Parquet がコミットされるため対象外。
+- `backup`（2026-10-17 追加）：git 対象外で取り直せない記録（`reviews.duckdb`、その Parquet、調査メモ、流れの記録 `flow.duckdb`（人の判断を含む）と流れの調査メモ）と、取り直しに日数がかかる文書ストアを、リポジトリの外の `backup.dir` に日時のフォルダで写す。新しい `backup.keep` 個を残す。`records.duckdb` は Parquet がコミットされるため対象外。

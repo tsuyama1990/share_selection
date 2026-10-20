@@ -4,7 +4,13 @@ import pytest
 
 from tests.fixtures.config import CFG
 
-SOURCES = {"reviews.duckdb": "reviews", "reviews/reviews.parquet": "export", "results/memos/m.md": "memo"}
+SOURCES = {
+    "reviews.duckdb": "reviews",
+    "reviews/reviews.parquet": "export",
+    "results/memos/m.md": "memo",
+    "flow.duckdb": "flows",  # human decisions: not recoverable
+    "results/flows/f.md": "flow memo",
+}
 KEEP = 2
 
 
@@ -21,7 +27,7 @@ def backup_cfg(directory) -> dict:
     return {**CFG, "backup": {"dir": str(directory), "keep": KEEP}}
 
 
-def test_copies_the_four_sources_and_prunes_old_snapshots(seeded, tmp_path_factory, capsys):
+def test_copies_the_six_sources_and_prunes_old_snapshots(seeded, tmp_path_factory, capsys):
     outside = tmp_path_factory.mktemp("outside")
     old = [outside / f"2025010{n}T000000" for n in range(1, 4)]
     for folder in old:
@@ -32,13 +38,13 @@ def test_copies_the_four_sources_and_prunes_old_snapshots(seeded, tmp_path_facto
     for rel in [*SOURCES, "documents.duckdb"]:
         assert (snapshots[0] / rel).exists()
     assert sorted(outside.iterdir()) == [*old[-(KEEP - 1) :], *snapshots]
-    assert f"Backed up 4 sources to {snapshots[0]}." in capsys.readouterr().out
+    assert f"Backed up 6 sources to {snapshots[0]}." in capsys.readouterr().out
 
 
 def test_missing_sources_are_reported(project, tmp_path_factory, capsys):
     project.run("backup", cfg=backup_cfg(tmp_path_factory.mktemp("outside")))
     out = capsys.readouterr().out
-    assert "Backed up 0 sources" in out and out.count("Skipped (missing)") == 4
+    assert "Backed up 0 sources" in out and out.count("Skipped (missing)") == 6
 
 
 def test_refuses_a_backup_dir_inside_the_repo(seeded, capsys):
