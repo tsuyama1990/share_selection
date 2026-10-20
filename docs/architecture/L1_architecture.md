@@ -58,8 +58,8 @@
                                          │
    JPX（銘柄一覧・決算発表予定日）──┐      ▼
    Yahoo Finance（株価・財務）──────┤  ┌──────────────────────┐
-   EDINET（有価証券報告書）🆕───────┼─▶│  share_selection     │──▶ 結果 CSV・調査メモ
-   Web（Gemini 検索の出典・決算短信）🆕┤  │  （本リポジトリ）       │──▶ 記録（DuckDB＋Parquet）
+   EDINET（有価証券報告書）✅───────┼─▶│  share_selection     │──▶ 結果 CSV・調査メモ
+   Web（Gemini 検索の出典・決算短信）✅┤  │  （本リポジトリ）       │──▶ 記録（DuckDB＋Parquet）
    LLM（Gemini→Groq→DeepSeek）✅───┘  └──────────────────────┘
    J-Quants（会社予想、12 週遅れ）🆕（後日）
 ```
@@ -68,9 +68,9 @@
 |---|---|---|---|
 | JPX | 銘柄一覧（`tickers`）、決算発表予定日（`calendar`） | ✅ | ブラウザ相当の User-Agent が必要 |
 | Yahoo Finance（yfinance） | 株価・財務・四半期 EPS | ✅ | 現在値のみ。日本の中小型株の四半期データは EPS だけ |
-| EDINET API v2 | 有価証券報告書 | 🆕 | API キー（`.env` に設定済み） |
-| Web（Gemini 検索の出典、決算短信） | 中計・決算説明・ニュース | 🆕 | 決算短信は TDnet で 31 日分のみ |
-| LLM | 調査・要約・判定 | ✅（クライアント） | [データ：2026-10-14] 稼働：Gemini・Groq・DeepSeek。Cerebras は 402、Mistral は 429 |
+| EDINET API v2 | 有価証券報告書（二次候補の `docs`、全銘柄の `profiles`） | ✅ | API キー（`.env`） |
+| Web（Gemini 検索の出典、決算短信） | 中計・決算説明・ニュース | ✅ | 検索は無料枠で 1 日約 20 回。決算短信は TDnet で 31 日分のみ（TDnet は自動取得を断っている） |
+| LLM | 調査・要約・判定 | ✅ | 主は DeepSeek（`deepseek-v4-flash`）。Gemini・Groq はフォールバック（`llm.providers`） |
 | J-Quants | 会社予想 | 🆕（後日） | 無料は 12 週遅れ。事後検証用 |
 
 ## 3. コンポーネント
@@ -80,10 +80,10 @@
 | C1 | 銘柄一覧 | JPX の一覧から対象銘柄 CSV を作る | `tickers.py` | ✅ |
 | C2 | データ取得 | 外部システムからの取得と保存（キャッシュ・文書） | `yahoo.py`、`cache.py`、`stock_data.py`、`earnings_calendar.py`、`edinet.py`、`webfetch.py`、`docstore.py`、`collect.py`（`docs`・`profiles` の流れ）、`throttle.py`（外部 API の呼び出し間隔。C4 の LLM も使う）（詳細は `L2_C2_data_acquisition.md`） | ✅ |
 | C3 | 一次スクリーニング | 足切り（R1）、指標、改善の兆し（R2）、質の旗（R4）、順位と二次候補 | `rules.py`、`indicators.py`、`improvement.py`、`quality.py`、`metrics.py`、`screener.py`、`selection.py`（順位と二次候補）、`fields.py`（結果行の項目名と値の語彙を 1 か所で定義） | ✅ |
-| C4 | 二次調査 | 業種の文脈、LLM による企業分析、引用の照合、調査メモ（R5） | `llm.py`、`sector.py`、`research.py`、`verify.py`、`review.py`（`review` の流れ）、`review_eval.py`（モデルの品質の関門）（詳細は `L2_C4_stage2_research.md`） | ✅ |
+| C4 | 二次調査 | 業種の文脈、LLM による企業分析、引用の照合、調査メモ（R5） | `llm.py`、`sector.py`（業種の中央値・同業比較・業種の勢い・比べる相手の選び方）、`research.py`、`verify.py`、`review.py`（`review` の流れ）、`review_eval.py`（モデルの品質の関門）（詳細は `L2_C4_stage2_research.md`） | ✅ |
 | C5 | 記録と答え合わせ | 実行・全銘柄の判定・二次の調査結果の記録、結果の計算（R6） | `records.py`（実行・判定）、`outcomes.py`（答え合わせ）、`backup.py`（git 対象外の記録のバックアップ）、`review_store.py`（`reviews`・`review_evals`、別の DB ファイル `review.db_file`、バージョン管理の対象外） | ✅ |
-| C6 | 出力 | 結果 CSV、二次候補の一覧、調査メモ | `report.py`、`memo.py`（調査メモ） | ✅ |
-| C7 | 設定と起動 | 設定の読み込み、`.env`、CLI、各コンポーネントの組み立て | `config.py`、`flows.py`（複数のコンポーネントにまたがる `docs`・`review` の流れ）、`main.py`（CLI と組み立てだけ。処理の流れは各コンポーネントのモジュール。`L3_composition.md`） | ✅ |
+| C6 | 出力 | 結果 CSV、二次候補の一覧、調査メモ（二次調査・流れの調査） | `report.py`、`memo.py`（調査メモ） | ✅ |
+| C7 | 設定と起動 | 設定の読み込み、`.env`、CLI、各コンポーネントの組み立て | `config.py`、`flows.py`（複数のコンポーネントにまたがる各コマンドの流れ：`fetch`・`analyze`・`docs`・`profiles`・`review`・`review-eval`・`flow-memo`）、`main.py`（CLI と組み立てだけ。処理の流れは各コンポーネントのモジュール。`L3_composition.md`） | ✅ |
 | C8 | 実験 | 過去の記録を別の設定で再現し比較する（R7） | 🆕（結果が貯まる 2027 年春以降） | 🆕 |
 | C9 | 流れの調査（Tailwind Watch） | 根拠と 5 つの軸（R8）、恩恵企業の地図（R9）、会社ごとの数値と調査メモ（R10）、判断の記録（R11）（詳細は `L2_C9_tailwind.md`） | `company_map.py`（会社の地図）、`flow.py`（`flow-memo`・`flow-decide` の流れ、調査メモ）、`flow_store.py`（記録 `flow.db_file`） | ✅ |
 
@@ -106,7 +106,7 @@ tickers ─▶ fetch ─▶ calendar ─▶ analyze ─▶ docs ─▶ review �
 | `review-eval` | 正解のある銘柄、文書ストア、LLM | 記録（`review_evals`）、合否（不合格は終了コード 1） | モデル・プロンプトを変えたとき（`review` の前提） |
 | `review` | 二次候補、文書ストア、LLM | 記録（`reviews`、同業比較つき）、調査メモ（`memo.dir`） | `docs` と `review-eval` の合格の後 |
 | `evaluate` | 記録、Yahoo の価格履歴 | 記録（`outcomes`、流れの判断の答え合わせ） | 随時 |
-| `backup` | `review.db_file`・`review.export_dir`・`memo.dir`・`docstore.db_file` | `backup.dir/<日時>/` の写し（新しい `backup.keep` 個だけ残す）。`backup.dir` がリポジトリの中なら拒否（公開リポジトリ） | `review` の後 |
+| `backup` | `review.db_file`・`review.export_dir`・`memo.dir`・`docstore.db_file`・`flow.db_file`・`flow.memo_dir` | `backup.dir/<日時>/` の写し（新しい `backup.keep` 個だけ残す）。`backup.dir` がリポジトリの中なら拒否（公開リポジトリ） | `review` の後 |
 | `llm-check` | LLM、検索 | 疎通の結果 | 任意（ライブ確認。CI では実行しない） |
 | `profiles` | 銘柄一覧、EDINET | 文書ストア（全銘柄の有価証券報告書の「事業の内容」）、取得の失敗 | 年 1 回＋新しい報告書の差分（月 1 回） |
 | `flow-memo` | 流れの名前と需要の説明（任意の URL）、Web 検索、文書ストア、最新の実行の記録、キャッシュ、LLM | 調査メモ（`flow.memo_dir`）、記録（`flow.db_file`） | 人が流れに気づいたとき |
@@ -126,12 +126,12 @@ E2E テストは、この表の形式が守られることを確かめる。
 | C5 → C2・C4 | `RecordStore.candidates` | 実行の二次候補（`stage2_candidate` 列で選び、`Priority_Rank` の順）と指標 | ✅ |
 | C2 → C4 | 文書ストア | 文書 ID、出典（URL・EDINET の書類 ID）、取得日時、本文 | ✅ |
 | C4 → C5 | `reviews` | 調査結果、照合できた根拠、照合率、モデル・プロンプトの版（Parquet は `review.export_dir`、git 対象外：公開リポジトリに引用を載せない） | ✅ |
-| C2 → C9 | 文書ストア | `profiles` が入れた全銘柄の「事業の内容」（文書 ID、EDINET の書類 ID、本文） | 🆕 |
-| C5 → C9 | `RecordStore` の最新の実行 | 地図の会社の判定（通過・落ちた条件・改善区分・指標）。足切りをやり直さない | 🆕 |
-| C2 → C9 | キャッシュ（`stock_cache`） | 地図の会社と業種の株価（直近 3 か月の上昇） | 🆕 |
-| C9 → C5 | 記録（`flow.db_file`、git 対象外） | 流れ、軸の抜き出し、地図、判断、答え合わせ | 🆕 |
-| C9 → 利用者 | 調査メモ（Markdown、`flow.memo_dir`） | 5 つの軸の引用、地図、会社ごとの判定と数値、終わりの手がかり | 🆕 |
-| C5 → C8 | 記録（Parquet） | `runs`・`screen_results`・`outcomes`（`records/`、コミット）、`reviews`・`review_evals`（`review.export_dir`、git 対象外） | ✅ |
+| C2 → C9 | 文書ストア | `profiles` が入れた全銘柄の「事業の内容」（文書 ID、EDINET の書類 ID、本文） | ✅ |
+| C5 → C9 | `RecordStore` の最新の実行 | 地図の会社の判定（通過・落ちた条件・改善区分・指標）。足切りをやり直さない | ✅ |
+| C2 → C9 | キャッシュ（`stock_cache`） | 地図の会社と業種の株価（直近 3 か月の上昇） | ✅ |
+| C9 → C5 | 記録（`flow.db_file`、git 対象外） | 流れ、軸の抜き出し、地図、判断、答え合わせ | ✅ |
+| C9 → 利用者 | 調査メモ（Markdown、`flow.memo_dir`） | 5 つの軸の引用、地図、会社ごとの判定と数値、終わりの手がかり | ✅ |
+| C5 → C8 | 記録（Parquet） | `runs`・`screen_results`・`outcomes`（`records/`、コミット）、`reviews`・`review_evals`（`review.export_dir`、git 対象外）。流れの記録（`flow.db_file`）は実験の対象外 | ✅ |
 
 ## 6. 横断的な決まり
 
@@ -153,7 +153,7 @@ E2E テストは、この表の形式が守られることを確かめる。
 | E5 | `--config` で別の設定 | 閾値が変わり、出力と記録が別の場所に書かれる | R7 | ある |
 | E6 | 文書ストアにある二次候補で `review`（LLM をモック） | `reviews` に記録され、照合できない引用の主張は捨てられ、調査メモが出る。キーが出力に現れない | R5・N2・N3・N4 | ある |
 | E7 | 二次候補で `docs`（EDINET・検索・Web をモック、一部失敗） | 候補ごとの文書が文書ストアに入り、失敗は記録されて全体は止まらない。キーが出力に現れない | R5・N2・N6 | ある |
-| E8 | 一時ディレクトリで `backup` | 4 つの対象が日時のフォルダに写り、古いものは `backup.keep` 個を超えると消える。`backup.dir` がリポジトリの中なら終了コード 1 で何も写さない | N1 | ある（`tests/e2e/test_e8_backup.py`） |
+| E8 | 一時ディレクトリで `backup` | 6 つの対象（二次の記録・書き出し・調査メモ・文書ストア・流れの記録・流れの調査メモ）が日時のフォルダに写り、古いものは `backup.keep` 個を超えると消える。`backup.dir` がリポジトリの中なら終了コード 1 で何も写さない | N1 | ある（`tests/e2e/test_e8_backup.py`） |
 | E9 | EDINET をモックした `profiles`（一部失敗） | 銘柄ごとの「事業の内容」が文書ストアに入り、失敗は記録されて全体は止まらない。2 回目は取得済みを飛ばす | R9・N6 | ある（`tests/e2e/test_e9_profiles.py`） |
 | E10 | 検索・Web・LLM をモックし、フィクスチャの文書ストア・記録・キャッシュで `flow-memo` | 調査メモに 5 つの軸（照合できた引用だけ、無ければ「不明」）、地図（照合できた会社だけ）、会社ごとの判定と数値が出て、記録に残る。`profiles` 未実行なら案内して終了コード 1。キーが出力に現れない | R8・R9・R10・N2・N3・N7 | ある（`tests/e2e/test_e10_flow_memo.py`） |
 | E11 | `flow-decide` → 期間を過ぎた記録で `evaluate`（価格をモック） | 判断が記録され、期間を過ぎた判断だけ超過リターンと比べる相手の超過リターンが計算される | R11・R12 | ある（`tests/e2e/test_e11_flow_decide.py`） |

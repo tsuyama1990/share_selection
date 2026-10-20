@@ -1,6 +1,6 @@
 # L2 詳細設計：C9 流れの調査（Tailwind Watch）
 
-作成：2026-10-18 ／ 状態：**実装済み**　親：`L1_architecture.md` C9（R8〜R12）　方針：`docs/tailwind_watch_design.md` 4 章　対応テスト：結合テスト（7 章）、E2E は L1 の E9〜E11
+作成：2026-10-18 ／ 状態：**実装済み**　親：`L1_architecture.md` C9（R8〜R12）　方針：`docs/tailwind_watch_design.md` 4 章　対応テスト：結合テスト（7 章）、E2E は L1 の E9〜E11、ライブは L1 7.1 の LV14〜LV16
 
 凡例：✅ 実装済み ／ 🆕 未実装
 
@@ -22,11 +22,11 @@
 ## 3. 処理の流れ
 
 ```
-flow-memo --name <名前> --demand <需要の説明> [--url <出典> ...]
- 1. 根拠の文書：Gemini の検索（docs と同じ仕組み、`flow.search_prompt`）と指定の URL を取得し、文書ストアに入れる
+flow-memo --name <名前> --demand <需要の説明> [--url <出典> ...] [--terms <語,語>]
+ 1. 根拠の文書：Gemini の検索（docs と同じ仕組み、`flow.search_prompt`）と指定の URL を取得し、文書ストアに入れる。検索が割り当て切れ・一時的な失敗（HTTP 503 など）でも、指定の URL だけで続ける。読めないページ（暗号化された PDF など）はその分だけ飛ばす
  2. 5 つの軸（規模・強制と裾野・持続・注目の広がり・織り込み度）と終わりの手がかりを、LLM が文書から引用つきで抜き出す。照合できない主張は捨て、軸は「不明」
- 3. 地図（company_map.py）。文書ストアに「事業の内容」が無ければ、先に profiles を実行するよう案内して止める
- 4. 会社ごとの数値：最新の実行の記録（通過・落ちた条件・改善区分・PBR・PER・実質 PSR と業種の中央値）、キャッシュの株価（直近 3 か月の上昇と地図の中の位置）、最新の reviews の T1 の需要の波
+ 3. 地図（company_map.py）。文書ストアに「事業の内容」が無ければ、先に profiles を実行するよう案内して止める。検索語は `--terms` の語（人または自動化した呼び出しが渡す）が先、LLM の語が後で、使った語はメモに出す（LLM の語は実行ごとに変わるため）。順位付けは `flow.map.sections`（事業の内容とセグメント情報）だけを、全角・半角と中黒を無視して照合する。最新の実行（`analyze`）が無ければ案内して止める
+ 4. 会社ごとの数値：最新の実行の記録（通過・落ちた条件・改善区分・PBR・実質 PSR と業種の中央値）、キャッシュの実績 PER と予想 PER（低いほうが `flow.per_max` 以上の会社は「超割高」として表から外し別の欄に載せる）、キャッシュの株価（直近 3 か月の上昇と地図の中の位置）、最新の reviews の T1 の需要の波
  5. 調査メモ（`flow.memo_dir/<流れ>-<日付>.md`）と記録
 
 flow-decide --flow <ID> --ticker <コード> --action buy|skip --reason <理由> [--max-yen <金額>]
@@ -40,7 +40,8 @@ LLM の出力は `research.py` と同じ claims の形（answer・claims・unkno
 
 ### 3.1 引数
 
-- `flow-memo`：`--name <名前>`、`--demand <需要の説明>`、`--url <出典>`（複数可）。
+- `profiles`：`--tickers <コード,コード>`（任意。無ければ全銘柄。`.T` は補う）。
+- `flow-memo`：`--name <名前>`、`--demand <需要の説明>`、`--url <出典>`（複数可）、`--terms <語,語>`（任意：地図の検索語を足す）。
 - `flow-decide`：`--flow <ID>`、`--ticker <コード>`、`--action buy|skip`、`--reason <理由>`、`--max-yen <金額>`（任意）。
 
 ### 3.2 軸の抜き出しの JSON

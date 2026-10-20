@@ -75,7 +75,16 @@ Value Turn の仮説との関係（`hypothesis_map.md` 0 章）：流れは改�
 | 比べる相手 | 判断の月に、同じ業種で「直近 3 か月の上昇が中央値以下、かつ PBR が中央値以下」の会社（機械の合図。学び 1） |
 | 止める基準 | 「買う」が 10 件以上たまった時点で比べる相手に負けていれば、流れの調査をやめる |
 
-## 5. 作る順番
+## 5. 使い方（コマンド）
+For a PEST flow you name (a political, economic, social or technological change that lifts demand), write a research memo and record your decisions. Run `analyze` first (the memo shows each company's Value Turn result).
+```bash
+uv run python main.py profiles [--tickers 4704,2326]   # business and segment sections of every listed company (about 30 minutes; later runs add only new reports)
+uv run python main.py flow-memo --name "情報流出の続発" --demand "…who spends more on what…" [--url https://…] [--terms "word1,word2"]
+uv run python main.py flow-decide --flow <flow_id> --ticker 4704.T --action buy|skip --reason "…" [--max-yen 300000]
+```
+`flow-memo` collects sources (Gemini search and your `--url` pages; a failed search leaves only the pages you gave), answers five axes (scale, compulsion, persistence, attention, priced-in) and the ending with verified quotes, searches the stored business sections for the companies that sell into the demand (the search words come from the LLM and from `--terms`; they are printed in the memo because they change between runs), asks the LLM to confirm each of the best `flow.map.top_k` with a quote, and writes `flow.memo_dir/<name>-<date>.md`: the companies with their tier (an LLM judgment that varies between runs), Value Turn result, valuations (PBR, PSR, trailing and forward PER; a company is listed apart as extremely expensive when the lower PER is at or above `flow.per_max`), momentum and a note. Records go to `flow.db_file` (git-ignored; `backup` copies it). `evaluate` scores the decisions （`docs/value_turn.md` の 9 章）. Design and lessons: `docs/tailwind_watch_design.md`.
+
+## 6. 作る順番
 
 1. ① Value Turn への追加（L2 C4 → テスト → 実装）
 2. `profiles`（全銘柄の「事業の内容」の取得）と会社の地図。既知の恩恵企業を拾えるかで確かめる
@@ -84,7 +93,7 @@ Value Turn の仮説との関係（`hypothesis_map.md` 0 章）：流れは改�
 
 各段階は `docs/architecture/process.md` の手順（設計 → テスト → 実装、関門つき）。
 
-## 6. 未決事項（ユーザーが決める）
+## 7. 未決事項（ユーザーが決める）
 
 | 項目 | 選択肢 |
 |---|---|

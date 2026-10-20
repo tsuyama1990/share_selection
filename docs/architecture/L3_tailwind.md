@@ -31,7 +31,7 @@ CompanyHit(ticker, tier, exposure, evidence, verified_ratio)
 MapResult(terms, ranked, hits, failed)                # failed: 確かめで LLMError・ReplyError になった ticker
 def search_terms(demand, settings, deps) -> list[str]
 def rank_companies(terms, profiles, limit) -> list[tuple[str, int]]
-def build_map(demand, settings, deps) -> MapResult
+def build_map(demand, settings, deps, extra_terms=()) -> MapResult   # extra_terms を LLM の語より先に使う
 ```
 
 - 定数：`TERMS = "terms"`、`CONFIRM_TASK = "confirm"`、`CONFIRM_FIELDS = ["sells", "tier", "exposure"]`、`TIERS = ("1次", "2次", "3次以上")`、`SOURCE = "edinet"`。
@@ -49,32 +49,33 @@ def build_map(demand, settings, deps) -> MapResult
 ### 3.2 `flow.py`
 
 ```python
-FlowSettings(memo_dir, prompts_dir, search_prompt, max_sources, max_doc_chars, max_bytes, axes, map, outcome_months, control_past_months)  # from_config(cfg, root)
+FlowSettings(memo_dir, prompts_dir, search_prompt, max_sources, max_doc_chars, max_bytes, axes, map, per_max, momentum, peers)  # from_config(cfg, root)
 Throttles(search, fetch)                               # RateLimiter 2 つ
-FlowDeps(llm, prompts, search, store, flows, records, history, throttles)   # from_config(cfg, root, env, stack, settings)
+FlowDeps(llm, prompts, search, store, flows, records, history, per, sectors, names, http, throttles)   # from_config(cfg, root, env, stack, settings)
 FlowSummary(flow_id, memo_path, unknown_axes, companies, searches_left, ranked, failed)  # ranked: 順位に入った数、failed: 確かめに失敗した数
+MemoRequest(name, demand, urls, terms)                # 人（将来は自動化した呼び出し）が渡す流れ。terms は地図の検索語で LLM の語より先
 Decision(flow_id, ticker, action, reason, max_yen)
-CompanyLine(ticker, name, tier, exposure, numbers, note)
+CompanyLine(ticker, name, tier, exposure, numbers, note)  # memo.py
 class MissingProfilesError(RuntimeError)
 def flow_memo(request, settings, deps) -> FlowSummary
 def flow_decide(decision, flows: FlowStore) -> None
-def company_numbers(ticker, row, peers, momentum) -> dict[str, Any]
-def render_flow_memo(name, demand, axes, companies) -> str
+def company_numbers(ticker, row, peers, momentum, per_max) -> dict[str, Any]
+def render_flow_memo(name, demand, axes, companies, terms) -> str   # memo.py
 ```
 
 - 定数：`AXES_TASK = "axes"`、`ACTIONS = ("buy", "skip")`、`OWNER = "flow:{flow_id}"`（流れの文書を入れる `documents.ticker` の値）。
 - `FlowSettings.from_config(cfg, root)`：`flow:` のキーを読み、`memo_dir`・`prompts_dir` を `root` で解決する。`max_bytes` は `webfetch.max_bytes`。`axes` は `flow.axes`（軸の項目名を実行の順に並べたもの。`run_task` に `(AXES_TASK, axes)` として渡す）、`map` は `MapSettings.from_config(cfg)`。
-- `FlowDeps.from_config(cfg, root, env, stack, settings)`：`httpx.Client`・`LLMClient`・`GeminiSearch` を `stack` で開き（`CollectClients.from_config` と同じ作り方）、`prompts = load_prompts(root / settings.prompts_dir)`、`FlowStore`・`DocStore`・`RecordStore` をつなぐ。`history` は `outcomes.evaluate` に渡すものと同じ（調整済みの日次終値、naive な日付）。`throttles` は `llm.max_calls_per_minute` と `webfetch.request_interval_s`。キーが無ければ `MissingKeyError` で早く失敗する。
-- `flow_memo(name, demand, urls, settings, deps)`：
+- `FlowDeps.from_config(cfg, root, env, stack, settings)`：`httpx.Client`・`LLMClient`・`GeminiSearch` を `stack` で開き（`CollectClients.from_config` と同じ作り方）、`prompts = load_prompts(root / settings.prompts_dir)`、`FlowStore`・`DocStore`・`RecordStore` をつなぐ。`history` は `cache.closes_of`（日次終値、各銘柄は 1 回だけ読む）、`per` は `cache.price_earnings`（キャッシュの実績 PER と予想 PER）。`throttles` は `llm.max_calls_per_minute` と `webfetch.request_interval_s`。キーが無ければ `MissingKeyError` で早く失敗する。
+- `flow_memo(request, settings, deps)`（`request` は `MemoRequest`）：
   1. `flow_id = deps.flows.save_flow(FlowRow(name, demand, urls, prompt_version(deps.prompts), deps.llm.primary.model))`。以降の文書の `owner` は `OWNER` の値。
-  2. 根拠の文書：`deps.search.search(settings.search_prompt.format(name=name, demand=demand))` の出典の先頭 `max_sources` 件と `urls` を、`throttles` を掛けながら `webfetch.fetch_page(uri, http, store, max_bytes, owner)` で入れる（`collect.py` の Web の取得と同じ仕組み）。`QuotaExceeded` は検索を止め、`searches_left` に残す。
+  2. 根拠の文書：`deps.search.search(settings.search_prompt.format(name=name, demand=demand))` の出典の先頭 `max_sources` 件と `urls` を、`throttles` を掛けながら `webfetch.fetch_page(uri, http, store, max_bytes, owner)` で入れる（`collect.py` の Web の取得と同じ仕組み）。検索の失敗（割り当て切れ・HTTP 503 などの `LLMError`）は、指定の URL だけで続け、`searches_left` を 0 にする。
   3. 軸の抜き出し：`run_task(deps.llm, deps.prompts, (AXES_TASK, settings.axes), docs, {"name": name, "demand": demand})`。`docs` は `store.documents(owner)` を `max_doc_chars` で切ったもの。照合できない主張だけが支える項目は `fields.UNKNOWN`。各軸の `evidence` は、照合できた主張のうち `field` がその軸のものだけ（答えの根拠はその項目を名指しした主張だけ。`verified_ratio` は実行全体の比で、`run_task` が項目ごとの主張の数を返さないため全部の軸で同じ値）。`LLMError`・`ReplyError` は流れ全体の失敗（記録したうえで送出）。
-  4. 地図：`deps.store.profiles(settings.map.sections)` が空なら `MissingProfilesError`。あれば `build_map(demand, settings.map, MapDeps(deps.llm, deps.prompts, deps.store))`。
-  5. 会社ごとの数値：`run_id = deps.records.resolve_run(None)`、`tickers = list(deps.records.run_metrics(run_id))`、`peers = Peers.from_run(deps.records, run_id, sectors, cfg)`、`momentum = sector.momentum(universe, ticker, momentum_settings, today)`（`universe = sector.Universe(deps.history, tickers, sectors)`）、`row = deps.records.screen_row(run_id, ticker)` → `company_numbers` と `CompanyLine`（`sectors` と名前は `read_column(input_csv, …)`）。
+  4. 地図：`deps.store.profiles(settings.map.sections)` が空なら `MissingProfilesError`。あれば `build_map(demand, settings.map, MapDeps(deps.llm, deps.prompts, deps.store), request.terms)`。
+  5. 会社ごとの数値：`run_id = deps.records.resolve_run(None)`、`tickers = list(deps.records.run_metrics(run_id))`、`peers = Peers.build(metrics, sectors, settings.peers)`、`momentum = sector.momentum(universe, ticker, momentum_settings, today)`（`universe = sector.Universe(deps.history, tickers, sectors)`）、`row = deps.records.screen_row(run_id, ticker)` → `company_numbers` と `CompanyLine`（`sectors` と名前は `read_column(input_csv, …)`）。
   6. `record_axes` → `record_companies` のあと、`render_flow_memo` の結果を `memo_dir / f"{name}-{today}.md"` に書いて `FlowSummary` を返す。
 - `flow_decide(decision, flows)`：`flows.record_decision(DecisionRow(...))`（判断の記録に LLM などは要らないので、記録だけを受け取る）。`decided_at` は実行の時刻を分単位に丸める。`ValueError`（`Decision` の検証）はそのまま送出し、`main.py` が終了コード 1。
 - `Decision`：`action` が `ACTIONS` に無ければ `ValueError`。`max_yen` は `None` か 0 以上の整数で、`None`（上限なし）と 0（1 円も買わない）を区別する。負の値は `ValueError`。
-- `company_numbers(ticker, row, peers, momentum)`：**純粋**。`sector.compare` の値・業種の中央値・比に、`row`（`RecordStore.screen_row` の 1 行）の通過・落ちた条件・改善区分と `momentum["position"]`（地図の中の位置）を並べる。記録に無い項目は null。
+- `company_numbers(ticker, row, peers, momentum, per_max)`：**純粋**。`sector.compare` の値・業種の中央値・比に、`row`（`RecordStore.screen_row` の 1 行）の通過・落ちた条件・改善区分と `momentum["position"]`（地図の中の位置）を並べる。記録に無い項目は null。
 - `render_flow_memo(name, demand, axes, companies)`（`memo.py`。メモの組み立ては出力の担当 C6 に置く）：**純粋**。5 つの軸と終わりの手がかり（引用つき、無ければ「不明」）、地図（何次か・売上に占める割合・引用）、会社ごとの数値の表を Markdown にする。注記の 1 行（先に上がった会社はその後負けやすい）は `CompanyLine.note` が真のときだけ出す。判定は `sector.momentum_note`（3.4 節）が行い、`render_flow_memo` は印を出すだけ。小数は小数点以下 2 桁で表示する。
 
 ### 3.3 `flow_store.py`

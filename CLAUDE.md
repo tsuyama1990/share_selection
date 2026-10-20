@@ -69,6 +69,7 @@ Japanese stock selection with two methods: **Value Turn** (monthly; cheap stocks
 
 ## Design docs (`docs/`)
 - `handoff.md` is the first thing to read in a new session: current state, how to run, open decisions, next steps and pitfalls; keep it current when the state changes.
+- README.md stays a short overview of the two methods (a page or so each of the table, commands, gates, modules, doc map); usage and settings details live in `value_turn.md` (Value Turn) and `tailwind_watch_design.md` (Tailwind Watch).
 - `tailwind_watch_design.md` is the agreed plan and lessons for Tailwind Watch (L1 C9, L2 `L2_C9_tailwind.md`); `selection_flow.md` is the target design; `hypothesis_map.md` holds the evidence; `entry_types_design.md` holds reference type definitions for its stage 3; `screening_criteria.md` describes what is implemented now; `selection_tuning.md` records threshold decisions and their evidence.
 - Keep docs slim: describe the current design only; a rejected or failed approach becomes a one-line lesson with the reason, history entries are one line each, and details stay in git history (user, 2026-10-18).
 - Label every factual claim ([原著]/[一次]/[報道]/[データ: date]/[推論]); recompute numbers with current config and data before committing; check cited examples satisfy the definition; log corrections at the end of the doc.

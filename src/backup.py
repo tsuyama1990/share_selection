@@ -9,7 +9,14 @@ from typing import Any
 
 SNAPSHOT_FORMAT = "%Y%m%dT%H%M%S"
 SNAPSHOT_NAME = re.compile(r"\d{8}T\d{6}")
-SOURCE_KEYS = [("review", "db_file"), ("review", "export_dir"), ("memo", "dir"), ("docstore", "db_file")]
+SOURCE_KEYS = [
+    ("review", "db_file"),
+    ("review", "export_dir"),
+    ("memo", "dir"),
+    ("docstore", "db_file"),
+    ("flow", "db_file"),  # the flows and the human decisions on them
+    ("flow", "memo_dir"),
+]
 
 
 class BackupInsideRepoError(RuntimeError):
@@ -48,6 +55,6 @@ def backup(sources: list[Path], backup_dir: Path, keep: int, repo_root: Path, no
 
 
 def backup_from_config(cfg: dict[str, Any], root: Path, now: datetime) -> Snapshot:
-    """`backup` of the review database and export, the memos and the document store into ``backup.dir``."""
+    """`backup` of the review and flow records, the memos and the document store into ``backup.dir``."""
     sources = [root / cfg[section][key] for section, key in SOURCE_KEYS]
     return backup(sources, Path(cfg["backup"]["dir"]).expanduser(), cfg["backup"]["keep"], root, now)
